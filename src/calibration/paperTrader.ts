@@ -38,7 +38,8 @@ export class PaperTradeGate {
     }
 
     const raw = fs.readFileSync(resolved, 'utf-8');
-    const parsed: TradeRecord[] = JSON.parse(raw);
+    const json = JSON.parse(raw);
+    const parsed: TradeRecord[] = Array.isArray(json) ? json : (json.trades ?? []);
     logger.info('Paper trades loaded', { count: parsed.length, path: resolved });
     return new PaperTradeGate(parsed, resolved);
   }
