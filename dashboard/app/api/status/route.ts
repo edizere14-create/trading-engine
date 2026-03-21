@@ -18,7 +18,7 @@ interface StatusData {
 }
 
 export async function GET() {
-  const ROOT = 'C:\\trading-engine';
+  const ROOT = process.cwd();
   const logPath = path.join(ROOT, 'logs', 'engine.log');
 
   const status: StatusData = {

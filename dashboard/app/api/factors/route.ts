@@ -23,7 +23,7 @@ const FACTORS = [
 ];
 
 export async function GET() {
-  const dbPath = path.join('C:\\trading-engine', 'data', 'journal.db');
+  const dbPath = path.resolve(process.cwd(), 'data', 'journal.db');
 
   try {
     const SQL = await initSqlJs();

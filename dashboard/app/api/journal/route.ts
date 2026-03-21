@@ -5,23 +5,7 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
-const DB_PATH = path.join('C:\\trading-engine', 'data', 'journal.db');
-
-function queryAll(dbPath: string, sql: string): Record<string, unknown>[] {
-  const SQL = require('sql.js');
-  const initSqlJsSync = SQL.default || SQL;
-  // sql.js is async but we can use the synchronous wasm if loaded
-  const fileBuffer = fs.readFileSync(dbPath);
-  const db = new (initSqlJsSync()).Database(fileBuffer);
-  const stmt = db.prepare(sql);
-  const rows: Record<string, unknown>[] = [];
-  while (stmt.step()) {
-    rows.push(stmt.getAsObject() as Record<string, unknown>);
-  }
-  stmt.free();
-  db.close();
-  return rows;
-}
+const DB_PATH = path.resolve(process.cwd(), 'data', 'journal.db');
 
 export async function GET() {
   try {
