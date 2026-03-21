@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "python3", "gcc", "gnumake"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["npm install --build-from-source"]
+cmds = ["npm install"]
 
 [start]
 cmd = "npx ts-node src/index.ts"
