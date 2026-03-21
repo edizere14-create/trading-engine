@@ -1,7 +1,3 @@
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv/config');
-}
-
 import { config } from './core/config';
 import { logger } from './core/logger';
 import { bus } from './core/eventBus';
