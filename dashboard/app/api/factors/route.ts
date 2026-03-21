@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import Database from 'better-sqlite3';
+import initSqlJs from 'sql.js';
+import fs from 'fs';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
@@ -22,13 +23,18 @@ const FACTORS = [
 ];
 
 export async function GET() {
-  const dbPath = path.resolve(process.cwd(), 'data', 'journal.db');
+  const dbPath = path.join('C:\\trading-engine', 'data', 'journal.db');
 
   try {
-    const db = new Database(dbPath, { readonly: true });
-    const trades = db.prepare(
-      "SELECT * FROM trades WHERE outcome IS NOT NULL"
-    ).all() as Record<string, unknown>[];
+    const SQL = await initSqlJs();
+    const fileBuffer = fs.readFileSync(dbPath);
+    const db = new SQL.Database(fileBuffer);
+    const stmt = db.prepare("SELECT * FROM trades WHERE outcome IS NOT NULL");
+    const trades: Record<string, unknown>[] = [];
+    while (stmt.step()) {
+      trades.push(stmt.getAsObject() as Record<string, unknown>);
+    }
+    stmt.free();
     db.close();
 
     if (trades.length === 0) {

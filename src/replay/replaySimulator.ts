@@ -125,15 +125,19 @@ export class ReplaySimulator {
 
 // ── CLI Entry Point ────────────────────────────────────────
 if (require.main === module) {
-  const journal = new TradeJournal();
-  const riskEngine = new RiskEngine();
-  const sim = new ReplaySimulator(journal, riskEngine);
-  sim.replayAll().then(() => {
-    journal.close();
-    process.exit(0);
-  }).catch((err) => {
-    logger.error('Replay failed', { error: String(err) });
-    journal.close();
-    process.exit(1);
-  });
+  (async () => {
+    const journal = new TradeJournal();
+    await journal.waitReady();
+    const riskEngine = new RiskEngine();
+    const sim = new ReplaySimulator(journal, riskEngine);
+    try {
+      await sim.replayAll();
+      journal.close();
+      process.exit(0);
+    } catch (err) {
+      logger.error('Replay failed', { error: String(err) });
+      journal.close();
+      process.exit(1);
+    }
+  })();
 }

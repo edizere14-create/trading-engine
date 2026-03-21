@@ -1,21 +1,57 @@
-import Database from 'better-sqlite3';
+// @ts-ignore sql.js has no bundled types
+import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 import { JournalEntry } from './journalTypes';
 import { logger } from '../core/logger';
 import path from 'path';
+import fs from 'fs';
+
+const COLUMNS = [
+  'id', 'mode', 'tokenCA', 'ticker', 'chain', 'poolAddress',
+  'entryTimestamp', 'entryPriceSOL', 'entryPriceUSD',
+  'entryLiquiditySOL', 'entryVolumeSOL', 'entryHolderCount',
+  'entrySmartWalletCount', 'entryBuyPressure', 'entrySlippage1K',
+  'entryMarketState', 'entryRegime', 'entryEMALayer',
+  'signalTimingEdge', 'signalDeployerQuality', 'signalOrganicFlow',
+  'signalManipulationRisk', 'signalCoordinationStrength',
+  'signalSocialVelocity', 'signalTotalScore', 'signalConfidence',
+  'predictedWP', 'predictedEV', 'predictedMultiple',
+  'sizeR', 'sizeUSD', 'stopPriceSOL', 'maxHoldMs', 'executionMode',
+  'deployerAddress', 'deployerTier', 'rugScore',
+  'sniperBlock0Pct', 'topHolderPct', 'lpLockDuration',
+  'exitTimestamp', 'exitPriceSOL', 'exitMode', 'exitReason',
+  'holdDurationMs', 'realizedMultiple', 'realizedPnLUSD',
+  'realizedPnLR', 'outcome', 'peakMultiple',
+  'buyClusterFrequency', 'walletDiversityScore',
+  'liquidityGrowthSlope', 'impulseExhaustionScore',
+  'volumeSpikeSlope', 'edgesFired', 'primaryEdge',
+  'notes', 'whichEdgeMattered', 'whichEdgeFailed',
+  'detectionLagMs', 'createdAt',
+];
 
 export class TradeJournal {
-  private db: Database.Database;
+  private db!: SqlJsDatabase;
+  private dbPath: string;
+  private ready: Promise<void>;
 
   constructor(dbPath: string = './data/journal.db') {
-    const resolved = path.resolve(dbPath);
-    this.db = new Database(resolved);
-    this.db.pragma('journal_mode = WAL');
+    this.dbPath = path.resolve(dbPath);
+    this.ready = this.init();
+  }
+
+  private async init(): Promise<void> {
+    const SQL = await initSqlJs();
+    try {
+      const fileBuffer = fs.readFileSync(this.dbPath);
+      this.db = new SQL.Database(fileBuffer);
+    } catch {
+      this.db = new SQL.Database();
+    }
     this.initSchema();
-    logger.info('TradeJournal opened', { dbPath: resolved });
+    logger.info('TradeJournal opened', { dbPath: this.dbPath });
   }
 
   private initSchema(): void {
-    this.db.exec(`
+    this.db.run(`
       CREATE TABLE IF NOT EXISTS trades (
         id TEXT PRIMARY KEY,
         mode TEXT NOT NULL,
@@ -79,69 +115,55 @@ export class TradeJournal {
         whichEdgeFailed TEXT,
         detectionLagMs INTEGER,
         createdAt TEXT DEFAULT (datetime('now'))
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_outcome ON trades(outcome);
-      CREATE INDEX IF NOT EXISTS idx_market_state ON trades(entryMarketState);
-      CREATE INDEX IF NOT EXISTS idx_regime ON trades(entryRegime);
-      CREATE INDEX IF NOT EXISTS idx_deployer_tier ON trades(deployerTier);
-      CREATE INDEX IF NOT EXISTS idx_signal_score ON trades(signalTotalScore);
-      CREATE INDEX IF NOT EXISTS idx_entry_time ON trades(entryTimestamp);
-      CREATE INDEX IF NOT EXISTS idx_primary_edge ON trades(primaryEdge);
-    `);
-  }
-
-  insert(entry: JournalEntry): void {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO trades VALUES (
-        @id, @mode, @tokenCA, @ticker, @chain, @poolAddress,
-        @entryTimestamp, @entryPriceSOL, @entryPriceUSD,
-        @entryLiquiditySOL, @entryVolumeSOL, @entryHolderCount,
-        @entrySmartWalletCount, @entryBuyPressure, @entrySlippage1K,
-        @entryMarketState, @entryRegime, @entryEMALayer,
-        @signalTimingEdge, @signalDeployerQuality, @signalOrganicFlow,
-        @signalManipulationRisk, @signalCoordinationStrength,
-        @signalSocialVelocity, @signalTotalScore, @signalConfidence,
-        @predictedWP, @predictedEV, @predictedMultiple,
-        @sizeR, @sizeUSD, @stopPriceSOL, @maxHoldMs, @executionMode,
-        @deployerAddress, @deployerTier, @rugScore,
-        @sniperBlock0Pct, @topHolderPct, @lpLockDuration,
-        @exitTimestamp, @exitPriceSOL, @exitMode, @exitReason,
-        @holdDurationMs, @realizedMultiple, @realizedPnLUSD,
-        @realizedPnLR, @outcome, @peakMultiple,
-        @buyClusterFrequency, @walletDiversityScore,
-        @liquidityGrowthSlope, @impulseExhaustionScore,
-        @volumeSpikeSlope, @edgesFired, @primaryEdge,
-        @notes, @whichEdgeMattered, @whichEdgeFailed,
-        @detectionLagMs, datetime('now')
       )
     `);
 
-    stmt.run({
-      ...entry,
-      entryTimestamp: entry.entryTimestamp.toISOString(),
-      exitTimestamp: entry.exitTimestamp?.toISOString() ?? null,
-      edgesFired: JSON.stringify(entry.edgesFired),
-      // Ensure nulls for undefined optional fields
-      exitPriceSOL: entry.exitPriceSOL ?? null,
-      exitMode: entry.exitMode ?? null,
-      exitReason: entry.exitReason ?? null,
-      holdDurationMs: entry.holdDurationMs ?? null,
-      realizedMultiple: entry.realizedMultiple ?? null,
-      realizedPnLUSD: entry.realizedPnLUSD ?? null,
-      realizedPnLR: entry.realizedPnLR ?? null,
-      outcome: entry.outcome ?? null,
-      peakMultiple: entry.peakMultiple ?? null,
-      buyClusterFrequency: entry.buyClusterFrequency ?? null,
-      walletDiversityScore: entry.walletDiversityScore ?? null,
-      liquidityGrowthSlope: entry.liquidityGrowthSlope ?? null,
-      impulseExhaustionScore: entry.impulseExhaustionScore ?? null,
-      volumeSpikeSlope: entry.volumeSpikeSlope ?? null,
-      notes: entry.notes ?? null,
-      whichEdgeMattered: entry.whichEdgeMattered ?? null,
-      whichEdgeFailed: entry.whichEdgeFailed ?? null,
-      detectionLagMs: entry.detectionLagMs ?? null,
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_outcome ON trades(outcome)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_market_state ON trades(entryMarketState)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_regime ON trades(entryRegime)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_deployer_tier ON trades(deployerTier)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_signal_score ON trades(signalTotalScore)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_entry_time ON trades(entryTimestamp)');
+    this.db.run('CREATE INDEX IF NOT EXISTS idx_primary_edge ON trades(primaryEdge)');
+  }
+
+  private save(): void {
+    const data = this.db.export();
+    const dir = path.dirname(this.dbPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(this.dbPath, Buffer.from(data));
+  }
+
+  private queryAll(sql: string, params: unknown[] = []): Record<string, unknown>[] {
+    const stmt = this.db.prepare(sql);
+    if (params.length) stmt.bind(params);
+    const rows: Record<string, unknown>[] = [];
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject() as Record<string, unknown>);
+    }
+    stmt.free();
+    return rows;
+  }
+
+  async waitReady(): Promise<void> {
+    await this.ready;
+  }
+
+  insert(entry: JournalEntry): void {
+    const placeholders = COLUMNS.map((_, i) => i === COLUMNS.length - 1 ? "datetime('now')" : '?').join(', ');
+    const values = COLUMNS.slice(0, -1).map((col) => {
+      if (col === 'entryTimestamp') return entry.entryTimestamp.toISOString();
+      if (col === 'exitTimestamp') return entry.exitTimestamp?.toISOString() ?? null;
+      if (col === 'edgesFired') return JSON.stringify(entry.edgesFired);
+      const val = (entry as unknown as Record<string, unknown>)[col];
+      return val ?? null;
     });
+
+    this.db.run(
+      `INSERT OR REPLACE INTO trades (${COLUMNS.join(', ')}) VALUES (${placeholders})`,
+      values,
+    );
+    this.save();
 
     logger.info('Trade journaled', {
       id: entry.id,
@@ -166,44 +188,38 @@ export class TradeJournal {
       }
     }
 
-    const fields = Object.keys(sanitized)
-      .map((k) => `${k} = @${k}`)
-      .join(', ');
+    const keys = Object.keys(sanitized);
+    if (!keys.length) return;
+    const setClause = keys.map((k) => `${k} = ?`).join(', ');
+    const values = keys.map((k) => sanitized[k]);
+    values.push(id);
 
-    if (!fields) return;
-    const stmt = this.db.prepare(`UPDATE trades SET ${fields} WHERE id = @id`);
-    stmt.run({ ...sanitized, id });
+    this.db.run(`UPDATE trades SET ${setClause} WHERE id = ?`, values);
+    this.save();
   }
 
   getAll(): JournalEntry[] {
-    const rows = this.db
-      .prepare('SELECT * FROM trades ORDER BY entryTimestamp DESC')
-      .all() as Record<string, unknown>[];
+    const rows = this.queryAll('SELECT * FROM trades ORDER BY entryTimestamp DESC');
     return rows.map((r) => this.deserialize(r));
   }
 
   getById(id: string): JournalEntry | null {
-    const row = this.db
-      .prepare('SELECT * FROM trades WHERE id = ?')
-      .get(id) as Record<string, unknown> | undefined;
-    return row ? this.deserialize(row) : null;
+    const rows = this.queryAll('SELECT * FROM trades WHERE id = ?', [id]);
+    return rows.length ? this.deserialize(rows[0]) : null;
   }
 
   getByOutcome(outcome: 'WIN' | 'LOSS' | 'BREAKEVEN'): JournalEntry[] {
-    return (
-      this.db
-        .prepare('SELECT * FROM trades WHERE outcome = ?')
-        .all(outcome) as Record<string, unknown>[]
-    ).map((r) => this.deserialize(r));
+    return this.queryAll('SELECT * FROM trades WHERE outcome = ?', [outcome])
+      .map((r) => this.deserialize(r));
   }
 
   count(): number {
-    return (
-      this.db.prepare('SELECT COUNT(*) as n FROM trades').get() as { n: number }
-    ).n;
+    const rows = this.queryAll('SELECT COUNT(*) as n FROM trades');
+    return (rows[0]?.n as number) ?? 0;
   }
 
   close(): void {
+    this.save();
     this.db.close();
   }
 

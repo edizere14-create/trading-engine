@@ -86,6 +86,7 @@ async function boot(): Promise<void> {
 
   // 5b. Intelligence infrastructure
   const journal = new TradeJournal('./data/journal.db');
+  await journal.waitReady();
   const factorEngine = new FactorEngine(journal);
   const equityCtrl = new EquityCurveController(cfg.INITIAL_CAPITAL_USD, journal);
   const microExtractor = new MicrostructureFeatureExtractor();
