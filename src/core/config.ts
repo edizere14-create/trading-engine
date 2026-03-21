@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+}
+
 import { Connection } from '@solana/web3.js';
 import { z } from 'zod';
 
