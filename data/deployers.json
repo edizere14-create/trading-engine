@@ -1,0 +1,2766 @@
+{
+  "deployers": [
+    {
+      "address": "4ekt7Z9YPThrzcv1YXho2xtAcmmzKHrhsD39Hu3EEnhz",
+      "tier": "A",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.28917741681632203,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-19T23:01:13.000Z"
+        },
+        {
+          "tokenCA": "DZACFvNvjqWpd1HpvtBQBWeuS6t7k7HvL7SsNoK7NbLU",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:47:48.000Z"
+        },
+        {
+          "tokenCA": "5dzfs5nLLKJJFiF4frTeD3PQfjZV9wKBa1NBf8UUsurg",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:27:18.000Z"
+        },
+        {
+          "tokenCA": "H9FUPw7hAqbFeSFN2VMMtBv9Mp276mhEJs4QsthCbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:25:11.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:18:02.000Z"
+        },
+        {
+          "tokenCA": "3W6fP9yiBq9bpfo53BuFbz5dpRyZMYbUbE7z5m8dbonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:11:49.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T18:14:50.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 0.8957265321671862,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T18:06:38.000Z"
+        },
+        {
+          "tokenCA": "GjJavU6nb8FnbaWxrRekYM7B1AgKPXYKKXjcfdfYbonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:09:57.000Z"
+        },
+        {
+          "tokenCA": "AQC2aX6FeACybhHRFQuEDahFkj8UwTxqZrQVis7aNSAY",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-19T23:03:22.000Z"
+        },
+        {
+          "tokenCA": "7KVkdm6Sex4MsRZNf9EyyrGkhwYdgB2aXhWYXpsTCray",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T16:22:57.000Z"
+        },
+        {
+          "tokenCA": "9NhgcSHiRjfGfi8fjbV7wngVj5QvSBFuujTkdKYj2ray",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T08:02:48.000Z"
+        },
+        {
+          "tokenCA": "HpngEtMMtp38ttb7gxm453jydEfwiGXC8KHFWPNWrray",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-19T23:11:22.000Z"
+        },
+        {
+          "tokenCA": "5wnBZCLEAJPd5dF3oUU9Yx8EHwZrZTT9rx8uvbMQoray",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-19T23:26:27.000Z"
+        }
+      ],
+      "successRate": 0.571,
+      "rugRate": 0.143,
+      "avgPeakMultiple": 0.16,
+      "lastActive": "2026-03-20T19:54:05.149Z"
+    },
+    {
+      "address": "25nPqw5x34jLTkht6rQHj7MvcBzxbwQjqJPhAucRpzYB",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.7648393012784553,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T14:06:49.000Z"
+        },
+        {
+          "tokenCA": "2MHXWvLr1CSumdtCpCR9tnmRVVk5yj9xeHBLEgunbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:47:03.000Z"
+        },
+        {
+          "tokenCA": "HzLcjc9goYhaUpP1poq5nveqNq3Z7RXTh936WG6Fbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:47:14.000Z"
+        },
+        {
+          "tokenCA": "9VWzTnZveKXGEqX2UwfCDrmQczVxjJR1hXyy5kewpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:46:52.000Z"
+        },
+        {
+          "tokenCA": "DGmgdEHMJL3arBVJF5HRYBQdMh1sCFijEajfvRfqLx2R",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:46:43.000Z"
+        },
+        {
+          "tokenCA": "9WpkZ5dr6RNJDxaLD4535ssRg6vNcnhZMj2LzAQa8AmP",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:04:07.000Z"
+        },
+        {
+          "tokenCA": "FDGicPJY1qsYb8fvG73eB22wiEtZtTXsvFFiyXHDpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:56:38.000Z"
+        },
+        {
+          "tokenCA": "D8ZwWxCMGh9dNvNgBDf21wWDDQ2oB8AdL7oE1Lygpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:56:27.000Z"
+        },
+        {
+          "tokenCA": "ApCDe6ti7155JkJhUhJ4z53YgfEz9dfgGqLz8cyJpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:29:12.000Z"
+        },
+        {
+          "tokenCA": "FbvzVu8ZqvjNXsW4nYiEiJQubgAE2GNCvv63pK6apump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:28:58.000Z"
+        },
+        {
+          "tokenCA": "FgCp2qCBkVqQAG3jHCiaDzfXKRocdbM6YTvbZCcrpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:12:23.000Z"
+        },
+        {
+          "tokenCA": "5bZ8duCeGa3t9kzhysuKRsgzK2w2PAKEsF4UAGPopump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:08:00.000Z"
+        },
+        {
+          "tokenCA": "Bgz3XkS4M7kxEpfhL6EyCprSGPcNZF1aA5SYVcY5bonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:05:44.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T17:42:07.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:05:44.000Z"
+        },
+        {
+          "tokenCA": "Ewd86tyMg7Wr3zfNgCfNV8W8MawHKWkitBmVB3pdpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:05:34.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T17:45:11.000Z"
+        },
+        {
+          "tokenCA": "GfLyfUCKUzBK5SzqEQhuEwrYfjeTvt8pfnYcRmFabonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:51:10.000Z"
+        },
+        {
+          "tokenCA": "7w4veYrteNg5gRqAAujTQQ5sm3xGz2YBa6fLv1xx2o33",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:45:11.000Z"
+        },
+        {
+          "tokenCA": "BD333tipjs6sErEJXhABAuTwLCDi1bAtzSoMNMAzpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:44:48.000Z"
+        },
+        {
+          "tokenCA": "FFVTBRt6tq9sVFLjxhSuJkXJFBNWW6rqV4MZTzqNpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:36:35.000Z"
+        },
+        {
+          "tokenCA": "6u3aCze4ZTdmkG8qPwkuBwmRVcHT7egsZcYBKKcSpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:32:39.000Z"
+        },
+        {
+          "tokenCA": "9TAyKmz2RK97apRV3rwyJNnPgJY3Fu98yZQXcUJSpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:31:30.000Z"
+        },
+        {
+          "tokenCA": "H293xEjJg3mVuMGqspmq8ir9oSVjgdV6JsNp33mvpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:29:48.000Z"
+        },
+        {
+          "tokenCA": "6GTXENTPEC1yG8jQ14CkyUbgX5yKYgmd75XoTNfPpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:26:17.000Z"
+        },
+        {
+          "tokenCA": "A6k29aN3pUu6hqGTneMtJYt9d9gTTyqWynrEmfkPpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:15:30.000Z"
+        },
+        {
+          "tokenCA": "4c4ZzRXLPJkV2vmwwzF2uQgz3h4en63ABrjgtbG6pump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:14:58.000Z"
+        },
+        {
+          "tokenCA": "2G8Qajwkb5Rjc6HjbnN7VocfeKSh8x5UzNf6kmcapump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:48:20.000Z"
+        },
+        {
+          "tokenCA": "7EWBKLiTkyK2RtZYdVmEqpS3xaP4ZSh4rsxZ9sDrpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:23:55.000Z"
+        },
+        {
+          "tokenCA": "2BiYZhAA3P7YGf7vRAWTdjtw4bEELFyUd5PXXhfaXbD8",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T15:57:01.000Z"
+        },
+        {
+          "tokenCA": "9cozRnrYGYy3ZA6mvguEKZMubtquxT3p9RuyfoP3pump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T15:52:25.000Z"
+        },
+        {
+          "tokenCA": "JYsBxoyauVvQWk1quosdL2p9XF9fwHUjzCV47hQpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T14:54:34.000Z"
+        },
+        {
+          "tokenCA": "3a3ijue9qX1uvGvxyTtdsyAsgNuYP3nuCMyJtrZ8e38n",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T14:13:56.000Z"
+        },
+        {
+          "tokenCA": "AafoCAB5KKpE9YBSLJ6mdg4UsDgbbakdoozhnD3qpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T14:06:49.000Z"
+        }
+      ],
+      "successRate": 0.294,
+      "rugRate": 0.088,
+      "avgPeakMultiple": 0.11,
+      "lastActive": "2026-03-20T19:54:05.149Z"
+    },
+    {
+      "address": "4m2j2KRZ9DSvJJSDwkgRviXCnouBRwpuQHDHBMCRpvyr",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:15:49.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T19:54:05.149Z"
+    },
+    {
+      "address": "6vPgkrx2yRk8YmYSkSZaUcSCqHfUR6DHFyQGbt1prNNX",
+      "tier": "S",
+      "launches": [
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:52:51.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.4160542198128299,
+          "outcome": "RUG",
+          "timestamp": "2026-03-08T18:42:59.000Z"
+        },
+        {
+          "tokenCA": "75NK66J3Mz3c685jC1iA1Dx2o4y9uHc3XBZxgRhppump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:39:23.000Z"
+        },
+        {
+          "tokenCA": "81F5foxBS2CdbUXZJUNQuwdSJEp6qutPeKTpg57fpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:35:24.000Z"
+        },
+        {
+          "tokenCA": "GPYcyNXhc8wKBA6tC8yftPibJYEhTNHostLMv3D6uFph",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:07:42.000Z"
+        },
+        {
+          "tokenCA": "nhNV36zeFCofiA7TKwTj1gQ5w9uMAMTjwsTuqNvpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:15:09.000Z"
+        },
+        {
+          "tokenCA": "E2YxqFFfr2n2DZ7LSYTeTBvCvYtmn49fJgPK7XNupump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:43:36.000Z"
+        },
+        {
+          "tokenCA": "F8f5mpwKyxduP1V9VRBWUPGb7LstHgkc4WABiA8KtdGT",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:39:31.000Z"
+        },
+        {
+          "tokenCA": "3kCXgBSP7FkW4kA5GcwPVgFDbpA7pBdVF1VRETKvpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-18T09:20:56.000Z"
+        },
+        {
+          "tokenCA": "F8rRZA2K4GrobU6JyeuwxzFoNZmnyfR2CbW5s3fGokNG",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-18T08:21:38.000Z"
+        },
+        {
+          "tokenCA": "AGS6D1m3X7LLYNB3wf8jD4Xgun5EhmybHBGGDLCcpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-18T08:19:07.000Z"
+        },
+        {
+          "tokenCA": "ZP5uFaQcsW25AcP1zUwR2mAu9AGrFEc2VMhbLgEpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-18T08:13:10.000Z"
+        },
+        {
+          "tokenCA": "7SyZJHi71cn2tXWiia5wMeUWu2SPo9jst5sLbmjWpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-08T19:18:07.000Z"
+        },
+        {
+          "tokenCA": "3JeWjYY6LYUyehgtyMoBs1G5bwConPxuBdPMEQXK5GdV",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-08T19:06:31.000Z"
+        },
+        {
+          "tokenCA": "6HnQTb4XfmQDkaYnTPhDR9vRoQZHnkjEuDSe14Hqpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-08T19:03:47.000Z"
+        },
+        {
+          "tokenCA": "EZL4EgKCLBucequGf4ZyoozcjSmZy4imVwnd6Qwspump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-08T18:58:32.000Z"
+        },
+        {
+          "tokenCA": "5AtRT2c5q6LaA1ynaAZziXK2Cr2BMSXdUYsxQJBopump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-08T18:56:03.000Z"
+        },
+        {
+          "tokenCA": "6PuGgUphjK8HPZRJtacREBDTJRzfJu2mEjEpYn5kD68c",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-08T18:49:37.000Z"
+        },
+        {
+          "tokenCA": "1Zfan3ERZ81hzQhEeJAa5ML8APG6V6sfLqCXzzApump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-08T18:42:59.000Z"
+        }
+      ],
+      "successRate": 0.684,
+      "rugRate": 0.053,
+      "avgPeakMultiple": 0.02,
+      "lastActive": "2026-03-20T19:54:05.149Z"
+    },
+    {
+      "address": "HjjhSHoQPg2smsB4GxbVGW2hT8nm7748azFsJ4q5VHKX",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 1.003699238864776,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:20:48.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:28:34.000Z"
+        },
+        {
+          "tokenCA": "4TyZGqRLG3VcHTGMcLBoPUmqYitMVojXinAmkL8xpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:28:34.000Z"
+        },
+        {
+          "tokenCA": "4VBUKuwhJdufnrEkxHEFvVsVPBMqb9wXN4Pc2QR8FVEc",
+          "peakMultiple": 1.0204081632653106,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:28:34.000Z"
+        },
+        {
+          "tokenCA": "4fSWEw2wbYEUCcMtitzmeGUfqinoafXxkhqZrA9Gpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:20:48.000Z"
+        },
+        {
+          "tokenCA": "7CfBFQGQMHzEFd9ayBzUUihzCoFrhfYggn5eW2QmBAGS",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:58.000Z"
+        },
+        {
+          "tokenCA": "3a3ijue9qX1uvGvxyTtdsyAsgNuYP3nuCMyJtrZ8e38n",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:58.000Z"
+        },
+        {
+          "tokenCA": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:23.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:42.000Z"
+        },
+        {
+          "tokenCA": "NV2RYH954cTJ3ckFUpvfqaQXU4ARqqDH3562nFSpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:28:57.000Z"
+        },
+        {
+          "tokenCA": "Cm6fNnMk7NfzStP9CZpsQA2v3jjzbcYGAxdJySmHpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:40.000Z"
+        },
+        {
+          "tokenCA": "2pjcq9k2X5oSArNKiVeQ2ENB63eJt8pwCabciGQGpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:14.000Z"
+        },
+        {
+          "tokenCA": "EURxkcAxAfz93o8GHNwMJPCvJ4jR35ip3h53MSw9R748",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:03.000Z"
+        },
+        {
+          "tokenCA": "2k8yZaJjf61unHriuqdmvbxe7CUhEYML5kVJDbcotKjU",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:43:26.000Z"
+        },
+        {
+          "tokenCA": "Aih5Mn9S7hophn9FbNSX98EiejeM3e7rggTRaCxfrge",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:14.000Z"
+        },
+        {
+          "tokenCA": "DRLNhjM7jusYFPF1qade1dBD1qhgds7oAfdKs51Vpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:03.000Z"
+        },
+        {
+          "tokenCA": "LGmKe2KPYqtK22zepWfqX4Xk7LfjjQDckuWfaNL2oMK",
+          "peakMultiple": 1.0753292986828054,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:31:14.000Z"
+        },
+        {
+          "tokenCA": "BTCpvgvqywSeyD4HNiqJymzAHgBmNvpp8bWdABErk38K",
+          "peakMultiple": 1.0752688217564355,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:41:12.000Z"
+        },
+        {
+          "tokenCA": "2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:32:03.000Z"
+        },
+        {
+          "tokenCA": "EchesyfXePKdLtoiZSL8pBe8Myagyy8ZRqsACNCFGnvp",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:41:05.000Z"
+        },
+        {
+          "tokenCA": "EiqNgtwFzHqTEa3UV57s2x4svjJF59URgBqnG3sCpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:39:15.000Z"
+        },
+        {
+          "tokenCA": "AymATz4TCL9sWNEEV9Kvyz45CHVhDZ6kUgjTJPzLpU9P",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:34:33.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:24:04.000Z"
+        },
+        {
+          "tokenCA": "Hh3oTaqDCKKfdBgsQEvxp9sUwyNf8x9qmKqEMLBWpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:14.000Z"
+        },
+        {
+          "tokenCA": "DNzTKRNkdKoGi8HaL9jcNzwTob91mAJBFDNsnAFpJ2FB",
+          "peakMultiple": 1.0416666690752177,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:29:37.000Z"
+        },
+        {
+          "tokenCA": "7nDAVJC5SfNZoussBDML5boiD4bMBRwx94ssJYNxpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:37:32.000Z"
+        },
+        {
+          "tokenCA": "BaaYhmQBjX3B6JAayG5mDbhziyKsf4KDr9ZHzaEhpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:20:48.000Z"
+        },
+        {
+          "tokenCA": "GodL6KZ9uuUoQwELggtVzQkKmU1LfqmDokPibPeDKkhF",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:37:21.000Z"
+        },
+        {
+          "tokenCA": "SWuTCqnGcqarfVeGenXD3EnHUDgb2UoDqhiDEyr1oWG",
+          "peakMultiple": 1.0753725857114216,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:24:54.000Z"
+        },
+        {
+          "tokenCA": "2mEtt2musbjuRcsyyG29xjeTqJX4ehXBQdFLmZd9dG6N",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:34:24.000Z"
+        },
+        {
+          "tokenCA": "BkDKvbUQpr17c5w3zZzEA1VvpirgWcKuMEHtiYGEaP1c",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:34:24.000Z"
+        },
+        {
+          "tokenCA": "wwzqJcBxRUDfSZQQv3R4WckkNzpSFjNHkRuzZFcJJZt",
+          "peakMultiple": 1.0204081636210032,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:33:14.000Z"
+        },
+        {
+          "tokenCA": "F2c9NYX7YKXnXrdRCTEH1gbLYoubc6AVWZJdcxkypump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:32:38.000Z"
+        },
+        {
+          "tokenCA": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:32:13.000Z"
+        },
+        {
+          "tokenCA": "ARBXtxRCZeSQwbYM51Nvdg2SE3PEnFTcWEuyEygPWm8F",
+          "peakMultiple": 1.005025125635594,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:32:13.000Z"
+        },
+        {
+          "tokenCA": "9a21gb7fWGm9dD2UFdZAzgFn5K1NwfmYkjyLbpAcKgnM",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:32:12.000Z"
+        },
+        {
+          "tokenCA": "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:22:19.000Z"
+        },
+        {
+          "tokenCA": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:37.000Z"
+        },
+        {
+          "tokenCA": "8jG1myVRvQhvMUk2A8a3hWN4scLrTM8FCQqNcxuztM4g",
+          "peakMultiple": 1.030927835051562,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:37.000Z"
+        },
+        {
+          "tokenCA": "HYX5gHBDwyHtTgbY2AxZfa8m7gNgHDwxyBxzsyzNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:37.000Z"
+        },
+        {
+          "tokenCA": "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:29:28.000Z"
+        },
+        {
+          "tokenCA": "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:26:40.000Z"
+        },
+        {
+          "tokenCA": "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:26:40.000Z"
+        },
+        {
+          "tokenCA": "EHmZM5QD7NFpu6hm3o8yYSA6EhYYunHL21fzN2ucpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:26:40.000Z"
+        },
+        {
+          "tokenCA": "2zMMhcVQEXDtdE6vsFS7S7D5oUodfJHE8vd1gnBouauv",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:25:40.000Z"
+        },
+        {
+          "tokenCA": "ASTYqeaoK83Zs1pTFEXZUB6BM8cG8YLTsN852NUkt7ZR",
+          "peakMultiple": 1.010101010123841,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:25:40.000Z"
+        },
+        {
+          "tokenCA": "AuqxniWaKo121vZMfMbM7ifZ6ixr4G8Rk4s8PXAFpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:24:17.000Z"
+        },
+        {
+          "tokenCA": "LinkhB3afbBKb2EQQu7s7umdZceV3wcvAUJhQAfQ23L",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:42.000Z"
+        },
+        {
+          "tokenCA": "H8U8dJUVPWqSsA4obNx9YhBqWQx4veVQg9Jci4BbW7y6",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:42.000Z"
+        },
+        {
+          "tokenCA": "DnQhkyY9iWhhnK56zkinpVBrAwcotLqxQL6NcoRZ1k5F",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:24:04.000Z"
+        },
+        {
+          "tokenCA": "CmpuL8k9KY3NrpfDRoJrVmuwd1zRMFRUxX55avyGpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:24:04.000Z"
+        },
+        {
+          "tokenCA": "71EzAiKBujBC5Y9RcCebTBknLcbA5LMRfdwmaoCkpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:23:47.000Z"
+        },
+        {
+          "tokenCA": "Dz9mQ9NzkBcCsuGPFJ3r1bS4wgqKMHBPiVuniW8Mbonk",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:23:34.000Z"
+        },
+        {
+          "tokenCA": "BeqAgjEajRgfh1FXggjX3p9iWhNsnrhKR5VjLj1Zmoon",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:23:34.000Z"
+        },
+        {
+          "tokenCA": "CTgiaZUK12kCcB8sosn4Nt2NZtzLgtPqDwyQyr2syATC",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:22:19.000Z"
+        },
+        {
+          "tokenCA": "26s3UGB9hund1qspApy1zYgCritxAooGg7o63BMn89Yq",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:22:19.000Z"
+        },
+        {
+          "tokenCA": "DG3LB7Kr8Londuz1j2us4YUXyNqiiLioKdYjSB37HbN2",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:22:19.000Z"
+        },
+        {
+          "tokenCA": "63LfDmNb3MQ8mw9MtZ2To9bEA2M71kZUUGq5tiJxcqj9",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:22:19.000Z"
+        },
+        {
+          "tokenCA": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:20:48.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0.492,
+      "avgPeakMultiple": 1.01,
+      "lastActive": "2026-03-20T19:54:06.083Z"
+    },
+    {
+      "address": "9M3wEbPgns8shupbes9fASohnxcNMbyqnBaQq6iMd7kk",
+      "tier": "A",
+      "launches": [
+        {
+          "tokenCA": "14JzP9EVVmNoTZpdrMhmRSppN3jDJDfZXULJBfYNTWUe",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:17:57.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:03:43.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.5733111150146758,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T08:10:40.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:36:02.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:23:34.000Z"
+        },
+        {
+          "tokenCA": "Gjn8zsTwZ5myCKqwuFLiiuqzDw5ZZzWW86i9vcGYpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:34:06.000Z"
+        },
+        {
+          "tokenCA": "8wtDUJcF3pJWjPraNPru7qhuFCdcgS11QMSxq6kHpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:29:16.000Z"
+        },
+        {
+          "tokenCA": "3a3ijue9qX1uvGvxyTtdsyAsgNuYP3nuCMyJtrZ8e38n",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:03:18.000Z"
+        },
+        {
+          "tokenCA": "2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T14:05:43.000Z"
+        },
+        {
+          "tokenCA": "EiqNgtwFzHqTEa3UV57s2x4svjJF59URgBqnG3sCpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T14:14:01.000Z"
+        }
+      ],
+      "successRate": 0.8,
+      "rugRate": 0.1,
+      "avgPeakMultiple": 0.26,
+      "lastActive": "2026-03-20T20:05:44.484Z"
+    },
+    {
+      "address": "D2UMmYLsb86FdMBZ7m4Msj2cbuzjQWoU9bFXJpQ1S3Bv",
+      "tier": "A",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.5553838218106962,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T01:53:18.000Z"
+        },
+        {
+          "tokenCA": "YjnkNcyEpKG2qGSKh67JL6VUF9NSwdV9sJxGg2qpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:49.000Z"
+        },
+        {
+          "tokenCA": "DZACFvNvjqWpd1HpvtBQBWeuS6t7k7HvL7SsNoK7NbLU",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:49:40.000Z"
+        },
+        {
+          "tokenCA": "2MHXWvLr1CSumdtCpCR9tnmRVVk5yj9xeHBLEgunbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:02:57.000Z"
+        },
+        {
+          "tokenCA": "AtFKX2JCRfmxJ6YhpXHTxxx2eMjBed9XdSpigzFWpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:58:00.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:38:55.000Z"
+        },
+        {
+          "tokenCA": "JC7Hf19xKBTXxuKXrutHKN6QtwYeuLKZDhCpKi5vpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T15:02:54.000Z"
+        },
+        {
+          "tokenCA": "Fm3pHSjMCGxyke4qW1YH1QPuvLgjyPvPTfNbGBqFpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T14:52:25.000Z"
+        },
+        {
+          "tokenCA": "JS6TqZAFCzMituFSGwZ63D8mgoGhjBWjutibkbypump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T01:56:44.000Z"
+        }
+      ],
+      "successRate": 0.444,
+      "rugRate": 0.111,
+      "avgPeakMultiple": 0.06,
+      "lastActive": "2026-03-20T20:05:45.917Z"
+    },
+    {
+      "address": "7xDboFvWzkYwmKWkmSTDJii1JWpYoHU7DaV36Lr1G9Ru",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "9VxExA1iRPbuLLdSJ2rB3nyBxsyLReT4aqzZBMaBaY1p",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:01:11.000Z"
+        },
+        {
+          "tokenCA": "DKJ9xBaBn89iTFqU2D4RRcbAA55Pq2n61syf54gSiREV",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-19T12:20:33.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:00:59.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T20:05:47.183Z"
+    },
+    {
+      "address": "2t3Vnqg7niZr3hXKrxBr1E9r6YTvKFhsuSu5P6upiRJp",
+      "tier": "A",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T15:46:20.000Z"
+        },
+        {
+          "tokenCA": "9jv6TpbGmaXRUEevU5YLKPqQXBtyYHQiVPQvDRwabonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:40:02.000Z"
+        },
+        {
+          "tokenCA": "J3L46XFMvm8ngQ4AQ9Hf2CAUnQt8Vyj15FyHmJeJamV7",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:40:02.000Z"
+        },
+        {
+          "tokenCA": "HsSVTZdJZNJtHgoJZbBVYbTwnRKL6VjwjUwidXGjUeKQ",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:20:05.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:03:25.000Z"
+        },
+        {
+          "tokenCA": "Dt6FXAkJH9yKfnGXzvaoLLmejCSBdNqcF2N5VF3D5vRy",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:00:05.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:51:12.000Z"
+        },
+        {
+          "tokenCA": "5NKtG9X5vNGuXxCHvX9br8zkgF5kSQMrhj9TN1c9XT7q",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:40:05.000Z"
+        },
+        {
+          "tokenCA": "3Vjcrax53d7PcohRPFgZhPxZdAf9YNG8Est2Bkjocmoo",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:40:05.000Z"
+        },
+        {
+          "tokenCA": "DGpNfMg5iqaThCEfRDPQJ71mrpERVRpEez9DYcmGMAPx",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:40:04.000Z"
+        },
+        {
+          "tokenCA": "BqNd1HJiYCsHruSRjZqVUsrfUTahQL9RirimpSiiVFCw",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:40:03.000Z"
+        },
+        {
+          "tokenCA": "GfLyfUCKUzBK5SzqEQhuEwrYfjeTvt8pfnYcRmFabonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:40:02.000Z"
+        },
+        {
+          "tokenCA": "7vfErQ5HFNKrZNm85zTCJwtPf1S51g8VVojFqqqtbonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:20:06.000Z"
+        },
+        {
+          "tokenCA": "ESGqWjdxfNHWXKQ8a5GPtGfbQXw6FMuW1HQhMHRzmuY1",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:20:05.000Z"
+        },
+        {
+          "tokenCA": "HNX39xMWKFMMmdYAktaKdpp1CJYevsuUQWJYPBaMWtCZ",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:20:04.000Z"
+        },
+        {
+          "tokenCA": "7ybmM4NZXrayWCei3cHJQnTWDEEspxDQokGNrzVY4hZB",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:20:03.000Z"
+        },
+        {
+          "tokenCA": "AcNziC3uJDboQturBXyNg1w69QN25864nLoPR57vVsVu",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T16:50:30.000Z"
+        },
+        {
+          "tokenCA": "9xnSoG1VkNQBUP3knWSghGafsBubfyezkbDqb1tvAJfH",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:40:02.000Z"
+        }
+      ],
+      "successRate": 0.556,
+      "rugRate": 0,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T20:05:50.211Z"
+    },
+    {
+      "address": "5f12HRZo8h3niBzQtmSmzb4crWzSBWcUDDhrEShM1PQY",
+      "tier": "S",
+      "launches": [
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T16:01:01.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T15:57:17.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T16:01:01.000Z"
+        },
+        {
+          "tokenCA": "2MHXWvLr1CSumdtCpCR9tnmRVVk5yj9xeHBLEgunbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:52:47.000Z"
+        },
+        {
+          "tokenCA": "J3L46XFMvm8ngQ4AQ9Hf2CAUnQt8Vyj15FyHmJeJamV7",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:52:01.000Z"
+        },
+        {
+          "tokenCA": "9CaQUthsVMugZzMvskrrvcHXyjFqHGdNtGkPT8QSRACE",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:51:14.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:50:28.000Z"
+        },
+        {
+          "tokenCA": "AxJZom869nbgUNKL9iwNezJS8dSZ7yeJq9BRPyMPpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:49:20.000Z"
+        },
+        {
+          "tokenCA": "Dz4f3ZjtpizTEKkML9djhsT2MstNvjxPFMmigwaxpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:36:10.000Z"
+        },
+        {
+          "tokenCA": "9THJDy8AnpokmUwGSzq84Voe8RHZKZWpidM5MButoz6x",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:35:20.000Z"
+        },
+        {
+          "tokenCA": "BEGDk69Y7eGuNb4EuxeVQqY9w4kX87Sj2WH46Exspump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:24:39.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:50:30.000Z"
+        },
+        {
+          "tokenCA": "5zHrdYRtUzjkQwnq6HkS6Vq7KCeEQPysmaUmwKqfFLqB",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:11:06.000Z"
+        },
+        {
+          "tokenCA": "nhNV36zeFCofiA7TKwTj1gQ5w9uMAMTjwsTuqNvpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:02:01.000Z"
+        },
+        {
+          "tokenCA": "9WpkZ5dr6RNJDxaLD4535ssRg6vNcnhZMj2LzAQa8AmP",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:01:15.000Z"
+        },
+        {
+          "tokenCA": "HHnp12bDzTdYWjrPcP3AYnadzh165xKDXi76P8AHpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:45:01.000Z"
+        },
+        {
+          "tokenCA": "3VLUdCvBQyF7dCfyZiPXxPobZcvTvRhgn9uoG5BCpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:39:04.000Z"
+        },
+        {
+          "tokenCA": "7auG4gQYwSHJf1n8MXRS11xt5T6gtTXnJWQTtB8xpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:34:03.000Z"
+        },
+        {
+          "tokenCA": "3h2KnshvhjEZD9AKMNkx2fdpcG1SZLYKWTyc95rqFHvs",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:32:17.000Z"
+        },
+        {
+          "tokenCA": "91UrtCR9KzBZAatcV7rRF2T4mmEvwoK9yMNQYALCpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:31:11.000Z"
+        },
+        {
+          "tokenCA": "4mngD6C2oa7yKpSXbf8PTGsKLXEEpX1pcDAFuUsVpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:30:42.000Z"
+        },
+        {
+          "tokenCA": "7Dx5KgvV3q1s25t7h7xDoQAKe9BmtC5Uct2tgSPTpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:27:43.000Z"
+        },
+        {
+          "tokenCA": "5bZ8duCeGa3t9kzhysuKRsgzK2w2PAKEsF4UAGPopump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:27:16.000Z"
+        },
+        {
+          "tokenCA": "FLXuFnPsQoUbp6vgsqVK231M8Es1n2Mgq29kZpvTdmtz",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:07:37.000Z"
+        },
+        {
+          "tokenCA": "7w4veYrteNg5gRqAAujTQQ5sm3xGz2YBa6fLv1xx2o33",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:56:59.000Z"
+        },
+        {
+          "tokenCA": "E2YxqFFfr2n2DZ7LSYTeTBvCvYtmn49fJgPK7XNupump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:44:09.000Z"
+        },
+        {
+          "tokenCA": "CZPhQyF55UefdDVr2WAtb71kpmFYwyDJYb5vppBmpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:17:21.000Z"
+        },
+        {
+          "tokenCA": "5ytXYLyMQNFDVucbGca87effpTWNsxNAihNtrGP6TRND",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:12:15.000Z"
+        },
+        {
+          "tokenCA": "Fo47Sxo6FUmPN7ToW6cVHXuBRENzSTUm7jvC5QA2pump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:06:11.000Z"
+        },
+        {
+          "tokenCA": "7AvwQTvkYoCyb4Z33MbhB3bRSS7i5DrYTA6GcfNvpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T17:06:06.000Z"
+        },
+        {
+          "tokenCA": "7nDAVJC5SfNZoussBDML5boiD4bMBRwx94ssJYNxpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:58:45.000Z"
+        },
+        {
+          "tokenCA": "6KFDyCzdk7yo6dJfgLaGxGKjyL1mJwNae5k2PpfJpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:56:01.000Z"
+        },
+        {
+          "tokenCA": "H88xMt2eK9TXB8cgA9ZCX7j4oMehbnGATFaHxNdHpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:55:15.000Z"
+        },
+        {
+          "tokenCA": "9fz2CTgCfNzDG7QRVCUCGLzCDJMmrmYM5u6zqwJNwSEL",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:55:10.000Z"
+        },
+        {
+          "tokenCA": "5kATA4bhVerVk1fRvvjuFCQNb7KLYL629LLw42Xzpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:41:14.000Z"
+        },
+        {
+          "tokenCA": "9FeDZrLFz59RhCpAaTaRFqTx1qAa2WUA7cH7vfhrpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:34:24.000Z"
+        },
+        {
+          "tokenCA": "7EWBKLiTkyK2RtZYdVmEqpS3xaP4ZSh4rsxZ9sDrpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:28:25.000Z"
+        },
+        {
+          "tokenCA": "7Dsbt2po9Cr6zfjHP6B2VgNZKs4QkAGN4dtygvPCpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:25:46.000Z"
+        },
+        {
+          "tokenCA": "BK21wKLbdeJVyCS73qG4kNzqiaqt7q32BrYKTUqRGxgT",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:16:00.000Z"
+        },
+        {
+          "tokenCA": "2BiamwFCutHWawEinzCc1bBKSWqjnTioba6JK2R4pump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:07:41.000Z"
+        },
+        {
+          "tokenCA": "H44sHWrYq6QqY63A6ZUidQQt58VCT4nZWqtKhTVNpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T16:06:14.000Z"
+        }
+      ],
+      "successRate": 0.902,
+      "rugRate": 0.049,
+      "avgPeakMultiple": 0.07,
+      "lastActive": "2026-03-20T20:05:51.484Z"
+    },
+    {
+      "address": "FvXfCMWiBEsVs69MtnWwAPtFJFyo3pnfrDarzMsWxG5o",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 1.006616860723172,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:21.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:21:21.000Z"
+        },
+        {
+          "tokenCA": "NV2RYH954cTJ3ckFUpvfqaQXU4ARqqDH3562nFSpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:50.000Z"
+        },
+        {
+          "tokenCA": "F6ExBzKdLRcJkCAknQgfbhRXX78EhqoNxPnegJWPpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:30:40.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:34:19.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:44:55.000Z"
+        },
+        {
+          "tokenCA": "27G8MtK7VtTcCHkpASjSDdkWWYfoqT6ggEuKidVJidD4",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:24.000Z"
+        },
+        {
+          "tokenCA": "BHKVuBNfsK3Pre1bmfG76NbVt8xrx3Z5DdFtrsoVpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:53:14.000Z"
+        },
+        {
+          "tokenCA": "4VBUKuwhJdufnrEkxHEFvVsVPBMqb9wXN4Pc2QR8FVEc",
+          "peakMultiple": 1.0204081632653088,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:34:19.000Z"
+        },
+        {
+          "tokenCA": "G32DYT2PpDsq5t8RLPVHMagtBKYAa2DSohFhkSjJs7C6",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "63kTFCkDgssAWGsbcBGFbdjYBjvs3kGJBT4UzQfjoakG",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "8FarqnFY2a5UphTvftzEm3WNWSyDEtN6tPufXChyqNf1",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:01:08.000Z"
+        },
+        {
+          "tokenCA": "HYX5gHBDwyHtTgbY2AxZfa8m7gNgHDwxyBxzsyzNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:36.000Z"
+        },
+        {
+          "tokenCA": "8jG1myVRvQhvMUk2A8a3hWN4scLrTM8FCQqNcxuztM4g",
+          "peakMultiple": 1.0309278350515547,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:25:36.000Z"
+        },
+        {
+          "tokenCA": "BjLchcXn7sCbUgxnFe8KEZy17sTZ2CUsCJDkTXMQ8Rcc",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:49.000Z"
+        },
+        {
+          "tokenCA": "4daoTLufDmV3ods48Zh8rymaZKBLtgEvuH9qALYLbonk",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:46.000Z"
+        },
+        {
+          "tokenCA": "8JPzfwto4Pu1WwiHKSVHHNe57dh5RHqLYLQra9vpaKsW",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:46.000Z"
+        },
+        {
+          "tokenCA": "AuqxniWaKo121vZMfMbM7ifZ6ixr4G8Rk4s8PXAFpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:21.000Z"
+        },
+        {
+          "tokenCA": "7CfBFQGQMHzEFd9ayBzUUihzCoFrhfYggn5eW2QmBAGS",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:44:31.000Z"
+        },
+        {
+          "tokenCA": "3a3ijue9qX1uvGvxyTtdsyAsgNuYP3nuCMyJtrZ8e38n",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:44:31.000Z"
+        },
+        {
+          "tokenCA": "4vMsoUT2BWatFweudnQM1xedRLfJgJ7hswhcpz4xgBTy",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:55:45.000Z"
+        },
+        {
+          "tokenCA": "CPmJDz6NQQeoZdzcr1ajJNCPLVn24Esch7viGJu3bRdW",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:55:45.000Z"
+        },
+        {
+          "tokenCA": "CaNC8DjrRuY17zrqNyHKYD91pVofPsXchFr1kh2nsfUw",
+          "peakMultiple": 1.0204081632654163,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:32:05.000Z"
+        },
+        {
+          "tokenCA": "DKJ9xBaBn89iTFqU2D4RRcbAA55Pq2n61syf54gSiREV",
+          "peakMultiple": 1.0204081632653108,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:53:25.000Z"
+        },
+        {
+          "tokenCA": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:52:52.000Z"
+        },
+        {
+          "tokenCA": "8Ak4jBMfwdBxvze3DgDcieEBZCP2xjNxrTCfggmkpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:30:40.000Z"
+        },
+        {
+          "tokenCA": "2mEtt2musbjuRcsyyG29xjeTqJX4ehXBQdFLmZd9dG6N",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:34:55.000Z"
+        },
+        {
+          "tokenCA": "Aih5Mn9S7hophn9FbNSX98EiejeM3e7rggTRaCxfrge",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:31:37.000Z"
+        },
+        {
+          "tokenCA": "2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:32:03.000Z"
+        },
+        {
+          "tokenCA": "BkDKvbUQpr17c5w3zZzEA1VvpirgWcKuMEHtiYGEaP1c",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:34:55.000Z"
+        },
+        {
+          "tokenCA": "WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:58.000Z"
+        },
+        {
+          "tokenCA": "UPTx1d24aBWuRgwxVnFmX4gNraj3QGFzL3QqBgxtWQG",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:58.000Z"
+        },
+        {
+          "tokenCA": "4mafUm8PepPA3UGHkVVxe6Ew5AHMntxLefL8h2To5aLv",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:54.000Z"
+        },
+        {
+          "tokenCA": "EiqNgtwFzHqTEa3UV57s2x4svjJF59URgBqnG3sCpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:44.000Z"
+        },
+        {
+          "tokenCA": "61V8vBaqAGMpgDQi4JcAwo1dmBGHsyhzodcPqnEVpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:44:40.000Z"
+        },
+        {
+          "tokenCA": "wwzqJcBxRUDfSZQQv3R4WckkNzpSFjNHkRuzZFcJJZt",
+          "peakMultiple": 1.0204081636455067,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:41:17.000Z"
+        },
+        {
+          "tokenCA": "Cm6fNnMk7NfzStP9CZpsQA2v3jjzbcYGAxdJySmHpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:38:31.000Z"
+        },
+        {
+          "tokenCA": "ARBXtxRCZeSQwbYM51Nvdg2SE3PEnFTcWEuyEygPWm8F",
+          "peakMultiple": 1.0050251256338127,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:38:31.000Z"
+        },
+        {
+          "tokenCA": "2pjcq9k2X5oSArNKiVeQ2ENB63eJt8pwCabciGQGpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:30:33.000Z"
+        },
+        {
+          "tokenCA": "Ce2gx9KGXJ6C9Mp5b5x1sn9Mg87JwEbrQby4Zqo3pump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:30:41.000Z"
+        },
+        {
+          "tokenCA": "F2c9NYX7YKXnXrdRCTEH1gbLYoubc6AVWZJdcxkypump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:28:50.000Z"
+        },
+        {
+          "tokenCA": "SoLt2TZB6bHVxAMHRR9AANJRZwLQKM6NHHpZXrNdHX5",
+          "peakMultiple": 1.0309278350619537,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:28:50.000Z"
+        },
+        {
+          "tokenCA": "AVF9F4C4j8b1Kh4BmNHqybDaHgnZpJ7W7yLvL7hUpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:28:32.000Z"
+        },
+        {
+          "tokenCA": "DEffWzJyaFRNyA4ogUox631hfHuv3KLeCcpBh2ipBAGS",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:27:20.000Z"
+        },
+        {
+          "tokenCA": "7XauQLUeULc5PV6fu4SZx1HpSxQM1EwrYNP6kpfPBAGS",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:27:20.000Z"
+        },
+        {
+          "tokenCA": "CX3GwRuNrNprpLPLYoSwWVLv5iBVQajMPCggBcG2pump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:25:38.000Z"
+        },
+        {
+          "tokenCA": "nhNV36zeFCofiA7TKwTj1gQ5w9uMAMTjwsTuqNvpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:23:49.000Z"
+        },
+        {
+          "tokenCA": "72hgmvS5zFxaFJfMizq6Gp4gjBqXjTPyX9GDP38krorQ",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:21:21.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0.438,
+      "avgPeakMultiple": 1,
+      "lastActive": "2026-03-20T20:05:53.746Z"
+    },
+    {
+      "address": "3nNqq6KrJoosWCstMGNPcZ1Z2wCuqULd9pBZNWHXxH4t",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 1.0033172150809215,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:44:34.000Z"
+        },
+        {
+          "tokenCA": "EJvBDsre5a3DbLmHZBw1YUeUqETJ3X9UkgR6TLiipump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:59:49.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:57:57.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:44:34.000Z"
+        },
+        {
+          "tokenCA": "C9HwNWaVVecVm35raAaZBXEa4sQF3hGXszhGKpy3pump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:59:02.000Z"
+        },
+        {
+          "tokenCA": "7qQnePEqSRBxnkFQQJ8jUYXUqo7mSkbwuUHj1jz7pump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:59:02.000Z"
+        },
+        {
+          "tokenCA": "6dKCoWjpj5MFU5gWDEFdpUUeBasBLK3wLEwhUzQPAa1e",
+          "peakMultiple": 0.9999999999999998,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T12:57:35.000Z"
+        },
+        {
+          "tokenCA": "9xbgwwXdzJYv8sLmVCFsRSNKwzCCNQWiEhWVGNhWCNGE",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T12:57:35.000Z"
+        },
+        {
+          "tokenCA": "EiqNgtwFzHqTEa3UV57s2x4svjJF59URgBqnG3sCpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:56:45.000Z"
+        },
+        {
+          "tokenCA": "79eXoT1aR7qhBMGKXzVNdV4ZcLqHsupqj2WTFvDumpSZ",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:54:59.000Z"
+        },
+        {
+          "tokenCA": "6Xm7YzZt6JMhGofc6W41ybByfpsnHD5er5bdkK8tpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:54:59.000Z"
+        },
+        {
+          "tokenCA": "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:51:59.000Z"
+        },
+        {
+          "tokenCA": "AZsHEMXd36Bj1EMNXhowJajpUXzrKcK57wW4ZGXVa7yR",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:51:26.000Z"
+        },
+        {
+          "tokenCA": "2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:51:42.000Z"
+        },
+        {
+          "tokenCA": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:51:42.000Z"
+        },
+        {
+          "tokenCA": "EsoJKtCgQ9SbkjBVDJBdfX9MQyszFJYprJFuYyy2pump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:44:40.000Z"
+        },
+        {
+          "tokenCA": "44sHXMkPeciUpqhecfCysVs7RcaxeM24VPMauQouBREV",
+          "peakMultiple": 1.0204081632653206,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:38:19.000Z"
+        },
+        {
+          "tokenCA": "J3dTfvVTGpsJYKuKY28o6zkQsu6FM3pt1z5r6EdXhrth",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:29:22.000Z"
+        },
+        {
+          "tokenCA": "5dpN5wMH8j8au29Rp91qn4WfNq6t6xJfcjQNcFeDJ8Ct",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:19:55.000Z"
+        },
+        {
+          "tokenCA": "hYbuHbt4D5XNagZRv1ayYzxiMbT1d598Fm59jLcpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:17:19.000Z"
+        },
+        {
+          "tokenCA": "Aih5Mn9S7hophn9FbNSX98EiejeM3e7rggTRaCxfrge",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:55:36.000Z"
+        },
+        {
+          "tokenCA": "4fSWEw2wbYEUCcMtitzmeGUfqinoafXxkhqZrA9Gpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:08:40.000Z"
+        },
+        {
+          "tokenCA": "HNg5PYJmtqcmzXrv6S9zP1CDKk5BgDuyFBxbvNApump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:07:50.000Z"
+        },
+        {
+          "tokenCA": "7CfBFQGQMHzEFd9ayBzUUihzCoFrhfYggn5eW2QmBAGS",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:05:16.000Z"
+        },
+        {
+          "tokenCA": "De4ULouuU2cAQkhKuYrsrFtJGRRmcSwQD5esmnAUpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:05:16.000Z"
+        },
+        {
+          "tokenCA": "GFhf8Yp4Y5qEpNjXXyymhTWBaJuTKosiy8F8YivSpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:48:56.000Z"
+        },
+        {
+          "tokenCA": "Cm6fNnMk7NfzStP9CZpsQA2v3jjzbcYGAxdJySmHpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:02:25.000Z"
+        },
+        {
+          "tokenCA": "ARBXtxRCZeSQwbYM51Nvdg2SE3PEnFTcWEuyEygPWm8F",
+          "peakMultiple": 1.0050251256385805,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:02:25.000Z"
+        },
+        {
+          "tokenCA": "5rSP1W2Jkir4Qy1M6rEYXFFi5HgbhrkVTajimrVgpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T12:01:00.000Z"
+        },
+        {
+          "tokenCA": "Dfh5DzRgSvvCFDoYc2ciTkMrbDfRKybA4SoFbPmApump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T12:01:00.000Z"
+        },
+        {
+          "tokenCA": "Gbu7JAKhTVtGyRryg8cYPiKNhonXpUqbrZuCDjfUpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T12:01:33.000Z"
+        },
+        {
+          "tokenCA": "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T11:44:40.000Z"
+        },
+        {
+          "tokenCA": "CaNC8DjrRuY17zrqNyHKYD91pVofPsXchFr1kh2nsfUw",
+          "peakMultiple": 1.0204081632653117,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T11:53:37.000Z"
+        },
+        {
+          "tokenCA": "hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T11:47:24.000Z"
+        },
+        {
+          "tokenCA": "mb1eu7TzEc71KxDpsmsKoucSSuuoGLv1drys1oP2jh6",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T11:47:24.000Z"
+        },
+        {
+          "tokenCA": "J2LWsSXx4r3pYbJ1fwuX5Nqo7PPxjcGPpUb2zHNadWKa",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T11:47:07.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0.361,
+      "avgPeakMultiple": 1,
+      "lastActive": "2026-03-20T20:05:55.321Z"
+    },
+    {
+      "address": "8L2y55D11k63CAftvW7uMM2mBhtMxLoLnivG9uY2bt8j",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "2TpMjYXnrgxoeVCq2i6EAR8vNWqe5MNvHCz3bENNpump",
+          "peakMultiple": 0.9991897161841704,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:03:01.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 1.002751528559026,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:38.000Z"
+        },
+        {
+          "tokenCA": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "Aih5Mn9S7hophn9FbNSX98EiejeM3e7rggTRaCxfrge",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:44.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 1.000037807407583,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:06.000Z"
+        },
+        {
+          "tokenCA": "7NYWLY8vL9s4NRjjXo2pK9USSDqre6tCMETAyzkMGiPN",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:05:30.000Z"
+        },
+        {
+          "tokenCA": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "peakMultiple": 1.000006344321906,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:06.000Z"
+        },
+        {
+          "tokenCA": "Gg9qRDaPWF5uqQS36Djddty2zJxxWhjx79MD75zfbonk",
+          "peakMultiple": 0.9999999999999998,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:38.000Z"
+        },
+        {
+          "tokenCA": "ZBCNpuD7YMXzTHB2fhGkGi78MNsHGLRXUhRewNRm9RU",
+          "peakMultiple": 1.0000204165441113,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:05:16.000Z"
+        },
+        {
+          "tokenCA": "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:05:16.000Z"
+        },
+        {
+          "tokenCA": "AxJZom869nbgUNKL9iwNezJS8dSZ7yeJq9BRPyMPpump",
+          "peakMultiple": 1.0001662912117486,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:21.000Z"
+        },
+        {
+          "tokenCA": "FP7NvFXQXoZL1nQC5QZtE1bzwgALdxj1TeA9J25epump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:28.000Z"
+        },
+        {
+          "tokenCA": "4fZ44CfD4qPTPyWVyvrnVZHSrgGJU4SkCxGTP3vzBRif",
+          "peakMultiple": 1.0101010101010168,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:46.000Z"
+        },
+        {
+          "tokenCA": "6iA73gWCKkLWKbVr8rgibV57MMRxzsaqS9cWpgKBpump",
+          "peakMultiple": 1.0000282295562055,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:46.000Z"
+        },
+        {
+          "tokenCA": "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+          "peakMultiple": 1.0000200487522193,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:48.000Z"
+        },
+        {
+          "tokenCA": "HYX5gHBDwyHtTgbY2AxZfa8m7gNgHDwxyBxzsyzNpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:39.000Z"
+        },
+        {
+          "tokenCA": "8jG1myVRvQhvMUk2A8a3hWN4scLrTM8FCQqNcxuztM4g",
+          "peakMultiple": 1.0309278350515751,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:39.000Z"
+        },
+        {
+          "tokenCA": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+          "peakMultiple": 1.0000000000000002,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:01:48.000Z"
+        },
+        {
+          "tokenCA": "AVF9F4C4j8b1Kh4BmNHqybDaHgnZpJ7W7yLvL7hUpump",
+          "peakMultiple": 1.0000081367326827,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:38.000Z"
+        },
+        {
+          "tokenCA": "4nswj3o1Lo9iWYvvRJxUD8vbCy9ay7QQoXYcncHNbonk",
+          "peakMultiple": 1.0001016934156985,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:43.000Z"
+        },
+        {
+          "tokenCA": "WENWENvqqNya429ubCdR81ZmD69brwQaaBYY6p3LCpk",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:43.000Z"
+        },
+        {
+          "tokenCA": "HhJpBhRRn4g56VsyLuT8DL5Bv31HkXqsrahTTUCZeZg4",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:43.000Z"
+        },
+        {
+          "tokenCA": "8PzFWyLpCVEmbZmVJcaRTU5r69XKJx1rd7YGpWvnpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:31.000Z"
+        },
+        {
+          "tokenCA": "C8iBPXcLZ9MgSAo2SD7izyzPiYRcsrGuD2NcnmWjBAGS",
+          "peakMultiple": 1.0000000000000002,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:35.000Z"
+        },
+        {
+          "tokenCA": "HygNWegGFjQqNMCsQmXbFgr3ViybkEN6fQtmvLXVXJmd",
+          "peakMultiple": 1.0416666666667562,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:31.000Z"
+        },
+        {
+          "tokenCA": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:03:53.000Z"
+        },
+        {
+          "tokenCA": "XsueG8BtpquVJX9LVLLEGuViXUungE6WmK5YZ3p3bd1",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:35.000Z"
+        },
+        {
+          "tokenCA": "4mafUm8PepPA3UGHkVVxe6Ew5AHMntxLefL8h2To5aLv",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:01:53.000Z"
+        },
+        {
+          "tokenCA": "3a3ijue9qX1uvGvxyTtdsyAsgNuYP3nuCMyJtrZ8e38n",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:11.000Z"
+        },
+        {
+          "tokenCA": "APmLv2VarkC5yEjjutYkeK3byr9L2KwCgrVMWHWsgaG7",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:30.000Z"
+        },
+        {
+          "tokenCA": "EPeUFDgHRxs9xxEPVaL6kfGQvCon7jmAWKVUHuux1Tpz",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:30.000Z"
+        },
+        {
+          "tokenCA": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+          "peakMultiple": 1.0000120911935089,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:05.000Z"
+        },
+        {
+          "tokenCA": "GodL6KZ9uuUoQwELggtVzQkKmU1LfqmDokPibPeDKkhF",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:30.000Z"
+        },
+        {
+          "tokenCA": "Hh3oTaqDCKKfdBgsQEvxp9sUwyNf8x9qmKqEMLBWpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:30.000Z"
+        },
+        {
+          "tokenCA": "NV2RYH954cTJ3ckFUpvfqaQXU4ARqqDH3562nFSpump",
+          "peakMultiple": 1.0000145889317678,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:53.000Z"
+        },
+        {
+          "tokenCA": "4fSWEw2wbYEUCcMtitzmeGUfqinoafXxkhqZrA9Gpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:28.000Z"
+        },
+        {
+          "tokenCA": "DYo1HmjJ8r91VX8FpD8FmvKFarCnK8sw9iZAFGDusq4t",
+          "peakMultiple": 1.0101010101010133,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:28.000Z"
+        },
+        {
+          "tokenCA": "9a21gb7fWGm9dD2UFdZAzgFn5K1NwfmYkjyLbpAcKgnM",
+          "peakMultiple": 1.000100479999997,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:26.000Z"
+        },
+        {
+          "tokenCA": "63LfDmNb3MQ8mw9MtZ2To9bEA2M71kZUUGq5tiJxcqj9",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:26.000Z"
+        },
+        {
+          "tokenCA": "Cm6fNnMk7NfzStP9CZpsQA2v3jjzbcYGAxdJySmHpump",
+          "peakMultiple": 1.0000016516154293,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:16.000Z"
+        },
+        {
+          "tokenCA": "4xFcvQ46GNH47Rhetk9cUGHGzWiQENp4DQRhJEFMpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:23.000Z"
+        },
+        {
+          "tokenCA": "Dfh5DzRgSvvCFDoYc2ciTkMrbDfRKybA4SoFbPmApump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:03:14.000Z"
+        },
+        {
+          "tokenCA": "BgCeigJo2iY3dJhqS2z9w4pjjufFd4F9oKS3FrkMbmbJ",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:04:05.000Z"
+        },
+        {
+          "tokenCA": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+          "peakMultiple": 1.0000049998895584,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:04:04.000Z"
+        },
+        {
+          "tokenCA": "ARBXtxRCZeSQwbYM51Nvdg2SE3PEnFTcWEuyEygPWm8F",
+          "peakMultiple": 1.0050251256338203,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:16.000Z"
+        },
+        {
+          "tokenCA": "4cQ9BeG6bdpkQcYGadqc1n6nCWgMuoHZenVH1xXepump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:40.000Z"
+        },
+        {
+          "tokenCA": "Pre8AREmFPtoJFT8mQSXQLh56cwJmM7CFDRuoGBZiUP",
+          "peakMultiple": 1.0000071794544716,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:40.000Z"
+        },
+        {
+          "tokenCA": "ESsCdmGyPK9sostFbWV5iM6owxcqsGNfBQaj3xkAkREV",
+          "peakMultiple": 0.9999999999999999,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:34.000Z"
+        },
+        {
+          "tokenCA": "G4QRtYNRPyxdKwcAqqW3xSeEynDDxEyRvrDT9FJEpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:34.000Z"
+        },
+        {
+          "tokenCA": "7NoFtDpmQvE9JsRv7o6zgYZJBEcixWumJaZsDoyrpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:03:31.000Z"
+        },
+        {
+          "tokenCA": "8JPzfwto4Pu1WwiHKSVHHNe57dh5RHqLYLQra9vpaKsW",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:46.000Z"
+        },
+        {
+          "tokenCA": "F6ExBzKdLRcJkCAknQgfbhRXX78EhqoNxPnegJWPpump",
+          "peakMultiple": 1.0007954965515837,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:59:48.000Z"
+        },
+        {
+          "tokenCA": "25phdMqSQ11NuyVEwBJzJv1SeodGNfyZCu4ABNhdbonk",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:59:31.000Z"
+        },
+        {
+          "tokenCA": "4VBUKuwhJdufnrEkxHEFvVsVPBMqb9wXN4Pc2QR8FVEc",
+          "peakMultiple": 1.0204081632653124,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:59:31.000Z"
+        },
+        {
+          "tokenCA": "2pjcq9k2X5oSArNKiVeQ2ENB63eJt8pwCabciGQGpump",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:03:08.000Z"
+        },
+        {
+          "tokenCA": "4daoTLufDmV3ods48Zh8rymaZKBLtgEvuH9qALYLbonk",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:46.000Z"
+        },
+        {
+          "tokenCA": "2fy3QceaT4KEjQh1RKxiTzd2q9yBdXTFoebzgyPyx7VH",
+          "peakMultiple": 1.0309278350558564,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:58:53.000Z"
+        },
+        {
+          "tokenCA": "2Dyzu65QA9zdX1UeE7Gx71k7fiwyUK6sZdrvJ7auq5wm",
+          "peakMultiple": 1.0004000391555765,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:16.000Z"
+        },
+        {
+          "tokenCA": "ASTYqeaoK83Zs1pTFEXZUB6BM8cG8YLTsN852NUkt7ZR",
+          "peakMultiple": 1.0101010101209738,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:16.000Z"
+        },
+        {
+          "tokenCA": "7CfBFQGQMHzEFd9ayBzUUihzCoFrhfYggn5eW2QmBAGS",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:11.000Z"
+        },
+        {
+          "tokenCA": "61Wj56QgGyyB966T7YsMzEAKRLcMvJpDbPzjkrCZc4Bi",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:06.000Z"
+        },
+        {
+          "tokenCA": "G32DYT2PpDsq5t8RLPVHMagtBKYAa2DSohFhkSjJs7C6",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "idrxTdNftk6tYedPv2M7tCFHBVCpk5rkiNRd8yUArhr",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:05.000Z"
+        },
+        {
+          "tokenCA": "63kTFCkDgssAWGsbcBGFbdjYBjvs3kGJBT4UzQfjoakG",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "H8U8dJUVPWqSsA4obNx9YhBqWQx4veVQg9Jci4BbW7y6",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:02:04.000Z"
+        },
+        {
+          "tokenCA": "CLoUDKc4Ane7HeQcPpE3YHnznRxhMimJ4MyaUqyHFzAu",
+          "peakMultiple": 1.000033618126939,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:01:50.000Z"
+        },
+        {
+          "tokenCA": "5oVNBeEEQvYi1cX3ir8Dx5n1P7pdxydbGF2X4TxVusJm",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:01:50.000Z"
+        },
+        {
+          "tokenCA": "USDH1SM1ojwWUga67PGrgFWUHibbjqMvuMaDkRJTgkX",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:01:26.000Z"
+        },
+        {
+          "tokenCA": "x95HN3DWvbfCBtTjGm587z8suK3ec6cwQwgZNLbWKyp",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:59:35.000Z"
+        },
+        {
+          "tokenCA": "AZsHEMXd36Bj1EMNXhowJajpUXzrKcK57wW4ZGXVa7yR",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:00:52.000Z"
+        },
+        {
+          "tokenCA": "BBAFavHXjNCPqJ9My5FhUWnZFwQvTtCPU5eMEEBxZgeH",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:00:22.000Z"
+        },
+        {
+          "tokenCA": "14JzP9EVVmNoTZpdrMhmRSppN3jDJDfZXULJBfYNTWUe",
+          "peakMultiple": 1.000999999948135,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T20:00:06.000Z"
+        },
+        {
+          "tokenCA": "C9dJfTGUzhuqPWxh9mcDr66JZN4uzXh2gh9EWnEdpump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T20:00:11.000Z"
+        },
+        {
+          "tokenCA": "5QmbJw7mM6tcCdXVy8ftc2bu8izded7Etc57TMA2pump",
+          "peakMultiple": 1.0000235815073908,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:59:26.000Z"
+        },
+        {
+          "tokenCA": "E2YxqFFfr2n2DZ7LSYTeTBvCvYtmn49fJgPK7XNupump",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:59:04.000Z"
+        },
+        {
+          "tokenCA": "5NJfQ6UQ1LJTxtKLrsZQcbiSUWequSD6aZLNJaN7Zviv",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:59.000Z"
+        },
+        {
+          "tokenCA": "J3NKxxXZcnNiMjKw9hYb2K4LUxgwB6t1FtPtQVsv3KFr",
+          "peakMultiple": 1.0000157291738168,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:56.000Z"
+        },
+        {
+          "tokenCA": "2xGeDb1U8iB72T4spLwbiPgaw7jj1qn5yHf9te5ucoop",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:56.000Z"
+        },
+        {
+          "tokenCA": "2fWhwz3187tvX8HgUCALbZy5FD2DRBx7stt9HqSbQdTk",
+          "peakMultiple": 1,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:58:53.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0.494,
+      "avgPeakMultiple": 1,
+      "lastActive": "2026-03-20T20:05:56.873Z"
+    },
+    {
+      "address": "6aJHjb6xANGxFWTBKfdgEoR4a4gKf6z4XQkff13ACm6E",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "9THJDy8AnpokmUwGSzq84Voe8RHZKZWpidM5MButoz6x",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:31:13.000Z"
+        },
+        {
+          "tokenCA": "USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB",
+          "peakMultiple": 1,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:30:44.000Z"
+        }
+      ],
+      "successRate": 0,
+      "rugRate": 0.5,
+      "avgPeakMultiple": 0.5,
+      "lastActive": "2026-03-20T20:05:57.981Z"
+    },
+    {
+      "address": "7xnWTrQ1sMd22DL5hkxxWvexLfbx1Dh3wHnGnAadGwVc",
+      "tier": "A",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.009965916913083968,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T18:44:50.000Z"
+        },
+        {
+          "tokenCA": "CKoDnqXFS9RsW3mfqJ1nxK8abHbPxjLkyd8DzyhWpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:42:20.000Z"
+        },
+        {
+          "tokenCA": "HzLcjc9goYhaUpP1poq5nveqNq3Z7RXTh936WG6Fbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:46:56.000Z"
+        },
+        {
+          "tokenCA": "E2YxqFFfr2n2DZ7LSYTeTBvCvYtmn49fJgPK7XNupump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:24:04.000Z"
+        },
+        {
+          "tokenCA": "9WpkZ5dr6RNJDxaLD4535ssRg6vNcnhZMj2LzAQa8AmP",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:32:50.000Z"
+        },
+        {
+          "tokenCA": "JuprjznTrTSp2UFa3ZBUFgwdAmtZCq4MQCwysN55USD",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:54:14.000Z"
+        },
+        {
+          "tokenCA": "5kATA4bhVerVk1fRvvjuFCQNb7KLYL629LLw42Xzpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:43:52.000Z"
+        }
+      ],
+      "successRate": 0.714,
+      "rugRate": 0.143,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T20:05:59.131Z"
+    },
+    {
+      "address": "2r81xCTNc478TQE46JuimoM7YV9bdHZk2RGztfQ4oPDK",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0.26001360703467075,
+          "outcome": "RUG",
+          "timestamp": "2026-03-20T19:08:18.000Z"
+        },
+        {
+          "tokenCA": "2MHXWvLr1CSumdtCpCR9tnmRVVk5yj9xeHBLEgunbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:05:54.000Z"
+        },
+        {
+          "tokenCA": "9jv6TpbGmaXRUEevU5YLKPqQXBtyYHQiVPQvDRwabonk",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:32:57.000Z"
+        },
+        {
+          "tokenCA": "J3L46XFMvm8ngQ4AQ9Hf2CAUnQt8Vyj15FyHmJeJamV7",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:43:43.000Z"
+        },
+        {
+          "tokenCA": "9WpkZ5dr6RNJDxaLD4535ssRg6vNcnhZMj2LzAQa8AmP",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:49:08.000Z"
+        }
+      ],
+      "successRate": 0.2,
+      "rugRate": 0.2,
+      "avgPeakMultiple": 0.05,
+      "lastActive": "2026-03-20T20:06:00.802Z"
+    },
+    {
+      "address": "F9x9YQCwMrC1DEr49KG6c32YikuewKLPKNUNUHt1JKya",
+      "tier": "S",
+      "launches": [
+        {
+          "tokenCA": "nhNV36zeFCofiA7TKwTj1gQ5w9uMAMTjwsTuqNvpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:40:11.000Z"
+        },
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-17T03:00:13.000Z"
+        },
+        {
+          "tokenCA": "7Dsbt2po9Cr6zfjHP6B2VgNZKs4QkAGN4dtygvPCpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T17:10:40.000Z"
+        },
+        {
+          "tokenCA": "ANhCRw9mLWAPkbx4h7T6tymXBoJCEPXEyoo8qbEhpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-19T04:12:41.000Z"
+        },
+        {
+          "tokenCA": "8x5AYb4DUpf8e7d2ivyjZPece84Fb8tu3crrytoopump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-18T18:24:18.000Z"
+        },
+        {
+          "tokenCA": "48rjemMYgCQ5RkvULXZErLLfGtzTzMPbLj8RFR7cpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T18:04:49.000Z"
+        },
+        {
+          "tokenCA": "6f3wFTJF3zwXXhBvp8aMRN3PDgesH7XFBNCZeusWpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T17:54:37.000Z"
+        },
+        {
+          "tokenCA": "AuqxniWaKo121vZMfMbM7ifZ6ixr4G8Rk4s8PXAFpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T14:10:41.000Z"
+        },
+        {
+          "tokenCA": "HGYiaHSpJAfiwZBkYvw2HWgdKULW2LyDqwQ7zXsNpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T13:56:53.000Z"
+        },
+        {
+          "tokenCA": "ZmrYmkjT5XeFHwa8DcF2uzeDAfCiLaR3tV3Ridkpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T13:00:26.000Z"
+        },
+        {
+          "tokenCA": "2yeyNC83oe3kht8Jnsd4xsrL64X35RYFKgZQakEdpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T11:25:27.000Z"
+        },
+        {
+          "tokenCA": "38gyUiTMQehszDSQq6xLXodVuAac9jkKRB5jdU22pump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T09:11:59.000Z"
+        },
+        {
+          "tokenCA": "Gc3J24TWcjKVBMxYJJthEoPhJjqafYbz7uyjUmejpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T07:03:19.000Z"
+        },
+        {
+          "tokenCA": "HYi27y1QhmqoU6Mg2M5KUVLfaEH99Vn4cyka35jUpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T06:44:18.000Z"
+        },
+        {
+          "tokenCA": "9vbovDf4rgasuPUw7CZDW8ekoJpo3R4SrohQK8aQpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T03:03:22.000Z"
+        },
+        {
+          "tokenCA": "EXnczaT51NvfGQUdYmZ6Fm4zRW9Ttyrk9YrCLLGkpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-17T02:25:28.000Z"
+        }
+      ],
+      "successRate": 0.75,
+      "rugRate": 0,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T20:06:02.112Z"
+    },
+    {
+      "address": "3vFJUmsNvReVfuVzfLCcxP264fNmY4qKiX8DSDNkq9Xy",
+      "tier": "B",
+      "launches": [
+        {
+          "tokenCA": "So11111111111111111111111111111111111111112",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T19:00:33.000Z"
+        },
+        {
+          "tokenCA": "HYX5gHBDwyHtTgbY2AxZfa8m7gNgHDwxyBxzsyzNpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:32:19.000Z"
+        },
+        {
+          "tokenCA": "HHnp12bDzTdYWjrPcP3AYnadzh165xKDXi76P8AHpump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:20:30.000Z"
+        },
+        {
+          "tokenCA": "2MHXWvLr1CSumdtCpCR9tnmRVVk5yj9xeHBLEgunbonk",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T19:04:19.000Z"
+        },
+        {
+          "tokenCA": "3c25tLPxkHP2n131iD9nVnXV4X1XQEti5p46spHTpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:58:57.000Z"
+        },
+        {
+          "tokenCA": "3mGG4YCVAxLHhwiBtMDzhMaoW3iRBr41AX41hoKCpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:58:35.000Z"
+        },
+        {
+          "tokenCA": "44geYPwFc9Fhr9dfhe9yeh4Deuxj9boAiHoZjr5zpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:58:08.000Z"
+        },
+        {
+          "tokenCA": "G62xpsuRvp1oweg6PApioUsCM3vmUndp2qpe8NnYpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:57:16.000Z"
+        },
+        {
+          "tokenCA": "9i79ncBsheUp66a8duYz7Km3autXZcpKvrkbciV7pump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:56:59.000Z"
+        },
+        {
+          "tokenCA": "6fLuZHuVbA3sgHxH9hpspGLKeYEUxfpkPDhduwx4pump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:56:22.000Z"
+        },
+        {
+          "tokenCA": "4Gr9Sg8eWDpT6tS4VghpkyJRHfiwtioY9kkgWomSpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:55:22.000Z"
+        },
+        {
+          "tokenCA": "F7Rwi3ffMczhDS1wt9y3SxbPYRZjFgBNGiR69s5Epump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:54:20.000Z"
+        },
+        {
+          "tokenCA": "7xuNRcMp4frJKPsPKtJhe3f634s1ET4nY8Nksb5Epump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:53:42.000Z"
+        },
+        {
+          "tokenCA": "5xfowwp8GUgRVhN52ZkUGadP58S3xv6QJjJotoMSpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:53:19.000Z"
+        },
+        {
+          "tokenCA": "48bixxv5hQydTjBp945XmnyVTx1gW3wVo82PjsPYpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:52:45.000Z"
+        },
+        {
+          "tokenCA": "8ToWWLe3f7fx5pKGnTZPFR1CrZdRVHYPsz8W1pEApump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:51:32.000Z"
+        },
+        {
+          "tokenCA": "DNHvcDtEgresRdMA9VBEcxnKzNztqfxwnpupMgWqpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:50:28.000Z"
+        },
+        {
+          "tokenCA": "FuB7Pr9xgbnMuqHZRJrmRePFKaLBEd4Ho8KCrzLYpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:49:38.000Z"
+        },
+        {
+          "tokenCA": "FXD9h5TRa2h85wZhM51fJTbKYNa1Y4AhpGCj4KGzpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:48:17.000Z"
+        },
+        {
+          "tokenCA": "GvfPku88yZRHQThoUQG1yYV1aQkFVkfPNt8r4dB6pump",
+          "peakMultiple": 0,
+          "outcome": "SUCCESS",
+          "timestamp": "2026-03-20T18:47:28.000Z"
+        },
+        {
+          "tokenCA": "2VkKrLBTZvbZGXdyiizA7RvQFJT5J38m4fTdzDdVpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:47:12.000Z"
+        },
+        {
+          "tokenCA": "2kiMEcWtiGaSMJVjfiwHAoZCKe7DeQLor2QhB7eMpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:46:33.000Z"
+        },
+        {
+          "tokenCA": "AMB64fY6dAR4S1anKvekYXGSGLYykxrfyMgVvSLmpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:45:33.000Z"
+        },
+        {
+          "tokenCA": "C61mqNuXfeMSy1QjRBwcYwb2AR2MBD8gZQ25naeZpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:45:24.000Z"
+        },
+        {
+          "tokenCA": "BvxcvW52e1Tr2m4DBGtwhn8BabY7KCWHTbZyf7Hepump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:44:05.000Z"
+        },
+        {
+          "tokenCA": "GMgARYP7utbC6v5QzpuaMvZzJBw4aaHGzHgma4hgpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:43:21.000Z"
+        },
+        {
+          "tokenCA": "CdYgfTgZtb84wnugPPg9pmtEGEun9nNjhCKyGrFCpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:42:30.000Z"
+        },
+        {
+          "tokenCA": "2qX6DGvtogqgULyxPqjMmqoUL8Efq7bWeVavRcdfpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:42:03.000Z"
+        },
+        {
+          "tokenCA": "HLhGpMiS88A8qihwFsB1UDGZYbD7DqzgwXuBtD7Mpump",
+          "peakMultiple": 0,
+          "outcome": "NEUTRAL",
+          "timestamp": "2026-03-20T18:41:53.000Z"
+        }
+      ],
+      "successRate": 0.138,
+      "rugRate": 0,
+      "avgPeakMultiple": 0,
+      "lastActive": "2026-03-20T20:06:03.579Z"
+    }
+  ],
+  "lastSync": "2026-03-20T20:06:03.579Z",
+  "version": "1.0"
+}

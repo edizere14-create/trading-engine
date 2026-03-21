@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --border: #1a1a1a;
+  --green: #00ff41;
+  --red: #ff3333;
+  --yellow: #ffcc00;
+  --cyan: #00ccff;
+  --dim: #555555;
+  --text: #cccccc;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dim);
+  border-radius: 3px;
+}
+
+.glow-green {
+  text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);
+}
+
+.glow-red {
+  text-shadow: 0 0 8px rgba(255, 51, 51, 0.4);
+}
+
+.glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 204, 255, 0.4);
+}

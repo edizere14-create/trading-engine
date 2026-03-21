@@ -1,0 +1,65 @@
+{
+  "trades": [
+    {
+      "id": "paper-001",
+      "tokenCA": "ACRuFQdE",
+      "ticker": "YingYang",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "SECURITY_GATE: top10=99.97%, phishing=99%, serial deployer",
+      "entryTimestamp": "2026-03-20T17:53:00Z",
+      "outcome": "AVOIDED_RUG",
+      "lesson": "Top 10 concentration is fastest rug indicator — check this first"
+    },
+    {
+      "id": "paper-002",
+      "ticker": "UNKNOWN",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "Snipers 63% — coordinated snipe cluster, no organic flow",
+      "entryTimestamp": "2026-03-20T18:15:00Z",
+      "outcome": "AVOIDED",
+      "lesson": "Sniper % above 50 means coordinated dump incoming — always skip"
+    },
+    {
+      "id": "paper-003",
+      "ticker": "UNKNOWN",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "Already dumped -90% from peak — no recovery edge",
+      "entryTimestamp": "2026-03-20T19:00:00Z",
+      "outcome": "AVOIDED",
+      "lesson": "Tokens down 90%+ rarely recover — don't catch falling knives"
+    },
+    {
+      "id": "paper-004",
+      "ticker": "UNKNOWN",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "Dead token — liquidity $9, zero volume",
+      "entryTimestamp": "2026-03-20T19:45:00Z",
+      "outcome": "AVOIDED",
+      "lesson": "Sub-$100 liquidity = abandoned token, no exit possible"
+    },
+    {
+      "id": "paper-005",
+      "ticker": "MEME",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "Rug history + low liq $3.79K + deployer 20% rug rate",
+      "entryTimestamp": "2026-03-20T20:30:00Z",
+      "outcome": "AVOIDED",
+      "lesson": "Deployer rug history + low liq = skip regardless of chart"
+    },
+    {
+      "id": "paper-006",
+      "ticker": "MEME",
+      "mode": "PAPER",
+      "decision": "SKIP",
+      "skipReason": "Rug history + low liq — serial deployer repeat pattern",
+      "entryTimestamp": "2026-03-20T21:30:00Z",
+      "outcome": "AVOIDED",
+      "lesson": "Serial deployer with rug history is a hard block — no exceptions"
+    }
+  ]
+}
