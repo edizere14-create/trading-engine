@@ -18,3 +18,8 @@ tsc_exit.txt
 npm_install.txt
 npm_tw.txt
 tail_log.txt
+__pycache__/
+tests/.tmp/
+tests/__pycache__/
+*.pyc
+trade_state*.tmp
