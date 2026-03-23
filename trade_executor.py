@@ -31,10 +31,10 @@ TELEGRAM_CHAT_ID = (os.getenv("TELEGRAM_CHAT_ID") or "").strip()
 HELIUS_API_KEY = (os.getenv("HELIUS_API_KEY") or "").strip()
 PRIMARY_RPC = (os.getenv("PRIMARY_RPC") or "").strip()
 JUPITER_QUOTE_URL = (
-    os.getenv("JUPITER_QUOTE_URL", "https://quote-api.jup.ag/v6/quote") or ""
+    os.getenv("JUPITER_QUOTE_URL", "https://lite-api.jup.ag/swap/v1/quote") or ""
 ).strip()
 JUPITER_SWAP_URL = (
-    os.getenv("JUPITER_SWAP_URL", "https://quote-api.jup.ag/v6/swap") or ""
+    os.getenv("JUPITER_SWAP_URL", "https://lite-api.jup.ag/swap/v1/swap") or ""
 ).strip()
 LIQUIDITY_MAX_PRICE_IMPACT_PCT = float(os.getenv("LIQUIDITY_MAX_PRICE_IMPACT_PCT", 2.0))
 SOL_USD_FALLBACK = float(os.getenv("SOL_USD_FALLBACK", 150.0))
