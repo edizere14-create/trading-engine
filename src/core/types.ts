@@ -216,3 +216,83 @@ export interface SurvivalSnapshot {
   highVarianceEnabled: boolean;
   message: string;
 }
+
+// ── COPY TRADE TYPES ──────────────────────────────────────
+
+export type CopyTradeSource = 'SINGLE_WALLET' | 'CLUSTER' | 'MIRROR_SELL';
+export type WalletTier = 'S' | 'A' | 'B';
+
+export interface CopyTradeSignal {
+  tokenCA: string;
+  source: CopyTradeSource;
+  triggerWallet: string;
+  walletTier: WalletTier;
+  walletPnL30d: number;
+  convictionSOL: number;        // how much SOL the wallet put in
+  clusterWallets: string[];     // other wallets that also bought (if cluster)
+  clusterSize: number;
+  totalClusterSOL: number;      // total SOL across all cluster wallets
+  entryPriceSOL: number;
+  timestamp: Date;
+  slot: number;
+  score: number;                // computed signal quality 0–10
+  confidence: number;           // 0–1
+}
+
+export interface CopyPosition {
+  id: string;
+  tokenCA: string;
+  mode: SystemMode;
+  entryPriceSOL: number;
+  entryTimestamp: Date;
+  sizeSOL: number;
+  sizeUSD: number;
+  sourceWallets: string[];      // wallets that triggered this entry
+  reBuyCount: number;           // how many re-buys from tracked wallets
+  maxHoldMs: number;
+  stopLossPct: number;          // e.g. 0.30 = -30%
+  takeProfitTiers: CopyExitTier[];
+  peakPriceSOL: number;
+  lastCheckedAt: Date;
+  status: 'OPEN' | 'CLOSED';
+  exitReason?: string;
+  realizedPnLSOL?: number;
+  realizedMultiple?: number;
+  outcome?: 'WIN' | 'LOSS' | 'BREAKEVEN';
+}
+
+export interface CopyExitTier {
+  multiple: number;
+  pct: number;                  // fraction of position to exit
+  triggered: boolean;
+  triggeredAt?: Date;
+}
+
+export interface TokenSafetyResult {
+  tokenCA: string;
+  isSafe: boolean;
+  reasons: string[];
+  rugScore: number;             // 0–10 (10 = definitely rug)
+  topHolderPct: number;
+  lpLocked: boolean;
+  mintAuthRevoked: boolean;
+  freezeAuthRevoked: boolean;
+  isHoneypot: boolean;
+  checkedAt: Date;
+}
+
+export interface WalletPerformanceStats {
+  address: string;
+  tier: WalletTier;
+  copiedTrades: number;
+  copiedWins: number;
+  copiedLosses: number;
+  copiedWinRate: number;
+  avgWinMultiple: number;
+  avgLossMultiple: number;
+  totalPnLSOL: number;
+  recentAccuracy: number;       // win rate over last 10 copied trades
+  lastCopiedAt?: Date;
+  isCoolingDown: boolean;       // temporarily stop copying after streak losses
+  cooldownUntil?: Date;
+}

@@ -34,6 +34,18 @@ const envSchema = z.object({
   // Liquidity
   MIN_LIQUIDITY_SOL:       z.coerce.number().min(0).default(50),
 
+  // Copy trade parameters
+  MIN_COPY_SWAP_SOL:       z.coerce.number().min(0).default(0.05),   // ignore dust swaps
+  MAX_COPY_SWAP_SOL:       z.coerce.number().min(0).default(50),     // ignore whale-only plays
+  COPY_SIZE_PCT:           z.coerce.number().min(0.01).max(1).default(0.10), // % of capital per copy
+  COPY_MAX_HOLD_MS:        z.coerce.number().int().min(10000).default(300_000), // 5 min default
+  COPY_STOP_LOSS_PCT:      z.coerce.number().min(0.05).max(0.90).default(0.30), // -30%
+  COPY_CLUSTER_BONUS_PCT:  z.coerce.number().min(0).max(1).default(0.50), // extra size on cluster
+  WALLET_COOLDOWN_LOSSES:  z.coerce.number().int().min(1).default(3),  // consecutive loss cooldown  
+  WALLET_COOLDOWN_HOURS:   z.coerce.number().min(0.5).max(72).default(6), // cooldown duration
+  TOKEN_MAX_AGE_MS:        z.coerce.number().int().min(0).default(3_600_000), // skip tokens >1hr old
+  REBUY_CONVICTION_EXTEND_MS: z.coerce.number().int().min(0).default(120_000), // extend hold on rebuy
+
   // Calibration
   MIN_PAPER_TRADES:        z.coerce.number().int().min(1).default(50),
   WP_CALIBRATION_AUC_MIN:  z.coerce.number().min(0).max(1).default(0.65),
