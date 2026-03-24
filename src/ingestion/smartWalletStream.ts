@@ -15,6 +15,10 @@ const SWAP_PROGRAMS = new Set([
   'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4',   // Jupiter v6
 ]);
 
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
+
 interface ClusterEntry {
   wallet: string;
   timestamp: number;
@@ -77,19 +81,38 @@ class ClusterDetector {
 }
 
 export class SmartWalletStream {
-  private connection: Connection;
+  private primaryConnection: Connection;
+  private backupConnection: Connection | null;
+  private activeConnection: Connection;
   private walletRegistry: WalletRegistry;
   private subscriptions: number[] = [];
   private clusterDetector: ClusterDetector;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private healthInterval: ReturnType<typeof setInterval> | null = null;
+  private lastEventTime: number = Date.now();
+  private reconnectAttempts = 0;
+  private isStopped = false;
 
-  constructor(connection: Connection, walletRegistry: WalletRegistry) {
-    this.connection = connection;
+  constructor(connection: Connection, walletRegistry: WalletRegistry, backupConnection?: Connection) {
+    this.primaryConnection = connection;
+    this.backupConnection = backupConnection ?? null;
+    this.activeConnection = connection;
     this.walletRegistry = walletRegistry;
     this.clusterDetector = new ClusterDetector();
   }
 
   async start(): Promise<void> {
+    this.isStopped = false;
+    await this.subscribe();
+    this.startHealthCheck();
+
+    // Periodic cleanup of stale cluster entries every 60s
+    this.cleanupInterval = setInterval(() => this.clusterDetector.cleanup(), 60_000);
+  }
+
+  private async subscribe(): Promise<void> {
+    await this.clearSubscriptions();
+
     const wallets = this.walletRegistry.getAll();
 
     if (wallets.length === 0) {
@@ -98,19 +121,94 @@ export class SmartWalletStream {
     }
 
     for (const wallet of wallets) {
-      const pubkey = new PublicKey(wallet.address);
-      const subId = this.connection.onLogs(
-        pubkey,
-        (logs: Logs, ctx: Context) => this.handleLogs(logs, ctx, wallet.address),
-        'confirmed'
-      );
-      this.subscriptions.push(subId);
+      try {
+        const pubkey = new PublicKey(wallet.address);
+        const subId = this.activeConnection.onLogs(
+          pubkey,
+          (logs: Logs, ctx: Context) => {
+            this.lastEventTime = Date.now();
+            this.reconnectAttempts = 0;
+            this.handleLogs(logs, ctx, wallet.address).catch((err) => {
+              logger.warn('Wallet handleLogs error', {
+                wallet: wallet.address,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          },
+          'confirmed'
+        );
+        this.subscriptions.push(subId);
+      } catch (err) {
+        logger.error('Wallet subscription failed', {
+          wallet: wallet.address,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
-    // Periodic cleanup of stale cluster entries every 60s
-    this.cleanupInterval = setInterval(() => this.clusterDetector.cleanup(), 60_000);
+    logger.info('SmartWalletStream subscribed', {
+      walletCount: wallets.length,
+      activeSubscriptions: this.subscriptions.length,
+    });
+  }
 
-    logger.info('SmartWalletStream started', { walletCount: wallets.length });
+  private startHealthCheck(): void {
+    if (this.healthInterval) clearInterval(this.healthInterval);
+
+    this.healthInterval = setInterval(async () => {
+      if (this.isStopped) return;
+
+      const silentMs = Date.now() - this.lastEventTime;
+
+      // If no events for 5 minutes, subscriptions are likely dead
+      if (silentMs > 300_000) {
+        logger.warn('Wallet stream silent \u2014 reconnecting', {
+          silentSeconds: Math.round(silentMs / 1000),
+          attempt: this.reconnectAttempts + 1,
+        });
+        await this.reconnect();
+      }
+
+      // Verify connection is healthy
+      try {
+        await this.activeConnection.getSlot();
+      } catch {
+        logger.warn('Wallet stream RPC unreachable \u2014 reconnecting');
+        await this.reconnect();
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.isStopped) return;
+
+    this.reconnectAttempts++;
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1),
+      RECONNECT_MAX_DELAY_MS
+    );
+
+    logger.info('Wallet stream reconnecting', { attempt: this.reconnectAttempts, delayMs: delay });
+    await new Promise((r) => setTimeout(r, delay));
+
+    // Failover to backup on odd attempts, back to primary on even
+    if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
+      logger.info('Wallet stream failing over to backup RPC');
+      this.activeConnection = this.backupConnection;
+    } else {
+      this.activeConnection = this.primaryConnection;
+    }
+
+    try {
+      await this.subscribe();
+      this.lastEventTime = Date.now();
+      logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
+    } catch (err) {
+      logger.error('Wallet stream reconnect failed', {
+        attempt: this.reconnectAttempts,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private async handleLogs(logs: Logs, ctx: Context, walletAddress: string): Promise<void> {
@@ -157,7 +255,7 @@ export class SmartWalletStream {
     slot: number,
     walletAddress: string
   ): Promise<SwapEvent | null> {
-    const tx = await this.connection.getParsedTransaction(signature, {
+    const tx = await this.activeConnection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',
     });
@@ -225,17 +323,31 @@ export class SmartWalletStream {
     };
   }
 
-  async stop(): Promise<void> {
+  private async clearSubscriptions(): Promise<void> {
     for (const subId of this.subscriptions) {
-      await this.connection.removeOnLogsListener(subId);
+      try {
+        await this.activeConnection.removeOnLogsListener(subId);
+      } catch {
+        // Subscription may already be dead — ignore
+      }
     }
     this.subscriptions = [];
+  }
+
+  async stop(): Promise<void> {
+    this.isStopped = true;
+
+    if (this.healthInterval) {
+      clearInterval(this.healthInterval);
+      this.healthInterval = null;
+    }
 
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
 
+    await this.clearSubscriptions();
     logger.info('SmartWalletStream stopped');
   }
 }

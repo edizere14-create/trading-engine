@@ -12,23 +12,119 @@ export const POOL_PROGRAMS = {
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-export class LPCreationStream {
-  private connection: Connection;
-  private subscriptions: number[] = [];
+const HEALTH_CHECK_INTERVAL_MS = 30_000; // Check every 30s
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
 
-  constructor(connection: Connection) {
-    this.connection = connection;
+export class LPCreationStream {
+  private primaryConnection: Connection;
+  private backupConnection: Connection | null;
+  private activeConnection: Connection;
+  private subscriptions: number[] = [];
+  private healthInterval: ReturnType<typeof setInterval> | null = null;
+  private lastEventTime: number = Date.now();
+  private reconnectAttempts = 0;
+  private isStopped = false;
+
+  constructor(connection: Connection, backupConnection?: Connection) {
+    this.primaryConnection = connection;
+    this.backupConnection = backupConnection ?? null;
+    this.activeConnection = connection;
   }
 
   async start(): Promise<void> {
+    this.isStopped = false;
+    await this.subscribe();
+    this.startHealthCheck();
+  }
+
+  private async subscribe(): Promise<void> {
+    // Clear any existing subscriptions
+    await this.clearSubscriptions();
+
     for (const [name, programId] of Object.entries(POOL_PROGRAMS)) {
-      const subId = this.connection.onLogs(
-        programId,
-        (logs: Logs, ctx: Context) => this.handleLogs(logs, ctx, name),
-        'confirmed'
-      );
-      this.subscriptions.push(subId);
-      logger.info('LP stream started', { program: name, programId: programId.toBase58() });
+      try {
+        const subId = this.activeConnection.onLogs(
+          programId,
+          (logs: Logs, ctx: Context) => {
+            this.lastEventTime = Date.now();
+            this.reconnectAttempts = 0;
+            this.handleLogs(logs, ctx, name).catch((err) => {
+              logger.warn('LP handleLogs error', {
+                program: name,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          },
+          'confirmed'
+        );
+        this.subscriptions.push(subId);
+        logger.info('LP stream subscribed', { program: name, programId: programId.toBase58() });
+      } catch (err) {
+        logger.error('LP subscription failed', {
+          program: name,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
+
+  private startHealthCheck(): void {
+    if (this.healthInterval) clearInterval(this.healthInterval);
+
+    this.healthInterval = setInterval(async () => {
+      if (this.isStopped) return;
+
+      const silentMs = Date.now() - this.lastEventTime;
+
+      // If no events for 5 minutes, subscriptions are likely dead
+      if (silentMs > 300_000) {
+        logger.warn('LP stream silent — reconnecting', {
+          silentSeconds: Math.round(silentMs / 1000),
+          attempt: this.reconnectAttempts + 1,
+        });
+        await this.reconnect();
+      }
+
+      // Also verify connection is healthy via a lightweight RPC call
+      try {
+        await this.activeConnection.getSlot();
+      } catch {
+        logger.warn('LP stream RPC unreachable — reconnecting');
+        await this.reconnect();
+      }
+    }, HEALTH_CHECK_INTERVAL_MS);
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.isStopped) return;
+
+    this.reconnectAttempts++;
+    const delay = Math.min(
+      RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1),
+      RECONNECT_MAX_DELAY_MS
+    );
+
+    logger.info('LP stream reconnecting', { attempt: this.reconnectAttempts, delayMs: delay });
+    await new Promise((r) => setTimeout(r, delay));
+
+    // Failover to backup on odd attempts, back to primary on even
+    if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
+      logger.info('LP stream failing over to backup RPC');
+      this.activeConnection = this.backupConnection;
+    } else {
+      this.activeConnection = this.primaryConnection;
+    }
+
+    try {
+      await this.subscribe();
+      this.lastEventTime = Date.now(); // Reset timer after reconnection
+      logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });
+    } catch (err) {
+      logger.error('LP stream reconnect failed', {
+        attempt: this.reconnectAttempts,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -65,7 +161,7 @@ export class LPCreationStream {
     slot: number,
     programName: string
   ): Promise<NewPoolEvent | null> {
-    const tx = await this.connection.getParsedTransaction(signature, {
+    const tx = await this.activeConnection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',
     });
@@ -104,11 +200,24 @@ export class LPCreationStream {
     };
   }
 
-  async stop(): Promise<void> {
+  private async clearSubscriptions(): Promise<void> {
     for (const subId of this.subscriptions) {
-      await this.connection.removeOnLogsListener(subId);
+      try {
+        await this.activeConnection.removeOnLogsListener(subId);
+      } catch {
+        // Subscription may already be dead — ignore
+      }
     }
     this.subscriptions = [];
+  }
+
+  async stop(): Promise<void> {
+    this.isStopped = true;
+    if (this.healthInterval) {
+      clearInterval(this.healthInterval);
+      this.healthInterval = null;
+    }
+    await this.clearSubscriptions();
     logger.info('LP stream stopped');
   }
 }

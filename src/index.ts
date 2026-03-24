@@ -313,9 +313,9 @@ async function boot(): Promise<void> {
     });
   });
 
-  // 7. Start ingestion streams
-  lpStream = new LPCreationStream(cfg.connection);
-  walletStream = new SmartWalletStream(cfg.connection, walletRegistry);
+  // 7. Start ingestion streams (with backup connection for failover)
+  lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
+  walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
   await lpStream.start();
   await walletStream.start();
 
@@ -351,6 +351,25 @@ async function shutdown(): Promise<void> {
 
 process.on('SIGINT', () => { shutdown(); });
 process.on('SIGTERM', () => { shutdown(); });
+
+process.on('uncaughtException', (err) => {
+  logger.error('UNCAUGHT EXCEPTION — restarting streams', {
+    error: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+  console.error('UNCAUGHT EXCEPTION:', err);
+  // Let Railway restart the process
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('UNHANDLED REJECTION', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+  console.error('UNHANDLED REJECTION:', reason);
+  // Don't crash — log and continue
+});
 
 boot().catch((err) => {
   logger.error('BOOT FAILED', { error: err instanceof Error ? err.message : String(err) });
