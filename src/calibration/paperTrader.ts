@@ -207,6 +207,6 @@ export class PaperTradeGate {
   }
 
   private saveToDisk(): void {
-    fs.writeFileSync(this.filePath, JSON.stringify(this.trades, null, 2), 'utf-8');
+    fs.writeFileSync(this.filePath, JSON.stringify(this.trades, (_, v) => typeof v === 'bigint' ? v.toString() : v, 2), 'utf-8');
   }
 }
