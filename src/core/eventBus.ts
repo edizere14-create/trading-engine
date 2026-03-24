@@ -14,7 +14,13 @@ import {
   CopyTradeSignal,
   CopyPosition,
   TokenSafetyResult,
+  SimulationResult,
 } from './types';
+import type { MLPrediction } from '../ml/onlineLearner';
+import type { RegimeSnapshot } from '../ml/regimeHMM';
+import type { PortfolioState, SizingRecommendation } from '../portfolio/portfolioOptimizer';
+import type { SystemHealth, BlackSwanEvent } from '../antifragile/antifragileEngine';
+import type { DeployerProfile } from '../intelligence/deployerIntelligence';
 
 // Typed event map — no string event names anywhere in the codebase
 export interface EngineEvents {
@@ -40,6 +46,21 @@ export interface EngineEvents {
   'copy:reBuy':            { tokenCA: string; wallet: string; amountSOL: number; reBuyCount: number };
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
+  // ── ADVANCED ENGINE EVENTS ──────────────────────────────
+  'ml:prediction':         { tokenCA: string; prediction: MLPrediction };
+  'ml:driftDetected':      { feature: string; oldMean: number; newMean: number };
+  'regime:changed':        RegimeSnapshot;
+  'portfolio:updated':     PortfolioState;
+  'portfolio:sizing':      { tokenCA: string; recommendation: SizingRecommendation };
+  'deployer:analyzed':     DeployerProfile;
+  'deployer:blacklisted':  { address: string; reason: string };
+  'blackswan:detected':    BlackSwanEvent;
+  'health:changed':        SystemHealth;
+  'circuit:opened':        { name: string; failures: number };
+  'circuit:closed':        { name: string };
+  'social:signal':         { tokenCA: string; source: string; sentiment: number; kolMentions: number; hypeCycle: string; socialScore: number };
+  'social:kolAlert':       { tokenCA: string; kolHandle: string; followers: number; sentiment: number };
+  'simulation:complete':   SimulationResult;
 }
 
 type EventKey = keyof EngineEvents;
@@ -61,4 +82,4 @@ class TypedEventBus extends EventEmitter {
 
 // Singleton — import this everywhere
 export const bus = new TypedEventBus();
-bus.setMaxListeners(50);
+bus.setMaxListeners(100);

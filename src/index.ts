@@ -26,16 +26,34 @@ import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
 import { TradeRecord } from './core/types';
 
-// ── NEW: Copy trade infrastructure ────────────────────────
+// ── Copy trade infrastructure ─────────────────────────────
 import { SwapSignalEvaluator } from './signals/swapSignalEvaluator';
 import { CopyTradeManager } from './copyTrade/copyTradeManager';
 import { WalletPerformanceTracker } from './copyTrade/walletPerformanceTracker';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 
+// ── ADVANCED ENGINE IMPORTS ───────────────────────────────
+import { OnlineLearner } from './ml/onlineLearner';
+import { HiddenMarkovRegimeDetector } from './ml/regimeHMM';
+import { PortfolioOptimizer } from './portfolio/portfolioOptimizer';
+import { ExecutionEngine } from './execution/executionEngine';
+import { DeployerIntelligence } from './intelligence/deployerIntelligence';
+import { AntifragileEngine } from './antifragile/antifragileEngine';
+import { SocialSignalEngine } from './social/socialSignalEngine';
+import { OnChainSimulator } from './simulation/onChainSimulator';
+
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
 let survivalEngine: SurvivalEngine | null = null;
 let copyTradeManager: CopyTradeManager | null = null;
+let antifragileEngine: AntifragileEngine | null = null;
+let onlineLearner: OnlineLearner | null = null;
+let regimeDetector: HiddenMarkovRegimeDetector | null = null;
+let portfolioOptimizer: PortfolioOptimizer | null = null;
+let executionEngine: ExecutionEngine | null = null;
+let deployerIntel: DeployerIntelligence | null = null;
+let socialEngine: SocialSignalEngine | null = null;
+let simulator: OnChainSimulator | null = null;
 
 async function boot(): Promise<void> {
   logger.info('═══════════════════════════════════════════');
@@ -142,11 +160,72 @@ async function boot(): Promise<void> {
     maxHoldMs: cfg.COPY_MAX_HOLD_MS,
   });
 
+  // ═══════════════════════════════════════════════════════════
+  //  ADVANCED ENGINE INITIALIZATION
+  // ═══════════════════════════════════════════════════════════
+
+  // 5d. Online ML Pipeline — self-calibrating win probability model
+  onlineLearner = new OnlineLearner(cfg.ML_MODEL_FILE);
+  await onlineLearner.load();
+  logger.info('Online ML learner loaded', {
+    modelFile: cfg.ML_MODEL_FILE,
+    learningRate: cfg.ML_LEARNING_RATE,
+  });
+
+  // 5e. HMM Regime Detector — 4-state hidden Markov model
+  regimeDetector = new HiddenMarkovRegimeDetector(cfg.ML_HMM_FILE);
+  await regimeDetector.load();
+  logger.info('HMM regime detector loaded');
+
+  // 5f. Portfolio Optimizer — Kelly criterion + correlation-aware sizing
+  portfolioOptimizer = new PortfolioOptimizer();
+  logger.info('Portfolio optimizer initialized');
+
+  // 5g. Execution Engine — unified TypeScript execution (replaces Python)
+  executionEngine = new ExecutionEngine(
+    cfg.connection,
+    cfg.backupConnection,
+    cfg.JITO_BLOCK_ENGINE_URL
+  );
+  logger.info('Execution engine initialized', {
+    mevProtection: cfg.MEV_PROTECTION_ENABLED,
+    maxRetries: cfg.EXECUTION_MAX_RETRIES,
+  });
+
+  // 5h. Deployer Intelligence — on-chain analysis replaces static JSON
+  deployerIntel = new DeployerIntelligence(cfg.connection, cfg.DEPLOYER_INTEL_FILE);
+  await deployerIntel.load();
+  logger.info('Deployer intelligence loaded', {
+    profiles: deployerIntel ? 'ACTIVE' : 'N/A',
+    minReputation: cfg.DEPLOYER_MIN_REPUTATION,
+  });
+
+  // 5i. Antifragile Engine — circuit breakers + black swan detection
+  antifragileEngine = new AntifragileEngine();
+  antifragileEngine.start();
+  logger.info('Antifragile engine started', {
+    health: antifragileEngine.getSystemHealth().overallStatus,
+  });
+
+  // 5j. Social Signal Engine — Twitter/Telegram NLP pipeline
+  socialEngine = new SocialSignalEngine();
+  logger.info('Social signal engine initialized');
+
+  // 5k. On-Chain Simulator — pre-trade pool analysis
+  simulator = new OnChainSimulator(cfg.connection);
+  logger.info('On-chain simulator initialized');
+
   // 6. Wire event bus listeners
 
-  bus.on('pool:created', (event) => {
+  bus.on('pool:created', async (event) => {
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
+
+    // Check circuit breakers before proceeding
+    if (antifragileEngine && antifragileEngine.getSystemHealth().overallStatus === 'DEAD') {
+      logger.warn('Pool skipped — system DEAD', { tokenCA: event.tokenCA });
+      return;
+    }
 
     logger.info('Pool detected', {
       tokenCA: event.tokenCA,
@@ -154,6 +233,56 @@ async function boot(): Promise<void> {
       liqSOL: event.initialLiquiditySOL,
       source: event.source,
     });
+
+    // ── Deployer Intelligence (replaces static registry) ──
+    let deployerProfile;
+    if (deployerIntel) {
+      deployerProfile = await deployerIntel.analyzeDeployer(event.deployer);
+      bus.emit('deployer:analyzed', deployerProfile);
+
+      if (deployerProfile.tier === 'BLACKLIST') {
+        logger.warn('Pool BLOCKED — deployer blacklisted', {
+          deployer: event.deployer,
+          reputationScore: deployerProfile.reputationScore,
+        });
+        bus.emit('deployer:blacklisted', {
+          address: event.deployer,
+          reason: `Reputation ${deployerProfile.reputationScore}/100`,
+        });
+        return;
+      }
+    }
+
+    // ── On-Chain Simulation ──
+    if (simulator) {
+      const simResult = await simulator.simulatePool(event.poolAddress, event.tokenCA);
+      const sandwichRisk = simulator.estimateSandwichRisk(
+        simResult.reserveSOL,
+        cfg.INITIAL_CAPITAL_USD / currentSOLPrice * (cfg.COPY_SIZE_PCT),
+        simResult.buyImpact[1]?.impactPct ?? 5
+      );
+
+      bus.emit('simulation:complete', {
+        poolAddress: event.poolAddress,
+        tokenCA: event.tokenCA,
+        exitLiquiditySOL: simResult.exitLiquiditySOL,
+        liquidityScore: simResult.liquidityScore,
+        sandwichRisk: sandwichRisk.vulnerability,
+        holderDistribution: simResult.holderDistribution,
+        lpConcentrationRisk: simResult.lpConcentrationRisk,
+        recommendation: sandwichRisk.recommendation === 'ABORT' ? 'ABORT'
+          : sandwichRisk.recommendation === 'USE_JITO' ? 'USE_JITO'
+          : sandwichRisk.recommendation === 'REDUCE_SIZE' ? 'REDUCE_SIZE' : 'GO',
+      });
+
+      if (sandwichRisk.recommendation === 'ABORT') {
+        logger.warn('Pool BLOCKED — high sandwich risk', {
+          tokenCA: event.tokenCA,
+          vulnerability: sandwichRisk.vulnerability,
+        });
+        return;
+      }
+    }
 
     // Run signal aggregation
     const signal = signalAggregator.aggregate(event, null, [
@@ -174,15 +303,57 @@ async function boot(): Promise<void> {
       return;
     }
 
+    // ── ML Prediction ──
+    let mlWinProb = signal.totalScore / 10;
+    if (onlineLearner) {
+      const features = onlineLearner.extractFeatures(
+        signal,
+        null,  // microstructure features
+        marketSnapshot.score ?? 0,
+        marketSnapshot.state === 'HOT' ? 1 : marketSnapshot.state === 'NORMAL' ? 0.5 : 0,
+        survival.sizeMultiplier
+      );
+      const prediction = onlineLearner.predict(features);
+      mlWinProb = prediction.winProbability;
+      bus.emit('ml:prediction', { tokenCA: event.tokenCA, prediction });
+    }
+
+    // ── HMM Regime multiplier ──
+    let regimeMultiplier = 1.0;
+    if (regimeDetector) {
+      const snap = regimeDetector.getLatestSnapshot();
+      regimeMultiplier = snap.riskMultiplier;
+    }
+
     // Risk decision
     const risk = riskEngine.decide(
       cfg.INITIAL_CAPITAL_USD,
       signal,
       marketSnapshot,
       survival,
-      signal.totalScore / 10, // normalize to 0–1 for WP
+      mlWinProb,
       2.0 // default predicted multiple
     );
+
+    // ── Portfolio-level sizing ──
+    if (portfolioOptimizer && risk.tradeAllowed) {
+      const narrative = portfolioOptimizer.classifyNarrative(event.tokenCA, '');
+      const regime = regimeDetector?.getLatestSnapshot().currentRegime ?? 'NEUTRAL';
+      const sizing = portfolioOptimizer.calculateOptimalSize(
+        cfg.INITIAL_CAPITAL_USD,
+        mlWinProb,
+        2.0,
+        event.tokenCA,
+        narrative,
+        [],  // current positions — would need access to copyTradeManager internal state
+        regime,
+        signal.confidence
+      );
+      bus.emit('portfolio:sizing', { tokenCA: event.tokenCA, recommendation: sizing });
+
+      // Apply portfolio-level adjustment
+      risk.sizeUSD = Math.min(risk.sizeUSD, sizing.recommendedSizeUSD);
+    }
 
     logger.info('Trade decision', {
       tokenCA: event.tokenCA,
@@ -191,6 +362,8 @@ async function boot(): Promise<void> {
       executionMode: risk.executionMode,
       maxHoldMs: risk.maxHoldMs,
       reason: risk.reason,
+      mlWinProb: mlWinProb.toFixed(3),
+      regimeMultiplier: regimeMultiplier.toFixed(2),
     });
   });
 
@@ -235,8 +408,17 @@ async function boot(): Promise<void> {
     }
   });
 
-  // ── COPY SIGNAL → SAFETY CHECK → OPEN TRADE ──
+  // ── COPY SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
   bus.on('copy:signal', async (signal) => {
+    // Check antifragile health
+    if (antifragileEngine) {
+      const health = antifragileEngine.getSystemHealth();
+      if (health.overallStatus === 'CRITICAL' || health.overallStatus === 'DEAD') {
+        logger.warn('Copy signal BLOCKED — system health', { state: health.overallStatus });
+        return;
+      }
+    }
+
     logger.info('Copy signal received', {
       tokenCA: signal.tokenCA,
       source: signal.source,
@@ -258,13 +440,52 @@ async function boot(): Promise<void> {
       return;
     }
 
+    // ── Deployer intelligence check ──
+    if (deployerIntel) {
+      // Try to identify deployer from the signal context
+      const profile = deployerIntel.getProfile(signal.triggerWallet);
+      if (profile && profile.tier === 'BLACKLIST') {
+        logger.warn('Copy trade BLOCKED — trigger wallet linked to blacklisted deployer');
+        return;
+      }
+    }
+
     // Get survival state
     const survival = survivalEngine!.getSnapshot();
+
+    // ── Portfolio optimization sizing ──
+    if (portfolioOptimizer) {
+      const regime = regimeDetector?.getLatestSnapshot().currentRegime ?? 'NEUTRAL';
+      const narrative = portfolioOptimizer.classifyNarrative(signal.tokenCA, '');
+      const sizing = portfolioOptimizer.calculateOptimalSize(
+        cfg.INITIAL_CAPITAL_USD,
+        signal.score / 10,
+        2.0,
+        signal.tokenCA,
+        narrative,
+        [],
+        regime,
+        signal.confidence
+      );
+
+      if (sizing.recommendedSizeUSD < 1) {
+        logger.warn('Copy trade BLOCKED — portfolio optimizer rejected', {
+          tokenCA: signal.tokenCA,
+          reason: sizing.reason,
+        });
+        return;
+      }
+    }
 
     // Open the trade
     const opened = copyTradeManager!.openTrade(signal, survival);
     if (opened) {
       swapEvaluator.markEmitted(signal.tokenCA);
+
+      // Record heartbeat for antifragile dead-man's switch
+      if (antifragileEngine) {
+        antifragileEngine.heartbeat();
+      }
     }
   });
 
@@ -349,6 +570,43 @@ async function boot(): Promise<void> {
 
     // Record in performance engine
     perfEngine.recordTrade(trade);
+
+    // ── ML FEEDBACK LOOP: update model with trade outcome ──
+    if (onlineLearner) {
+      const marketSnapshot = marketEngine.getSnapshot();
+      const survival = survivalEngine!.getSnapshot();
+      if (marketSnapshot) {
+        const outcome = trade.outcome === 'WIN' ? 1 : 0;
+        const features = onlineLearner.extractFeatures(
+          trade.signal,
+          null,
+          marketSnapshot.score ?? 0,
+          marketSnapshot.state === 'HOT' ? 1 : marketSnapshot.state === 'NORMAL' ? 0.5 : 0,
+          survival.sizeMultiplier
+        );
+        onlineLearner.update(features, outcome, trade.realizedMultiple ?? 1);
+      }
+    }
+
+    // ── Update deployer intelligence with trade outcome ──
+    if (deployerIntel && trade.deployerTier !== 'UNKNOWN') {
+      const pnlPct = trade.realizedPnLUSD && trade.sizeUSD > 0
+        ? (trade.realizedPnLUSD / trade.sizeUSD) * 100
+        : 0;
+      deployerIntel.recordCopyTradeOutcome(trade.tokenCA, pnlPct);
+    }
+
+    // ── Record antifragile heartbeat ──
+    if (antifragileEngine) {
+      antifragileEngine.heartbeat();
+      // Check for black swan pattern from trade outcomes
+      if (trade.outcome === 'LOSS') {
+        const pnlPct = trade.realizedPnLUSD && trade.sizeUSD > 0
+          ? (trade.realizedPnLUSD / trade.sizeUSD) * 100
+          : 0;
+        antifragileEngine.recordTradeOutcome(trade.tokenCA, pnlPct);
+      }
+    }
 
     logger.info('Trade closed', {
       id: trade.id,
@@ -492,6 +750,23 @@ async function boot(): Promise<void> {
     // Record PnL in survival engine
     const pnlUSD = (position.realizedPnLSOL ?? 0) * currentSOLPrice;
     survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
+
+    // ── ML + Intelligence Feedback ──
+    if (deployerIntel) {
+      const pnlPct = pnlUSD > 0 && position.sizeUSD > 0
+        ? (pnlUSD / position.sizeUSD) * 100
+        : 0;
+      deployerIntel.recordCopyTradeOutcome(position.tokenCA, pnlPct);
+    }
+    if (antifragileEngine) {
+      antifragileEngine.heartbeat();
+      if (position.outcome === 'LOSS') {
+        const pnlPct = position.sizeUSD > 0
+          ? ((position.realizedPnLSOL ?? 0) * currentSOLPrice / position.sizeUSD) * 100
+          : 0;
+        antifragileEngine.recordTradeOutcome(position.tokenCA, pnlPct);
+      }
+    }
 
     logger.info('═══ COPY TRADE CLOSED ═══', {
       id: position.id,
@@ -664,6 +939,84 @@ async function boot(): Promise<void> {
     });
   });
 
+  // ═══════════════════════════════════════════════════════════
+  //  ADVANCED ENGINE EVENT HANDLERS
+  // ═══════════════════════════════════════════════════════════
+
+  bus.on('ml:prediction', ({ tokenCA, prediction }) => {
+    logger.debug('ML prediction', {
+      tokenCA,
+      wp: prediction.winProbability.toFixed(3),
+      ev: prediction.expectedValue.toFixed(3),
+      confidence: prediction.confidence.toFixed(3),
+      regime: prediction.regime,
+    });
+  });
+
+  bus.on('regime:changed', (snapshot) => {
+    logger.info('═══ REGIME CHANGE ═══', {
+      regime: snapshot.currentRegime,
+      riskMultiplier: snapshot.riskMultiplier.toFixed(2),
+      confidence: snapshot.confidence.toFixed(3),
+    });
+  });
+
+  bus.on('blackswan:detected', (event) => {
+    logger.error('═══ BLACK SWAN DETECTED ═══', {
+      type: event.type,
+      severity: event.severity,
+      affectedPositions: event.affectedPositions.length,
+      action: event.recommendedAction,
+    });
+
+    // Emergency response
+    if (event.severity === 'FATAL') {
+      copyTradeManager?.emergencyCloseAll(`Black swan: ${event.type}`);
+    }
+  });
+
+  bus.on('health:changed', (health) => {
+    logger.info('System health changed', {
+      status: health.overallStatus,
+      uptimeMs: health.uptimeMs,
+    });
+
+    // Auto-halt on DEAD
+    if (health.overallStatus === 'DEAD') {
+      bus.emit('system:halt', { reason: 'System health DEAD — all circuit breakers open' });
+    }
+  });
+
+  bus.on('social:signal', (signal) => {
+    logger.info('Social signal', {
+      tokenCA: signal.tokenCA,
+      source: signal.source,
+      sentiment: signal.sentiment.toFixed(2),
+      kolMentions: signal.kolMentions,
+      hypeCycle: signal.hypeCycle,
+      socialScore: signal.socialScore,
+    });
+  });
+
+  bus.on('deployer:analyzed', (profile) => {
+    logger.debug('Deployer analyzed', {
+      address: profile.address.slice(0, 8) + '...',
+      tier: profile.tier,
+      reputation: profile.reputationScore,
+      totalLaunches: profile.totalLaunches,
+    });
+  });
+
+  bus.on('simulation:complete', (result) => {
+    logger.debug('Pool simulation', {
+      tokenCA: result.tokenCA,
+      exitLiquiditySOL: result.exitLiquiditySOL.toFixed(2),
+      sandwichRisk: result.sandwichRisk.toFixed(1),
+      holderDist: result.holderDistribution,
+      recommendation: result.recommendation,
+    });
+  });
+
   // 7. Start ingestion streams (with backup connection for failover)
   lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
   walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
@@ -672,18 +1025,27 @@ async function boot(): Promise<void> {
 
   // 8. Final status banner
   logger.info('════════════════════════════════════════════');
-  logger.info('  TRADING ENGINE v5.0 — COPY TRADE ACTIVE');
+  logger.info('  TRADING ENGINE v6.0 — FULLY AUTONOMOUS');
   logger.info('════════════════════════════════════════════');
   logger.info(`  STATUS: ACTIVE`);
   logger.info(`  MODE: ${cfg.isPaperMode ? 'PAPER' : 'LIVE'}`);
   logger.info(`  WALLETS: ${walletRegistry.count()}`);
   logger.info(`  DEPLOYERS: ${deployerRegistry.count()}`);
+  logger.info(`  DEPLOYER INTEL: ${deployerIntel ? 'ACTIVE' : 'N/A'}`);
   logger.info(`  PAPER TRADES: ${gateStatus.completedTrades}/${gateStatus.requiredTrades}`);
   logger.info(`  GATE: ${gateStatus.gateUnlocked ? 'UNLOCKED' : 'LOCKED'}`);
   logger.info(`  EDGES ENABLED: ${perfEngine.getReport().filter((e) => e.isEnabled).length}/7`);
   logger.info(`  AGGRESSION: ${equityCtrl.getAggressionLevel()}`);
   logger.info(`  EQUITY DD: ${equityCtrl.getMetrics().drawdownPct.toFixed(1)}%`);
   logger.info(`  JOURNAL: ${journal.count()} trades`);
+  logger.info('  ── ADVANCED ENGINES ──');
+  logger.info(`  ML MODEL: ${onlineLearner ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(`  HMM REGIME: ${regimeDetector?.getLatestSnapshot().currentRegime ?? 'N/A'}`);
+  logger.info(`  PORTFOLIO OPT: ${portfolioOptimizer ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(`  EXECUTION: ${executionEngine ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(`  ANTIFRAGILE: ${antifragileEngine?.getSystemHealth().overallStatus ?? 'N/A'}`);
+  logger.info(`  SOCIAL: ${socialEngine ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(`  SIMULATOR: ${simulator ? 'ACTIVE' : 'DISABLED'}`);
   logger.info('  ── COPY TRADE CONFIG ──');
   logger.info(`  MIN SWAP: ${cfg.MIN_COPY_SWAP_SOL} SOL`);
   logger.info(`  POSITION SIZE: ${(cfg.COPY_SIZE_PCT * 100).toFixed(0)}% of capital`);
@@ -691,16 +1053,29 @@ async function boot(): Promise<void> {
   logger.info(`  MAX HOLD: ${Math.round(cfg.COPY_MAX_HOLD_MS / 1000)}s`);
   logger.info(`  MAX CONCURRENT: ${cfg.MAX_CONCURRENT_POSITIONS}`);
   logger.info(`  MAX DAILY: ${cfg.MAX_TRADES_PER_DAY}`);
+  logger.info(`  KELLY FRACTION: ${cfg.KELLY_FRACTION}`);
+  logger.info(`  MEV PROTECTION: ${cfg.MEV_PROTECTION_ENABLED}`);
   logger.info('════════════════════════════════════════════');
 }
 
 async function stopAllStreams(): Promise<void> {
-  logger.info('Stopping all streams...');
+  logger.info('Stopping all streams and engines...');
   if (lpStream) await lpStream.stop();
   if (walletStream) await walletStream.stop();
   if (survivalEngine) survivalEngine.stop();
   if (copyTradeManager) copyTradeManager.stop();
-  logger.info('All streams stopped');
+  if (antifragileEngine) antifragileEngine.stop();
+  // Persist ML models on shutdown
+  if (onlineLearner) {
+    try { onlineLearner.save(); } catch { /* ignore */ }
+  }
+  if (regimeDetector) {
+    try { regimeDetector.save(); } catch { /* ignore */ }
+  }
+  if (deployerIntel) {
+    try { deployerIntel.save(); } catch { /* ignore */ }
+  }
+  logger.info('All streams and engines stopped');
 }
 
 async function shutdown(): Promise<void> {

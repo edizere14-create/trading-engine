@@ -7,7 +7,7 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest --forceExit --detectOpenHandles",
     "journal:query": "ts-node src/journal/journalQuery.ts",
     "factors:report": "ts-node src/factors/factorReport.ts",
     "replay:run": "ts-node src/replay/replaySimulator.ts",

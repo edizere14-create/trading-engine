@@ -297,3 +297,48 @@ export interface WalletPerformanceStats {
   isCoolingDown: boolean;       // temporarily stop copying after streak losses
   cooldownUntil?: Date;
 }
+
+// ══════════════════════════════════════════════════════════════
+//  ADVANCED ENGINE TYPES
+//  Note: canonical types are defined in each module. Below are
+//  the shared interfaces used across modules via the event bus.
+// ══════════════════════════════════════════════════════════════
+
+// ── REGIME TYPES ──────────────────────────────────────────
+
+export type HMMRegimeState = 'RISK_ON' | 'NEUTRAL' | 'RISK_OFF' | 'CRISIS';
+
+// ── PORTFOLIO TYPES ───────────────────────────────────────
+
+export type NarrativeType =
+  | 'DOG_META' | 'CAT_META' | 'AI_META' | 'POLITICS'
+  | 'DEFI' | 'GAMING' | 'CULTURE' | 'UNKNOWN';
+
+// ── EXECUTION TYPES ───────────────────────────────────────
+
+export type ExecutionStrategy = 'IMMEDIATE' | 'TWAP' | 'ICEBERG' | 'VWAP';
+export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'FAILED' | 'TIMEOUT';
+
+// ── ANTIFRAGILE TYPES ─────────────────────────────────────
+
+export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+export type SystemHealthState = 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'DEAD';
+
+// ── SOCIAL SIGNAL TYPES ───────────────────────────────────
+
+export type HypeCyclePhase =
+  | 'DISCOVERY' | 'EARLY_MOMENTUM' | 'PEAK_HYPE'
+  | 'PLATEAU' | 'DECLINE';
+
+// ── SIMULATION TYPES ──────────────────────────────────────
+
+export interface SimulationResult {
+  poolAddress: string;
+  tokenCA: string;
+  exitLiquiditySOL: number;
+  liquidityScore: number;
+  sandwichRisk: number;
+  holderDistribution: 'HEALTHY' | 'CONCENTRATED' | 'WHALE_DOMINATED';
+  lpConcentrationRisk: number;
+  recommendation: 'GO' | 'REDUCE_SIZE' | 'USE_JITO' | 'ABORT';
+}

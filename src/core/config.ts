@@ -26,6 +26,31 @@ const envSchema = z.object({
   JITO_BLOCK_ENGINE_URL:   z.string().optional(),
   HELIUS_WEBHOOK_URL:      z.string().optional(),
 
+  // Private key for execution engine (base58 encoded)
+  WALLET_PRIVATE_KEY:      z.string().optional(),
+
+  // ML configuration
+  ML_LEARNING_RATE:        z.coerce.number().min(0.0001).max(0.1).default(0.01),
+  ML_MODEL_FILE:           z.string().default('./data/ml_model.json'),
+  ML_HMM_FILE:             z.string().default('./data/hmm_regime.json'),
+
+  // Execution configuration
+  EXECUTION_MAX_RETRIES:   z.coerce.number().int().min(1).max(10).default(3),
+  EXECUTION_TIMEOUT_MS:    z.coerce.number().int().min(5000).default(30_000),
+  MEV_PROTECTION_ENABLED:  z.enum(['true', 'false']).default('true'),
+
+  // Deployer intelligence
+  DEPLOYER_INTEL_FILE:     z.string().default('./data/deployer_intelligence.json'),
+  DEPLOYER_MIN_REPUTATION: z.coerce.number().min(0).max(100).default(20),
+
+  // Social signals
+  SOCIAL_HYPE_THRESHOLD:   z.coerce.number().min(0).max(10).default(6),
+
+  // Portfolio optimizer
+  KELLY_FRACTION:          z.coerce.number().min(0.1).max(1.0).default(0.25),
+  MAX_PORTFOLIO_HEAT:      z.coerce.number().min(0.1).max(1.0).default(0.80),
+  MAX_NARRATIVE_EXPOSURE:  z.coerce.number().min(0.1).max(1.0).default(0.40),
+
   // File paths
   WEIGHTS_FILE:            z.string().default('./data/weights.json'),
   PAPER_TRADES_FILE:       z.string().default('./data/paperTrades.json'),
