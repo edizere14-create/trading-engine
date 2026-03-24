@@ -24,6 +24,7 @@ import { EquityCurveController } from './equity/equityCurveController';
 import { MicrostructureFeatureExtractor } from './microstructure/featureExtractor';
 import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
+import { TradeRecord } from './core/types';
 
 // ── NEW: Copy trade infrastructure ────────────────────────
 import { SwapSignalEvaluator } from './signals/swapSignalEvaluator';
@@ -503,6 +504,115 @@ async function boot(): Promise<void> {
       holdMs: Date.now() - position.entryTimestamp.getTime(),
       reBuyCount: position.reBuyCount,
     });
+
+    // ── Persist to journal.db so dashboard can display ──
+    const holdMs = Date.now() - position.entryTimestamp.getTime();
+    const journalEntry: JournalEntry = {
+      id: position.id,
+      mode: position.mode,
+      tokenCA: position.tokenCA,
+      ticker: position.tokenCA.slice(0, 6) + '...',
+      chain: 'SOLANA',
+      poolAddress: '',
+      entryTimestamp: position.entryTimestamp,
+      entryPriceSOL: position.entryPriceSOL,
+      entryPriceUSD: position.entryPriceSOL * currentSOLPrice,
+      entryLiquiditySOL: 0,
+      entryVolumeSOL: 0,
+      entryHolderCount: 0,
+      entrySmartWalletCount: position.sourceWallets.length,
+      entryBuyPressure: 0,
+      entrySlippage1K: 0,
+      entryMarketState: 'NORMAL',
+      entryRegime: 'NORMAL',
+      entryEMALayer: '',
+      signalTimingEdge: 0,
+      signalDeployerQuality: 0,
+      signalOrganicFlow: 0,
+      signalManipulationRisk: 0,
+      signalCoordinationStrength: position.sourceWallets.length > 1 ? 1 : 0,
+      signalSocialVelocity: 0,
+      signalTotalScore: 0,
+      signalConfidence: 0,
+      predictedWP: 0,
+      predictedEV: 0,
+      predictedMultiple: 0,
+      sizeR: 0,
+      sizeUSD: position.sizeUSD,
+      stopPriceSOL: 0,
+      maxHoldMs: position.maxHoldMs,
+      executionMode: 'COPY_TRADE',
+      deployerAddress: '',
+      deployerTier: 'B',
+      rugScore: 0,
+      sniperBlock0Pct: 0,
+      topHolderPct: 0,
+      lpLockDuration: 0,
+      exitTimestamp: new Date(),
+      exitPriceSOL: position.entryPriceSOL * (position.realizedMultiple ?? 1),
+      exitMode: position.exitReason ?? 'UNKNOWN',
+      exitReason: position.exitReason ?? 'UNKNOWN',
+      holdDurationMs: holdMs,
+      realizedMultiple: position.realizedMultiple,
+      realizedPnLUSD: pnlUSD,
+      realizedPnLR: position.sizeUSD > 0 ? pnlUSD / position.sizeUSD : 0,
+      outcome: position.outcome,
+      peakMultiple: position.peakPriceSOL && position.entryPriceSOL > 0
+        ? position.peakPriceSOL / position.entryPriceSOL : undefined,
+      edgesFired: ['COPY_TRADE'],
+      primaryEdge: 'COPY_TRADE',
+      notes: `Source: COPY_TRADE, Wallets: ${position.sourceWallets.length}, ReBuys: ${position.reBuyCount}`,
+    };
+    journal.insert(journalEntry);
+
+    // Record in paper gate for gate progression
+    if (position.mode === 'PAPER') {
+      const tradeRecord: TradeRecord = {
+        id: position.id,
+        mode: 'PAPER',
+        tokenCA: position.tokenCA,
+        ticker: position.tokenCA.slice(0, 6) + '...',
+        poolAddress: '',
+        entryPriceLamports: BigInt(Math.round(position.entryPriceSOL * 1e9)),
+        entryTimestamp: position.entryTimestamp,
+        exitTimestamp: new Date(),
+        exitPriceLamports: BigInt(Math.round(position.entryPriceSOL * (position.realizedMultiple ?? 1) * 1e9)),
+        exitMode: 'TIME_EXIT',
+        outcome: position.outcome ?? 'LOSS',
+        realizedMultiple: position.realizedMultiple ?? 0,
+        realizedPnLUSD: pnlUSD,
+        predictedWP: 0,
+        predictedEV: 0,
+        sizeR: 0,
+        sizeUSD: position.sizeUSD,
+        stopPriceLamports: BigInt(0),
+        signal: {
+          timingEdge: 0,
+          deployerQuality: 0,
+          organicFlow: 0,
+          manipulationRisk: 0,
+          coordinationStrength: position.sourceWallets.length > 1 ? 5 : 0,
+          socialVelocity: 0,
+          totalScore: 0,
+          confidence: 0,
+        },
+        rugRisk: 'LOW',
+        edgesFired: ['COPY_TRADE'],
+        marketState: 'NORMAL',
+        regime: 'NORMAL',
+        deployerTier: 'B',
+        maxHoldMs: position.maxHoldMs,
+        executionMode: 'SAFE',
+      };
+      paperGate.addTrade(tradeRecord);
+
+      // Log updated paper gate status
+      const gateStatus = paperGate.getStatus();
+      logger.info(`PAPER TRADES: ${gateStatus.completedTrades}/${gateStatus.requiredTrades}`, {
+        winRate: (gateStatus.actualWinRate * 100).toFixed(1) + '%',
+        ev: gateStatus.actualEV.toFixed(3),
+      });
+    }
 
     // Log running stats
     const stats = copyTradeManager!.getStats();

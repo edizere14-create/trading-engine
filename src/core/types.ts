@@ -14,7 +14,8 @@ export type EdgeName      =
   | 'MANIPULATION'
   | 'COORDINATION'
   | 'KOL'
-  | 'TELEGRAM';
+  | 'TELEGRAM'
+  | 'COPY_TRADE';
 
 export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
 export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT';

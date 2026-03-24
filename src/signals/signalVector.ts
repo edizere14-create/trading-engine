@@ -31,6 +31,7 @@ export class SignalVectorBuilder {
     COORDINATION: 0,
     KOL: 0,
     TELEGRAM: 0,
+    COPY_TRADE: 0,
   };
 
   setTimingEdge(detectionLagMs: number, dexScreenerLagMs: number): this {
