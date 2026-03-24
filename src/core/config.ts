@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Connection } from '@solana/web3.js';
 import { z } from 'zod';
 
