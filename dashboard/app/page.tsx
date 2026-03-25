@@ -13,6 +13,7 @@ interface Status {
   deployers: number;
   paperTrades: number;
   paperTradesTarget: number;
+  executedTrades?: number;
   gate: string;
   aggression: string;
   equityDD: string;
@@ -126,6 +127,8 @@ function StatusBanner({ status }: { status: Status }) {
   const pct = status.paperTradesTarget > 0
     ? Math.round((status.paperTrades / status.paperTradesTarget) * 100)
     : 0;
+  const executedTrades = status.executedTrades ?? status.paperTrades;
+  const avoidedTrades = Math.max(0, status.paperTrades - executedTrades);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -142,6 +145,9 @@ function StatusBanner({ status }: { status: Status }) {
             className="bg-terminal-yellow h-1.5 rounded-full transition-all"
             style={{ width: `${Math.min(pct, 100)}%` }}
           />
+        </div>
+        <div className="text-[10px] text-terminal-dim mt-1">
+          Exec: {executedTrades} | Avoided: {avoidedTrades}
         </div>
       </div>
       <StatusCell label="GATE" value={status.gate}

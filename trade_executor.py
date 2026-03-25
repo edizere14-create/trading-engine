@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import base64
 import json
 import os
@@ -1521,6 +1522,86 @@ def _run_demo_trades(dry_run: bool) -> None:
             execute_trade(token_ca, action, amount_sol, token_amount=token_amount)
 
 
+async def _run_advanced_autonomous_loop(
+    once: bool,
+    cycle_seconds_override: Optional[float] = None,
+    arb_size_override: Optional[float] = None,
+) -> int:
+    try:
+        from advanced_strategies import AdvancedAutonomousEngine, AdvancedStrategyConfig
+        from advanced_strategies.autonomous_runner import (
+            env_keywords,
+            env_kol_wallets,
+            env_token_list,
+        )
+    except Exception as exc:
+        print(
+            "Advanced strategies package is unavailable. "
+            f"Ensure advanced_strategies modules are present. Error: {exc}"
+        )
+        return 1
+
+    config = AdvancedStrategyConfig.from_env()
+    token_mints = env_token_list()
+    keywords = env_keywords()
+    kol_wallets = env_kol_wallets()
+    arb_size_sol = (
+        arb_size_override
+        if arb_size_override is not None
+        else _safe_float(os.getenv("ADVANCED_ARB_TRADE_SIZE_SOL"), 0.2)
+    )
+    cycle_seconds = (
+        cycle_seconds_override
+        if cycle_seconds_override is not None
+        else _safe_float(os.getenv("ADVANCED_CYCLE_SECONDS"), 12.0)
+    )
+
+    def _notify(message: str) -> None:
+        print(message)
+        send_telegram(message)
+
+    engine = AdvancedAutonomousEngine(config=config, notifier=_notify)
+
+    if once:
+        result = await engine.run_once(
+            token_mints=token_mints,
+            keywords=keywords,
+            kol_wallets=kol_wallets,
+            arb_trade_size_sol=arb_size_sol,
+        )
+        sentiment_count = len(result.get("sentiment", []))
+        momentum_count = sum(
+            1 for row in result.get("sentiment", []) if getattr(row, "should_momentum_buy", False)
+        )
+        arb_count = len(result.get("arbitrage", []))
+        profitable_arb = sum(
+            1 for row in result.get("arbitrage", []) if getattr(row, "profitable", False)
+        )
+        summary = (
+            "[ADVANCED] one-shot cycle complete\n"
+            f"tokens_scanned={len(token_mints)} sentiment_scored={sentiment_count} "
+            f"momentum_triggers={momentum_count}\n"
+            f"arb_candidates={arb_count} profitable_arb={profitable_arb}"
+        )
+        print(summary)
+        send_telegram(summary)
+        return 0
+
+    print(
+        "[ADVANCED] autonomous loop started\n"
+        f"tokens={len(token_mints)} cycle_seconds={cycle_seconds:.1f} "
+        f"arb_size_sol={arb_size_sol:.4f}"
+    )
+    await engine.run_forever(
+        token_mints=token_mints,
+        keywords=keywords,
+        kol_wallets=kol_wallets,
+        arb_trade_size_sol=arb_size_sol,
+        cycle_seconds=cycle_seconds,
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Trade executor with risk checks and optional dry run.")
     parser.add_argument("--dry-run", action="store_true", help="Preview trade outcomes without state writes.")
@@ -1529,12 +1610,41 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--amount-sol", type=float, help="SOL notional to spend/receive.")
     parser.add_argument("--token-amount", type=float, help="Token units for weighted entry/exit accounting.")
     parser.add_argument("--demo", action="store_true", help="Run built-in demo sequence.")
+    parser.add_argument(
+        "--advanced-autonomous",
+        action="store_true",
+        help="Run autonomous advanced strategy loop (LP sniper + sentiment + cross-DEX arb).",
+    )
+    parser.add_argument(
+        "--advanced-once",
+        action="store_true",
+        help="Run one advanced strategy cycle then exit.",
+    )
+    parser.add_argument(
+        "--advanced-cycle-seconds",
+        type=float,
+        help="Override cycle interval for advanced autonomous loop.",
+    )
+    parser.add_argument(
+        "--advanced-arb-size-sol",
+        type=float,
+        help="Override arbitrage notional in SOL for advanced loop.",
+    )
     return parser
 
 
 def run_cli() -> int:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.advanced_autonomous or args.advanced_once:
+        return asyncio.run(
+            _run_advanced_autonomous_loop(
+                once=args.advanced_once,
+                cycle_seconds_override=args.advanced_cycle_seconds,
+                arb_size_override=args.advanced_arb_size_sol,
+            )
+        )
 
     has_single_trade_args = args.token_ca is not None or args.amount_sol is not None
     if has_single_trade_args and (args.token_ca is None or args.amount_sol is None):
