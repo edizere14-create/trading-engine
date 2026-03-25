@@ -1,0 +1,33 @@
+module.exports = {
+  apps: [
+    {
+      name: 'trading-engine',
+      script: 'node_modules/ts-node/dist/bin.js',
+      args: 'src/index.ts',
+      cwd: 'C:\\trading-engine',
+      restart_delay: 5000,
+      max_restarts: 50,
+      autorestart: true,
+      watch: false,
+      exp_backoff_restart_delay: 1000,
+      max_memory_restart: '1G',
+      error_file: 'logs/pm2-error.log',
+      out_file: 'logs/pm2-out.log',
+      merge_logs: true,
+      time: true,
+    },
+    {
+      name: 'dashboard',
+      script: 'node_modules/next/dist/bin/next',
+      args: 'dev dashboard --port 3000',
+      cwd: 'C:\\trading-engine',
+      restart_delay: 3000,
+      autorestart: true,
+      watch: false,
+      error_file: 'logs/pm2-dashboard-error.log',
+      out_file: 'logs/pm2-dashboard-out.log',
+      merge_logs: true,
+      time: true,
+    },
+  ],
+};

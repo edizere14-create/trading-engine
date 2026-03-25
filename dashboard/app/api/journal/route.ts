@@ -1,25 +1,22 @@
 import { NextResponse } from 'next/server';
-import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
-const DB_PATH = path.resolve(process.cwd(), 'data', 'journal.db');
+const PAPER_TRADES_PATH = path.resolve(process.cwd(), 'data', 'paperTrades.json');
 
 export async function GET() {
   try {
-    const SQL = await initSqlJs();
-    const fileBuffer = fs.readFileSync(DB_PATH);
-    const db = new SQL.Database(fileBuffer);
-    const stmt = db.prepare('SELECT * FROM trades ORDER BY entryTimestamp DESC LIMIT 100');
-    const rows: Record<string, unknown>[] = [];
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject() as Record<string, unknown>);
-    }
-    stmt.free();
-    db.close();
-    return NextResponse.json({ trades: rows });
+    const raw = fs.readFileSync(PAPER_TRADES_PATH, 'utf-8');
+    const allTrades = JSON.parse(raw) as Record<string, unknown>[];
+
+    // Filter to only executed trades (not SKIPs), sorted newest first
+    const trades = allTrades
+      .filter((t) => t.decision !== 'SKIP' && t.outcome !== 'AVOIDED' && t.outcome !== 'AVOIDED_RUG')
+      .reverse();
+
+    return NextResponse.json({ trades });
   } catch (err) {
     return NextResponse.json({ trades: [], error: String(err) });
   }

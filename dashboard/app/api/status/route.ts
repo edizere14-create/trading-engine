@@ -45,6 +45,21 @@ export async function GET() {
     status.deployers = Array.isArray(data.deployers) ? data.deployers.length : 0;
   } catch { /* file missing */ }
 
+  // Read paper trade count directly from paperTrades.json (most reliable source)
+  try {
+    const ptPath = path.join(ROOT, 'data', 'paperTrades.json');
+    const pt = JSON.parse(fs.readFileSync(ptPath, 'utf-8'));
+    if (Array.isArray(pt)) {
+      const executed = pt.filter(
+        (t: { outcome?: string }) => t.outcome && t.outcome !== 'AVOIDED' && t.outcome !== 'AVOIDED_RUG'
+      );
+      status.paperTrades = executed.length;
+      status.journalCount = pt.length;
+    }
+  } catch (e) {
+    console.error('[status] paperTrades.json read error:', e);
+  }
+
   try {
     const content = fs.readFileSync(logPath, 'utf-8');
     const lines = content.trim().split('\n');
@@ -58,12 +73,6 @@ export async function GET() {
 
         if (msg.includes('MODE:')) {
           status.mode = msg.replace(/.*MODE:\s*/, '').trim();
-        } else if (msg.includes('PAPER TRADES:')) {
-          const match = msg.match(/(\d+)\/(\d+)/);
-          if (match) {
-            status.paperTrades = parseInt(match[1], 10);
-            status.paperTradesTarget = parseInt(match[2], 10);
-          }
         } else if (msg.includes('GATE:')) {
           status.gate = msg.replace(/.*GATE:\s*/, '').trim();
         } else if (msg.includes('AGGRESSION:')) {
@@ -72,9 +81,6 @@ export async function GET() {
           status.equityDD = msg.replace(/.*EQUITY DD:\s*/, '').trim();
         } else if (msg.includes('EDGES ENABLED:')) {
           status.edgesEnabled = msg.replace(/.*EDGES ENABLED:\s*/, '').trim();
-        } else if (msg.includes('JOURNAL:')) {
-          const jMatch = msg.match(/(\d+)\s*trades/);
-          if (jMatch) status.journalCount = parseInt(jMatch[1], 10);
         }
 
         // Stop once we find a complete status banner
