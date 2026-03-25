@@ -8,6 +8,7 @@ const envSchema = z.object({
   PRIMARY_RPC:             z.string().url('PRIMARY_RPC must be a valid URL'),
   BACKUP_RPC:              z.string().url('BACKUP_RPC must be a valid URL'),
   PAPER_MODE:              z.enum(['true', 'false']).default('true'),
+  AUTONOMOUS_ONLY:         z.enum(['true', 'false']).default('true'),
   INITIAL_CAPITAL_USD:     z.coerce.number().positive('INITIAL_CAPITAL_USD must be > 0'),
   MAX_TRADES_PER_DAY:      z.coerce.number().int().min(1).default(2),
   MAX_CONCURRENT_POSITIONS: z.coerce.number().int().min(1).default(3),
@@ -23,6 +24,8 @@ const envSchema = z.object({
   TELEGRAM_API_ID:         z.string().optional(),
   TELEGRAM_API_HASH:       z.string().optional(),
   TELEGRAM_SESSION:        z.string().optional(),
+  TELEGRAM_BOT_TOKEN:      z.string().optional(),
+  TELEGRAM_CHAT_ID:        z.string().optional(),
   JITO_BLOCK_ENGINE_URL:   z.string().optional(),
   HELIUS_WEBHOOK_URL:      z.string().optional(),
 
@@ -84,9 +87,11 @@ export type EnvConfig = z.infer<typeof envSchema>;
 
 export interface AppConfig extends EnvConfig {
   PAPER_MODE: 'true' | 'false';
+  AUTONOMOUS_ONLY: 'true' | 'false';
   connection: Connection;
   backupConnection: Connection;
   isPaperMode: boolean;
+  isAutonomousOnly: boolean;
 }
 
 function createConnection(rpcUrl: string): Connection {
@@ -116,6 +121,7 @@ export const config = {
       connection,
       backupConnection,
       isPaperMode: env.PAPER_MODE === 'true',
+      isAutonomousOnly: env.AUTONOMOUS_ONLY === 'true',
     };
   },
 };

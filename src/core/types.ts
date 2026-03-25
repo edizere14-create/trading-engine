@@ -220,7 +220,7 @@ export interface SurvivalSnapshot {
 
 // ── COPY TRADE TYPES ──────────────────────────────────────
 
-export type CopyTradeSource = 'SINGLE_WALLET' | 'CLUSTER' | 'MIRROR_SELL';
+export type CopyTradeSource = 'SINGLE_WALLET' | 'CLUSTER' | 'MIRROR_SELL' | 'AUTONOMOUS';
 export type WalletTier = 'S' | 'A' | 'B';
 
 export interface CopyTradeSignal {
@@ -238,6 +238,8 @@ export interface CopyTradeSignal {
   slot: number;
   score: number;                // computed signal quality 0–10
   confidence: number;           // 0–1
+  overrideSizeUSD?: number;     // optional model/risk-driven size override
+  overrideMaxHoldMs?: number;   // optional risk-engine hold override
 }
 
 export interface CopyPosition {

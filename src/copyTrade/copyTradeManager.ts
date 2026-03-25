@@ -115,20 +115,24 @@ export class CopyTradeManager {
 
     // Size calculation
     let sizeSOL = this.calculateSize(signal, survival);
-    const sizeUSD = sizeSOL * this.config.solPriceUSD;
+    if (typeof signal.overrideSizeUSD === 'number' && signal.overrideSizeUSD > 0) {
+      sizeSOL = signal.overrideSizeUSD / this.config.solPriceUSD;
+    }
+    let sizeUSD = sizeSOL * this.config.solPriceUSD;
 
     // Safety floor: never risk more than 5% of capital on one trade
     const maxSizeUSD = this.config.capitalUSD * 0.05;
     if (sizeUSD > maxSizeUSD) {
       sizeSOL = maxSizeUSD / this.config.solPriceUSD;
+      sizeUSD = sizeSOL * this.config.solPriceUSD;
     }
 
     // Build exit tiers — aggressive for memecoins
     const tiers = this.buildExitTiers();
 
     // Determine max hold — extend for clusters
-    let maxHoldMs = this.config.maxHoldMs;
-    if (signal.source === 'CLUSTER') {
+    let maxHoldMs = signal.overrideMaxHoldMs ?? this.config.maxHoldMs;
+    if (!signal.overrideMaxHoldMs && signal.source === 'CLUSTER') {
       maxHoldMs = Math.round(maxHoldMs * 1.5); // clusters have stronger signal, hold longer
     }
 
@@ -341,6 +345,9 @@ export class CopyTradeManager {
 
     // Record in wallet performance tracker
     for (const wallet of position.sourceWallets) {
+      if (wallet === 'AUTONOMOUS_ENGINE') {
+        continue;
+      }
       this.walletTracker.recordCopyResult(
         wallet,
         position.outcome!,

@@ -41,6 +41,7 @@ import { DeployerIntelligence } from './intelligence/deployerIntelligence';
 import { AntifragileEngine } from './antifragile/antifragileEngine';
 import { SocialSignalEngine } from './social/socialSignalEngine';
 import { OnChainSimulator } from './simulation/onChainSimulator';
+import { TelegramNotifier } from './notifications/telegramNotifier';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -62,6 +63,7 @@ async function boot(): Promise<void> {
 
   // 1. Config validation — fail fast
   const cfg = config.load();
+  const telegram = new TelegramNotifier(cfg.TELEGRAM_BOT_TOKEN, cfg.TELEGRAM_CHAT_ID);
 
   if (cfg.isPaperMode) {
     logger.warn('══════════════════════════════════════');
@@ -254,8 +256,12 @@ async function boot(): Promise<void> {
     }
 
     // ── On-Chain Simulation ──
+    let simulatedEntryPriceSOL = 0.001;
     if (simulator) {
       const simResult = await simulator.simulatePool(event.poolAddress, event.tokenCA);
+      if (simResult.reserveSOL > 0 && simResult.reserveToken > 0) {
+        simulatedEntryPriceSOL = simResult.reserveSOL / simResult.reserveToken;
+      }
       const sandwichRisk = simulator.estimateSandwichRisk(
         simResult.reserveSOL,
         cfg.INITIAL_CAPITAL_USD / currentSOLPrice * (cfg.COPY_SIZE_PCT),
@@ -365,6 +371,49 @@ async function boot(): Promise<void> {
       mlWinProb: mlWinProb.toFixed(3),
       regimeMultiplier: regimeMultiplier.toFixed(2),
     });
+
+    if (!cfg.isAutonomousOnly || !risk.tradeAllowed) {
+      return;
+    }
+
+    if (risk.sizeUSD < 1) {
+      logger.info('Autonomous trade blocked: size below minimum', {
+        tokenCA: event.tokenCA,
+        sizeUSD: risk.sizeUSD.toFixed(2),
+      });
+      return;
+    }
+
+    if (copyTradeManager!.hasPosition(event.tokenCA) || swapEvaluator.hasEmitted(event.tokenCA)) {
+      return;
+    }
+
+    const autonomousSignal = {
+      tokenCA: event.tokenCA,
+      source: 'AUTONOMOUS' as const,
+      triggerWallet: 'AUTONOMOUS_ENGINE',
+      walletTier: 'S' as const,
+      walletPnL30d: 0,
+      convictionSOL: risk.sizeUSD / Math.max(currentSOLPrice, 1),
+      clusterWallets: [] as string[],
+      clusterSize: 0,
+      totalClusterSOL: 0,
+      entryPriceSOL: Math.max(simulatedEntryPriceSOL, 0.000001),
+      timestamp: new Date(),
+      slot: event.slot,
+      score: Math.max(0, Math.min(10, signal.totalScore)),
+      confidence: signal.confidence,
+      overrideSizeUSD: risk.sizeUSD,
+      overrideMaxHoldMs: risk.maxHoldMs,
+    };
+
+    logger.info('Autonomous signal emitted', {
+      tokenCA: event.tokenCA,
+      sizeUSD: risk.sizeUSD.toFixed(2),
+      executionMode: risk.executionMode,
+      maxHoldMs: risk.maxHoldMs,
+    });
+    bus.emit('copy:signal', autonomousSignal);
   });
 
   bus.on('swap:detected', (event) => {
@@ -378,6 +427,16 @@ async function boot(): Promise<void> {
 
     // Feed into microstructure extractor (always — full data)
     microExtractor.addSwap(event);
+
+    // Keep autonomous positions marked-to-market from live swap prints.
+    if (copyTradeManager!.hasPosition(event.tokenCA)) {
+      copyTradeManager!.updatePrice(event.tokenCA, event.priceSOL);
+    }
+
+    // Autonomous-only mode disables wallet-copy entries.
+    if (cfg.isAutonomousOnly) {
+      return;
+    }
 
     // ── SELL HANDLING: mirror sells for open positions ──
     if (event.action === 'SELL' && copyTradeManager!.hasPosition(event.tokenCA)) {
@@ -441,7 +500,7 @@ async function boot(): Promise<void> {
     }
 
     // ── Deployer intelligence check ──
-    if (deployerIntel) {
+    if (deployerIntel && signal.source !== 'AUTONOMOUS') {
       // Try to identify deployer from the signal context
       const profile = deployerIntel.getProfile(signal.triggerWallet);
       if (profile && profile.tier === 'BLACKLIST') {
@@ -454,12 +513,21 @@ async function boot(): Promise<void> {
     const survival = survivalEngine!.getSnapshot();
 
     // ── Portfolio optimization sizing ──
-    if (portfolioOptimizer) {
+    if (portfolioOptimizer && signal.source !== 'AUTONOMOUS') {
       const regime = regimeDetector?.getLatestSnapshot().currentRegime ?? 'NEUTRAL';
       const narrative = portfolioOptimizer.classifyNarrative(signal.tokenCA, '');
+
+      // Cold-start: boost win probability floor during paper calibration
+      // Without historical data, ML returns ~0.5 → Kelly = 0% → no trades ever execute
+      // Use minimum 0.55 so paper trades can flow and the model can learn
+      const mlSamples = onlineLearner?.getModelStats().trainingSamples ?? 0;
+      const coldStartWinProb = mlSamples < 20
+        ? Math.max(signal.score / 10, 0.55)
+        : signal.score / 10;
+
       const sizing = portfolioOptimizer.calculateOptimalSize(
         cfg.INITIAL_CAPITAL_USD,
-        signal.score / 10,
+        coldStartWinProb,
         2.0,
         signal.tokenCA,
         narrative,
@@ -472,6 +540,7 @@ async function boot(): Promise<void> {
         logger.warn('Copy trade BLOCKED — portfolio optimizer rejected', {
           tokenCA: signal.tokenCA,
           reason: sizing.reason,
+          coldStart: mlSamples < 20,
         });
         return;
       }
@@ -497,6 +566,10 @@ async function boot(): Promise<void> {
       totalWeightedPnL: alert.totalWeightedPnL,
       windowSeconds: alert.windowSeconds,
     });
+
+    if (cfg.isAutonomousOnly) {
+      return;
+    }
 
     // ── CLUSTER = HIGHEST CONFIDENCE SIGNAL ──
     // If we already have a position, the re-buy handler covers it.
@@ -708,6 +781,9 @@ async function boot(): Promise<void> {
       reason: event.reason,
       resumeAt: event.resumeAt?.toISOString(),
     });
+    void telegram.send(
+      `SYSTEM HALT\nReason: ${event.reason}\nResume: ${event.resumeAt?.toISOString() ?? 'manual'}`
+    );
 
     // Stop all streams on halt
     // Close all copy positions in emergency
@@ -735,6 +811,14 @@ async function boot(): Promise<void> {
       maxHoldMs: position.maxHoldMs,
       stopLossPct: position.stopLossPct,
     });
+    const strategy = position.sourceWallets.includes('AUTONOMOUS_ENGINE') ? 'AUTONOMOUS' : 'COPY';
+    void telegram.send(
+      `[${position.mode}] ${strategy} OPEN\n` +
+      `Token: ${position.tokenCA}\n` +
+      `Size: ${position.sizeSOL.toFixed(4)} SOL ($${position.sizeUSD.toFixed(2)})\n` +
+      `Max Hold: ${Math.round(position.maxHoldMs / 1000)}s\n` +
+      `Stop: -${(position.stopLossPct * 100).toFixed(1)}%`
+    );
 
     // Record in survival engine as a pending trade
     const stats = copyTradeManager!.getStats();
@@ -779,6 +863,15 @@ async function boot(): Promise<void> {
       holdMs: Date.now() - position.entryTimestamp.getTime(),
       reBuyCount: position.reBuyCount,
     });
+    const strategy = position.sourceWallets.includes('AUTONOMOUS_ENGINE') ? 'AUTONOMOUS' : 'COPY';
+    void telegram.send(
+      `[${position.mode}] ${strategy} CLOSED\n` +
+      `Token: ${position.tokenCA}\n` +
+      `Outcome: ${position.outcome ?? 'UNKNOWN'}\n` +
+      `Multiple: ${(position.realizedMultiple ?? 0).toFixed(3)}x\n` +
+      `PnL: ${(position.realizedPnLSOL ?? 0).toFixed(4)} SOL ($${pnlUSD.toFixed(2)})\n` +
+      `Reason: ${position.exitReason ?? 'UNKNOWN'}`
+    );
 
     // ── Persist to journal.db so dashboard can display ──
     const holdMs = Date.now() - position.entryTimestamp.getTime();
@@ -1029,6 +1122,8 @@ async function boot(): Promise<void> {
   logger.info('════════════════════════════════════════════');
   logger.info(`  STATUS: ACTIVE`);
   logger.info(`  MODE: ${cfg.isPaperMode ? 'PAPER' : 'LIVE'}`);
+  logger.info(`  STRATEGY: ${cfg.isAutonomousOnly ? 'AUTONOMOUS_ONLY' : 'COPY_ENABLED'}`);
+  logger.info(`  TELEGRAM: ${telegram.isEnabled() ? 'ENABLED' : 'DISABLED'}`);
   logger.info(`  WALLETS: ${walletRegistry.count()}`);
   logger.info(`  DEPLOYERS: ${deployerRegistry.count()}`);
   logger.info(`  DEPLOYER INTEL: ${deployerIntel ? 'ACTIVE' : 'N/A'}`);
@@ -1056,6 +1151,15 @@ async function boot(): Promise<void> {
   logger.info(`  KELLY FRACTION: ${cfg.KELLY_FRACTION}`);
   logger.info(`  MEV PROTECTION: ${cfg.MEV_PROTECTION_ENABLED}`);
   logger.info('════════════════════════════════════════════');
+
+  // ── Periodic heartbeat: prevents dead man switch from killing engine during quiet periods ──
+  const heartbeatInterval = setInterval(() => {
+    if (antifragileEngine) {
+      antifragileEngine.heartbeat();
+    }
+  }, 60_000); // every 60s — well within the 120s timeout
+  heartbeatInterval.unref(); // don't prevent process exit
+  logger.info('Heartbeat interval started (60s)');
 }
 
 async function stopAllStreams(): Promise<void> {
