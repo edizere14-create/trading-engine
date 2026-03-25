@@ -1,6 +1,8 @@
 import { config } from './core/config';
 import { logger } from './core/logger';
 import { bus } from './core/eventBus';
+import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 import { WalletRegistry } from './registry/walletRegistry';
 import { DeployerRegistry } from './registry/deployerRegistry';
@@ -56,6 +58,34 @@ let deployerIntel: DeployerIntelligence | null = null;
 let socialEngine: SocialSignalEngine | null = null;
 let simulator: OnChainSimulator | null = null;
 
+function loadExecutionWallet(secret?: string): Keypair | null {
+  const trimmed = (secret ?? '').trim();
+  if (!trimmed) return null;
+
+  let decoded: Uint8Array;
+
+  if (trimmed.startsWith('[')) {
+    const parsed = JSON.parse(trimmed) as number[];
+    decoded = Uint8Array.from(parsed);
+  } else if (trimmed.includes(',')) {
+    decoded = Uint8Array.from(
+      trimmed
+        .split(',')
+        .map((v) => v.trim())
+        .filter(Boolean)
+        .map((v) => Number(v))
+    );
+  } else {
+    decoded = bs58.decode(trimmed);
+  }
+
+  if (decoded.length !== 64) {
+    throw new Error(`WALLET_PRIVATE_KEY decoded to ${decoded.length} bytes (expected 64)`);
+  }
+
+  return Keypair.fromSecretKey(decoded);
+}
+
 async function boot(): Promise<void> {
   logger.info('═══════════════════════════════════════════');
   logger.info('  TRADING ENGINE v4.1 — BOOTING');
@@ -64,6 +94,18 @@ async function boot(): Promise<void> {
   // 1. Config validation — fail fast
   const cfg = config.load();
   const telegram = new TelegramNotifier(cfg.TELEGRAM_BOT_TOKEN, cfg.TELEGRAM_CHAT_ID);
+  let executionWallet: Keypair | null = null;
+
+  if (!cfg.isPaperMode) {
+    executionWallet = loadExecutionWallet(cfg.WALLET_PRIVATE_KEY);
+    if (!executionWallet) {
+      logger.warn('LIVE mode active but WALLET_PRIVATE_KEY is missing; autonomous live executions are disabled');
+    } else {
+      logger.info('Execution wallet loaded', {
+        publicKey: executionWallet.publicKey.toBase58(),
+      });
+    }
+  }
 
   if (cfg.isPaperMode) {
     logger.warn('══════════════════════════════════════');
@@ -187,11 +229,18 @@ async function boot(): Promise<void> {
   executionEngine = new ExecutionEngine(
     cfg.connection,
     cfg.backupConnection,
-    cfg.JITO_BLOCK_ENGINE_URL
+    cfg.JITO_BLOCK_ENGINE_URL,
+    {
+      strictFillVerification: cfg.STRICT_FILL_VERIFICATION === 'true',
+      minFillRatio: cfg.EXECUTION_MIN_FILL_RATIO,
+      txFetchTimeoutMs: cfg.EXECUTION_TIMEOUT_MS,
+    }
   );
   logger.info('Execution engine initialized', {
     mevProtection: cfg.MEV_PROTECTION_ENABLED,
     maxRetries: cfg.EXECUTION_MAX_RETRIES,
+    strictFillVerification: cfg.STRICT_FILL_VERIFICATION,
+    minFillRatio: cfg.EXECUTION_MIN_FILL_RATIO,
   });
 
   // 5h. Deployer Intelligence — on-chain analysis replaces static JSON
@@ -546,6 +595,112 @@ async function boot(): Promise<void> {
       }
     }
 
+    if (signal.source === 'AUTONOMOUS' && !cfg.isPaperMode) {
+      if (!executionEngine || !executionWallet) {
+        logger.error('Autonomous execution blocked: execution engine or wallet unavailable', {
+          tokenCA: signal.tokenCA,
+        });
+        void telegram.send(
+          `AUTONOMOUS EXECUTION BLOCKED\nToken: ${signal.tokenCA}\nReason: wallet/execution engine unavailable`
+        );
+        return;
+      }
+
+      if (antifragileEngine && !antifragileEngine.canUseJupiter()) {
+        logger.warn('Autonomous execution blocked: Jupiter circuit is open', {
+          tokenCA: signal.tokenCA,
+        });
+        return;
+      }
+
+      const stats = copyTradeManager!.getStats();
+      if (survival.state === 'HALT') {
+        logger.warn('Autonomous execution blocked by survival HALT', { tokenCA: signal.tokenCA });
+        return;
+      }
+      if (copyTradeManager!.hasPosition(signal.tokenCA)) {
+        logger.debug('Autonomous execution skipped: already positioned', { tokenCA: signal.tokenCA });
+        return;
+      }
+      if (stats.openCount >= cfg.MAX_CONCURRENT_POSITIONS) {
+        logger.info('Autonomous execution blocked: max concurrent positions reached', {
+          tokenCA: signal.tokenCA,
+          openCount: stats.openCount,
+        });
+        return;
+      }
+      if (stats.tradesToday >= cfg.MAX_TRADES_PER_DAY) {
+        logger.info('Autonomous execution blocked: max daily trades reached', {
+          tokenCA: signal.tokenCA,
+          tradesToday: stats.tradesToday,
+        });
+        return;
+      }
+
+      const amountSOL = Math.max(
+        signal.overrideSizeUSD && signal.overrideSizeUSD > 0
+          ? signal.overrideSizeUSD / Math.max(currentSOLPrice, 1)
+          : signal.convictionSOL,
+        0.01
+      );
+
+      const urgency = signal.score >= 7 ? 'HIGH' : signal.score >= 5 ? 'MEDIUM' : 'LOW';
+      const simulation = await executionEngine.simulate(signal.tokenCA, 'BUY', amountSOL);
+      if (!simulation.passed) {
+        antifragileEngine?.recordJupiterFailure();
+        logger.warn('Autonomous execution blocked by pre-flight simulation', {
+          tokenCA: signal.tokenCA,
+          failReason: simulation.failReason,
+          amountSOL: amountSOL.toFixed(4),
+        });
+        void telegram.send(
+          `AUTONOMOUS EXECUTION BLOCKED\nToken: ${signal.tokenCA}\nReason: ${simulation.failReason ?? 'simulation failed'}`
+        );
+        return;
+      }
+
+      const plan = executionEngine.createExecutionPlan(
+        signal.tokenCA,
+        'BUY',
+        amountSOL,
+        simulation,
+        urgency
+      );
+      const result = await executionEngine.execute(plan, executionWallet);
+      if (!result.success) {
+        antifragileEngine?.recordJupiterFailure();
+        logger.warn('Autonomous execution failed', {
+          tokenCA: signal.tokenCA,
+          error: result.error,
+          fillRatio: result.fillRatio,
+          verified: result.fillVerified,
+        });
+        void telegram.send(
+          `AUTONOMOUS EXECUTION FAILED\nToken: ${signal.tokenCA}\nError: ${result.error ?? 'unknown'}`
+        );
+        return;
+      }
+
+      antifragileEngine?.recordJupiterSuccess();
+      antifragileEngine?.recordRPCSuccess(true);
+
+      logger.info('Autonomous execution confirmed', {
+        tokenCA: signal.tokenCA,
+        txSignature: result.txSignature,
+        fillRatio: result.fillRatio?.toFixed(3),
+        verified: result.fillVerified,
+        strategy: result.strategy,
+        amountSOL: amountSOL.toFixed(4),
+      });
+      void telegram.send(
+        `[LIVE] AUTONOMOUS EXECUTED\n` +
+        `Token: ${signal.tokenCA}\n` +
+        `Size: ${amountSOL.toFixed(4)} SOL\n` +
+        `Fill Ratio: ${(result.fillRatio ?? 0).toFixed(3)}\n` +
+        `Tx: ${result.txSignature ?? 'n/a'}`
+      );
+    }
+
     // Open the trade
     const opened = copyTradeManager!.openTrade(signal, survival);
     if (opened) {
@@ -555,6 +710,13 @@ async function boot(): Promise<void> {
       if (antifragileEngine) {
         antifragileEngine.heartbeat();
       }
+    } else if (signal.source === 'AUTONOMOUS' && !cfg.isPaperMode) {
+      logger.error('Autonomous signal failed to open a local position after execution checks', {
+        tokenCA: signal.tokenCA,
+      });
+      void telegram.send(
+        `AUTONOMOUS WARNING\nToken: ${signal.tokenCA}\nReason: local position tracking failed`
+      );
     }
   });
 
@@ -1068,15 +1230,27 @@ async function boot(): Promise<void> {
     }
   });
 
+  let lastHealthStatus = antifragileEngine?.getSystemHealth().overallStatus ?? 'HEALTHY';
   bus.on('health:changed', (health) => {
     logger.info('System health changed', {
       status: health.overallStatus,
       uptimeMs: health.uptimeMs,
     });
 
+    if (health.overallStatus !== lastHealthStatus) {
+      if (health.overallStatus === 'HEALTHY' && lastHealthStatus !== 'HEALTHY') {
+        void telegram.send(`SYSTEM RECOVERED\nPrevious: ${lastHealthStatus}\nCurrent: HEALTHY`);
+      } else if (health.overallStatus !== 'HEALTHY') {
+        void telegram.send(
+          `SYSTEM HEALTH ALERT\nStatus: ${health.overallStatus}\nUptime: ${Math.round(health.uptimeMs / 1000)}s`
+        );
+      }
+      lastHealthStatus = health.overallStatus;
+    }
+
     // Auto-halt on DEAD
     if (health.overallStatus === 'DEAD') {
-      bus.emit('system:halt', { reason: 'System health DEAD — all circuit breakers open' });
+      bus.emit('system:halt', { reason: 'System health DEAD - all circuit breakers open' });
     }
   });
 
@@ -1138,6 +1312,7 @@ async function boot(): Promise<void> {
   logger.info(`  HMM REGIME: ${regimeDetector?.getLatestSnapshot().currentRegime ?? 'N/A'}`);
   logger.info(`  PORTFOLIO OPT: ${portfolioOptimizer ? 'ACTIVE' : 'DISABLED'}`);
   logger.info(`  EXECUTION: ${executionEngine ? 'ACTIVE' : 'DISABLED'}`);
+  logger.info(`  EXEC WALLET: ${executionWallet ? executionWallet.publicKey.toBase58() : 'UNSET'}`);
   logger.info(`  ANTIFRAGILE: ${antifragileEngine?.getSystemHealth().overallStatus ?? 'N/A'}`);
   logger.info(`  SOCIAL: ${socialEngine ? 'ACTIVE' : 'DISABLED'}`);
   logger.info(`  SIMULATOR: ${simulator ? 'ACTIVE' : 'DISABLED'}`);
@@ -1160,6 +1335,30 @@ async function boot(): Promise<void> {
   }, 60_000); // every 60s — well within the 120s timeout
   heartbeatInterval.unref(); // don't prevent process exit
   logger.info('Heartbeat interval started (60s)');
+
+  const opsInterval = setInterval(() => {
+    if (executionEngine) {
+      const quality = executionEngine.getExecutionQuality();
+      logger.info('Execution quality snapshot', {
+        avgSlippageBps: quality.avgSlippageBps.toFixed(1),
+        avgImpactBps: quality.avgImpactBps.toFixed(1),
+        totalExecutions: quality.totalExecutions,
+        avgGrade: quality.avgGrade,
+      });
+    }
+    if (antifragileEngine) {
+      const health = antifragileEngine.getSystemHealth();
+      logger.info('Health snapshot', {
+        status: health.overallStatus,
+        rpcPrimary: health.rpcPrimary.status,
+        rpcBackup: health.rpcBackup.status,
+        jupiter: health.jupiterAPI.status,
+        helius: health.heliusWebsocket.status,
+      });
+    }
+  }, 300_000);
+  opsInterval.unref();
+  logger.info('Operations snapshot interval started (300s)');
 }
 
 async function stopAllStreams(): Promise<void> {

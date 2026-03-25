@@ -41,6 +41,8 @@ const envSchema = z.object({
   EXECUTION_MAX_RETRIES:   z.coerce.number().int().min(1).max(10).default(3),
   EXECUTION_TIMEOUT_MS:    z.coerce.number().int().min(5000).default(30_000),
   MEV_PROTECTION_ENABLED:  z.enum(['true', 'false']).default('true'),
+  STRICT_FILL_VERIFICATION: z.enum(['true', 'false']).default('true'),
+  EXECUTION_MIN_FILL_RATIO: z.coerce.number().min(0.1).max(1).default(0.70),
 
   // Deployer intelligence
   DEPLOYER_INTEL_FILE:     z.string().default('./data/deployer_intelligence.json'),

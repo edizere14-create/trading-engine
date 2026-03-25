@@ -13,8 +13,13 @@
  * 7. Unified TypeScript execution (replaces Python executor)
  */
 
-import { Connection, PublicKey, VersionedTransaction, TransactionMessage, Keypair } from '@solana/web3.js';
-import { bus } from '../core/eventBus';
+import {
+  Connection,
+  Keypair,
+  ParsedTransactionWithMeta,
+  ParsedTransactionMeta,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import { logger } from '../core/logger';
 import axios from 'axios';
 
@@ -77,7 +82,17 @@ export interface ExecutionResult {
   executionTimeMs: number;
   strategy: ExecutionStrategy;
   jitoUsed: boolean;
+  expectedFillAmount?: number;
+  fillRatio?: number;
+  fillVerified?: boolean;
+  verificationError?: string;
   error?: string;
+}
+
+export interface ExecutionEngineOptions {
+  strictFillVerification?: boolean;
+  minFillRatio?: number;
+  txFetchTimeoutMs?: number;
 }
 
 export interface TCAReport {
@@ -107,6 +122,15 @@ interface JupiterQuote {
   routePlan: { swapInfo: { ammKey: string; label: string; inputMint: string; outputMint: string; feeAmount: string }; percent: number }[];
 }
 
+interface FillVerificationResult {
+  verified: boolean;
+  actualOutAmount: number;
+  fillRatio: number;
+  executedPriceSOL: number;
+  feeSOL: number;
+  reason?: string;
+}
+
 // ── EXECUTION ENGINE ──────────────────────────────────────
 
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -116,6 +140,9 @@ export class ExecutionEngine {
   private connection: Connection;
   private backupConnection: Connection;
   private jitoEndpoint: string | null;
+  private strictFillVerification: boolean;
+  private minFillRatio: number;
+  private txFetchTimeoutMs: number;
   private tcaHistory: TCAReport[] = [];
   private executionHistory: ExecutionResult[] = [];
 
@@ -127,11 +154,15 @@ export class ExecutionEngine {
   constructor(
     connection: Connection,
     backupConnection: Connection,
-    jitoEndpoint?: string
+    jitoEndpoint?: string,
+    options?: ExecutionEngineOptions
   ) {
     this.connection = connection;
     this.backupConnection = backupConnection;
     this.jitoEndpoint = jitoEndpoint ?? null;
+    this.strictFillVerification = options?.strictFillVerification ?? true;
+    this.minFillRatio = options?.minFillRatio ?? 0.7;
+    this.txFetchTimeoutMs = options?.txFetchTimeoutMs ?? 15_000;
   }
 
   // ── PRE-FLIGHT SIMULATION ─────────────────────────────
@@ -310,6 +341,8 @@ export class ExecutionEngine {
         executionTimeMs: elapsed,
         strategy: plan.strategy,
         jitoUsed: plan.jitoProtection,
+        fillRatio: 0,
+        fillVerified: false,
         error: (err as Error).message,
       };
     }
@@ -352,17 +385,37 @@ export class ExecutionEngine {
       txSignature = await this.sendWithRetry(tx);
     }
 
+    const expectedFillAmount = parseInt(quoteResp.data.outAmount ?? '0', 10) || 0;
+    const verification = await this.verifyFill({
+      txSignature,
+      side: plan.side,
+      walletAddress: wallet.publicKey.toBase58(),
+      outputMint,
+      expectedOutAmount: expectedFillAmount,
+      expectedInSOL: plan.amountSOL,
+    });
+
+    if (this.strictFillVerification && !verification.verified) {
+      throw new Error(
+        `Fill verification failed (${plan.tokenCA}): ${verification.reason ?? 'unknown reason'}`
+      );
+    }
+
     const elapsed = Date.now() - startTime;
     const priceImpact = parseFloat(quoteResp.data.priceImpactPct ?? '0');
 
     return {
-      success: true,
+      success: verification.verified || !this.strictFillVerification,
       txSignature,
-      executedPrice: plan.amountSOL, // simplified
+      executedPrice: verification.executedPriceSOL,
       slippageBps: plan.maxSlippageBps,
       priceImpactBps: Math.round(priceImpact * 100),
-      fillAmount: parseInt(quoteResp.data.outAmount),
-      feeSOL: 0.000005,
+      fillAmount: verification.actualOutAmount,
+      expectedFillAmount,
+      fillRatio: verification.fillRatio,
+      fillVerified: verification.verified,
+      verificationError: verification.reason,
+      feeSOL: verification.feeSOL,
       executionTimeMs: elapsed,
       strategy: 'IMMEDIATE',
       jitoUsed: plan.jitoProtection,
@@ -512,6 +565,135 @@ export class ExecutionEngine {
     }
 
     throw lastError ?? new Error('All retry attempts failed');
+  }
+
+  private async verifyFill(params: {
+    txSignature: string;
+    side: 'BUY' | 'SELL';
+    walletAddress: string;
+    outputMint: string;
+    expectedOutAmount: number;
+    expectedInSOL: number;
+  }): Promise<FillVerificationResult> {
+    const parsed = await this.waitForParsedTransaction(params.txSignature);
+    if (!parsed?.meta) {
+      return {
+        verified: false,
+        actualOutAmount: 0,
+        fillRatio: 0,
+        executedPriceSOL: 0,
+        feeSOL: 0,
+        reason: 'transaction details unavailable',
+      };
+    }
+
+    if (parsed.meta.err) {
+      return {
+        verified: false,
+        actualOutAmount: 0,
+        fillRatio: 0,
+        executedPriceSOL: 0,
+        feeSOL: (parsed.meta.fee ?? 0) / 1e9,
+        reason: `transaction error: ${JSON.stringify(parsed.meta.err)}`,
+      };
+    }
+
+    const accountKeys = parsed.transaction.message.accountKeys.map((key) => key.pubkey.toBase58());
+    const walletIndex = accountKeys.findIndex((address) => address === params.walletAddress);
+    const preLamports = walletIndex >= 0 ? parsed.meta.preBalances[walletIndex] ?? 0 : 0;
+    const postLamports = walletIndex >= 0 ? parsed.meta.postBalances[walletIndex] ?? 0 : 0;
+    const feeSOL = (parsed.meta.fee ?? 0) / 1e9;
+
+    if (params.side === 'BUY') {
+      const outRawBigInt = this.getTokenDeltaRaw(parsed.meta, params.walletAddress, params.outputMint);
+      const actualOutAmount = this.bigintToNumber(outRawBigInt);
+      const fillRatio = params.expectedOutAmount > 0
+        ? actualOutAmount / params.expectedOutAmount
+        : 0;
+      const spentSOL = Math.max(0, (preLamports - postLamports) / 1e9);
+      const executedPriceSOL = actualOutAmount > 0 ? spentSOL / actualOutAmount : 0;
+      const verified = actualOutAmount > 0 && fillRatio >= this.minFillRatio;
+
+      return {
+        verified,
+        actualOutAmount,
+        fillRatio,
+        executedPriceSOL,
+        feeSOL,
+        reason: verified
+          ? undefined
+          : `fillRatio ${fillRatio.toFixed(3)} below minimum ${this.minFillRatio}`,
+      };
+    }
+
+    const outSOL = Math.max(0, (postLamports - preLamports) / 1e9);
+    const fillRatio = params.expectedInSOL > 0 ? outSOL / params.expectedInSOL : 0;
+    const verified = outSOL > 0;
+
+    return {
+      verified,
+      actualOutAmount: Math.round(outSOL * 1e9),
+      fillRatio,
+      executedPriceSOL: params.expectedInSOL > 0 ? outSOL / params.expectedInSOL : 0,
+      feeSOL,
+      reason: verified ? undefined : 'no SOL received on sell execution',
+    };
+  }
+
+  private async waitForParsedTransaction(signature: string): Promise<ParsedTransactionWithMeta | null> {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < this.txFetchTimeoutMs) {
+      const primary = await this.connection.getParsedTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+      if (primary?.meta) return primary;
+
+      const backup = await this.backupConnection.getParsedTransaction(signature, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0,
+      });
+      if (backup?.meta) return backup;
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return null;
+  }
+
+  private getTokenDeltaRaw(
+    meta: ParsedTransactionMeta,
+    walletAddress: string,
+    mint: string
+  ): bigint {
+    const pre = this.sumOwnedTokenBalance(meta.preTokenBalances, walletAddress, mint);
+    const post = this.sumOwnedTokenBalance(meta.postTokenBalances, walletAddress, mint);
+    return post - pre;
+  }
+
+  private sumOwnedTokenBalance(
+    balances: ParsedTransactionMeta['preTokenBalances'] | ParsedTransactionMeta['postTokenBalances'],
+    walletAddress: string,
+    mint: string
+  ): bigint {
+    if (!balances || balances.length === 0) return 0n;
+    return balances.reduce((sum, entry) => {
+      if (entry.mint !== mint) return sum;
+      if (entry.owner !== walletAddress) return sum;
+      try {
+        return sum + BigInt(entry.uiTokenAmount.amount);
+      } catch {
+        return sum;
+      }
+    }, 0n);
+  }
+
+  private bigintToNumber(value: bigint): number {
+    const max = BigInt(Number.MAX_SAFE_INTEGER);
+    const min = BigInt(Number.MIN_SAFE_INTEGER);
+    if (value > max) return Number.MAX_SAFE_INTEGER;
+    if (value < min) return Number.MIN_SAFE_INTEGER;
+    return Number(value);
   }
 
   // ── MEV ESTIMATION ──────────────────────────────────

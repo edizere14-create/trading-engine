@@ -149,6 +149,7 @@ export class AntifragileEngine {
 
   // System start time
   private startTime: Date = new Date();
+  private lastOverallStatus: SystemHealth['overallStatus'] = 'HEALTHY';
 
   constructor() {
     this.rpcPrimary = new CircuitBreaker('RPC_PRIMARY', 5, 30_000);
@@ -161,6 +162,7 @@ export class AntifragileEngine {
     // Heartbeat monitor
     this.heartbeatInterval = setInterval(() => this.checkHeartbeat(), 30_000);
     this.heartbeat();
+    this.lastOverallStatus = this.getSystemHealth().overallStatus;
     logger.info('AntifragileEngine started');
   }
 
@@ -183,17 +185,24 @@ export class AntifragileEngine {
 
   recordRPCSuccess(primary: boolean): void {
     (primary ? this.rpcPrimary : this.rpcBackup).recordSuccess();
+    this.checkSystemHealth();
   }
   recordRPCFailure(primary: boolean): void {
     (primary ? this.rpcPrimary : this.rpcBackup).recordFailure();
     this.checkSystemHealth();
   }
-  recordJupiterSuccess(): void { this.jupiterAPI.recordSuccess(); }
+  recordJupiterSuccess(): void {
+    this.jupiterAPI.recordSuccess();
+    this.checkSystemHealth();
+  }
   recordJupiterFailure(): void {
     this.jupiterAPI.recordFailure();
     this.checkSystemHealth();
   }
-  recordHeliusSuccess(): void { this.heliusWS.recordSuccess(); }
+  recordHeliusSuccess(): void {
+    this.heliusWS.recordSuccess();
+    this.checkSystemHealth();
+  }
   recordHeliusFailure(): void {
     this.heliusWS.recordFailure();
     this.checkSystemHealth();
@@ -419,6 +428,11 @@ export class AntifragileEngine {
 
   private checkSystemHealth(): void {
     const health = this.getSystemHealth();
+
+    if (health.overallStatus !== this.lastOverallStatus) {
+      this.lastOverallStatus = health.overallStatus;
+      bus.emit('health:changed', health);
+    }
 
     if (health.overallStatus === 'DEAD') {
       logger.error('SYSTEM DEAD — all circuit breakers open');
