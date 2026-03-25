@@ -3,16 +3,38 @@ import { SurvivalSnapshot, SurvivalState } from '../core/types';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
 
+interface SurvivalThresholds {
+  haltDailyLossPct: number;
+  haltWeeklyLossPct: number;
+  haltConsecutiveLosses: number;
+  defensiveDailyLossPct: number;
+  defensiveConsecutiveLosses: number;
+  cautionDailyLossPct: number;
+  cautionConsecutiveLosses: number;
+}
+
+const DEFAULT_THRESHOLDS: SurvivalThresholds = {
+  haltDailyLossPct: 20,
+  haltWeeklyLossPct: 40,
+  haltConsecutiveLosses: 4,
+  defensiveDailyLossPct: 15,
+  defensiveConsecutiveLosses: 3,
+  cautionDailyLossPct: 10,
+  cautionConsecutiveLosses: 2,
+};
+
 export class SurvivalEngine {
   private state: SurvivalState = 'NORMAL';
   private dailyPnLUSD = 0;
   private weeklyPnLUSD = 0;
   private consecutiveLosses = 0;
   private capitalUSD: number;
+  private thresholds: SurvivalThresholds;
   private cronTask: ScheduledTask | null = null;
 
-  constructor(initialCapitalUSD: number) {
+  constructor(initialCapitalUSD: number, thresholds?: Partial<SurvivalThresholds>) {
     this.capitalUSD = initialCapitalUSD;
+    this.thresholds = { ...DEFAULT_THRESHOLDS, ...(thresholds ?? {}) };
   }
 
   start(): void {
@@ -23,7 +45,10 @@ export class SurvivalEngine {
       this.reevaluateState();
     }, { timezone: 'UTC' });
 
-    logger.info('SurvivalEngine started', { capitalUSD: this.capitalUSD });
+    logger.info('SurvivalEngine started', {
+      capitalUSD: this.capitalUSD,
+      thresholds: this.thresholds,
+    });
   }
 
   stop(): void {
@@ -66,12 +91,16 @@ export class SurvivalEngine {
     const dailyPct = this.getDailyPnLPct();
     const weeklyPct = this.getWeeklyPnLPct();
 
-    // HALT: daily loss >20% OR weekly loss >40% OR 4+ consecutive losses
-    if (dailyPct < -20 || weeklyPct < -40 || this.consecutiveLosses >= 4) {
+    // HALT: configured hard-loss thresholds
+    if (
+      dailyPct < -this.thresholds.haltDailyLossPct ||
+      weeklyPct < -this.thresholds.haltWeeklyLossPct ||
+      this.consecutiveLosses >= this.thresholds.haltConsecutiveLosses
+    ) {
       this.state = 'HALT';
 
       if (prevState !== 'HALT') {
-        const isWeeklyHalt = weeklyPct < -40;
+        const isWeeklyHalt = weeklyPct < -this.thresholds.haltWeeklyLossPct;
         const resumeAt = new Date();
         if (isWeeklyHalt) {
           resumeAt.setDate(resumeAt.getDate() + 7);
@@ -85,12 +114,18 @@ export class SurvivalEngine {
         });
       }
     }
-    // DEFENSIVE: daily loss >15% OR 3 consecutive losses
-    else if (dailyPct < -15 || this.consecutiveLosses >= 3) {
+    // DEFENSIVE: configured defensive thresholds
+    else if (
+      dailyPct < -this.thresholds.defensiveDailyLossPct ||
+      this.consecutiveLosses >= this.thresholds.defensiveConsecutiveLosses
+    ) {
       this.state = 'DEFENSIVE';
     }
-    // CAUTION: daily loss >10% OR 2 consecutive losses
-    else if (dailyPct < -10 || this.consecutiveLosses >= 2) {
+    // CAUTION: configured caution thresholds
+    else if (
+      dailyPct < -this.thresholds.cautionDailyLossPct ||
+      this.consecutiveLosses >= this.thresholds.cautionConsecutiveLosses
+    ) {
       this.state = 'CAUTION';
     }
     // NORMAL

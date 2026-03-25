@@ -147,7 +147,18 @@ async function boot(): Promise<void> {
   const marketEngine = new MarketStateEngine();
   const slippageEngine = new SlippageEngine();
   const riskEngine = new RiskEngine();
-  survivalEngine = new SurvivalEngine(cfg.INITIAL_CAPITAL_USD);
+  const survivalThresholds = cfg.isPaperMode
+    ? {
+      haltDailyLossPct: 35,
+      haltWeeklyLossPct: 70,
+      haltConsecutiveLosses: 7,
+      defensiveDailyLossPct: 25,
+      defensiveConsecutiveLosses: 5,
+      cautionDailyLossPct: 15,
+      cautionConsecutiveLosses: 3,
+    }
+    : undefined;
+  survivalEngine = new SurvivalEngine(cfg.INITIAL_CAPITAL_USD, survivalThresholds);
   survivalEngine.start();
   const exitEngine = new ExitEngine();
   const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS);
@@ -252,7 +263,17 @@ async function boot(): Promise<void> {
   });
 
   // 5i. Antifragile Engine — circuit breakers + black swan detection
-  antifragileEngine = new AntifragileEngine();
+  antifragileEngine = new AntifragileEngine(
+    cfg.isPaperMode
+      ? {
+        correlatedDrawdownThreshold: 6,
+        correlatedDrawdownFatalThreshold: 8,
+        correlatedDrawdownWindowMs: 300_000,
+        massRugThreshold: 6,
+        massRugWindowMs: 600_000,
+      }
+      : undefined
+  );
   antifragileEngine.start();
   logger.info('Antifragile engine started', {
     health: antifragileEngine.getSystemHealth().overallStatus,
@@ -938,7 +959,27 @@ async function boot(): Promise<void> {
     });
   });
 
+  let haltInProgress = false;
+  let lastHaltReason = '';
+  let lastHaltAt = 0;
   bus.on('system:halt', (event) => {
+    const now = Date.now();
+    if (haltInProgress) {
+      logger.warn('Duplicate SYSTEM HALT suppressed (halt already in progress)', {
+        reason: event.reason,
+      });
+      return;
+    }
+    if (lastHaltReason === event.reason && now - lastHaltAt < 30_000) {
+      logger.warn('Duplicate SYSTEM HALT suppressed (same reason within 30s)', {
+        reason: event.reason,
+      });
+      return;
+    }
+    haltInProgress = true;
+    lastHaltReason = event.reason;
+    lastHaltAt = now;
+
     logger.error('SYSTEM HALT', {
       reason: event.reason,
       resumeAt: event.resumeAt?.toISOString(),
@@ -950,7 +991,11 @@ async function boot(): Promise<void> {
     // Stop all streams on halt
     // Close all copy positions in emergency
     copyTradeManager?.emergencyCloseAll(event.reason);
-    stopAllStreams();
+    void stopAllStreams().catch((err) => {
+      logger.error('Failed to stop streams during halt', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
   });
 
   bus.on('data:blind', (event) => {

@@ -18,6 +18,9 @@ interface Status {
   equityDD: string;
   edgesEnabled: string;
   journalCount: number;
+  lastHaltReason?: string | null;
+  lastHaltAt?: string | null;
+  haltCount10m?: number;
 }
 
 interface Trade {
@@ -38,6 +41,8 @@ interface LogEntry {
   timestamp: string;
   level: string;
   message: string;
+  reason?: string;
+  haltCount?: number;
   tokenCA?: string;
   liqSOL?: number;
   totalScore?: number;
@@ -96,6 +101,7 @@ export default function Dashboard() {
 
       {/* Status Banner */}
       {status && <StatusBanner status={status} />}
+      {status?.lastHaltReason && <HaltBanner status={status} />}
 
       {/* Two-column: Trades table + Live feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -164,6 +170,25 @@ function StatusCell({ label, value, color }: {
     <div className="bg-terminal-surface border border-terminal-border rounded p-2">
       <div className="text-[10px] text-terminal-dim uppercase tracking-widest">{label}</div>
       <div className={`text-sm font-bold ${colorClass[color]}`}>{value}</div>
+    </div>
+  );
+}
+
+function HaltBanner({ status }: { status: Status }) {
+  return (
+    <div className="bg-terminal-surface border border-terminal-red rounded p-2">
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="text-terminal-red font-bold tracking-wider">LAST HALT</span>
+        <span className="text-terminal-dim">
+          {status.lastHaltAt ? formatTime(status.lastHaltAt) : '--:--:--'}
+        </span>
+      </div>
+      <div className="text-terminal-text text-xs mt-1">
+        {status.lastHaltReason}
+      </div>
+      <div className="text-terminal-dim text-[10px] mt-1">
+        recent 10m: {status.haltCount10m ?? 0}
+      </div>
     </div>
   );
 }
@@ -280,6 +305,9 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
             <span className="text-terminal-dim">{formatTime(log.timestamp)}</span>{' '}
             <LogIcon message={log.message} />{' '}
             <span className="text-terminal-text">{truncMsg(log.message)}</span>
+            {log.haltCount && log.haltCount > 1 && (
+              <span className="text-terminal-red ml-1">x{log.haltCount}</span>
+            )}
             {log.liqSOL != null && (
               <span className="text-terminal-cyan ml-1">{log.liqSOL.toFixed(0)} SOL</span>
             )}
@@ -294,6 +322,8 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
 }
 
 function LogIcon({ message }: { message: string }) {
+  if (message.includes('SYSTEM HALT'))
+    return <span className="text-terminal-red">!</span>;
   if (message.includes('Pool') || message.includes('pool'))
     return <span className="text-terminal-cyan">●</span>;
   if (message.includes('Signal'))

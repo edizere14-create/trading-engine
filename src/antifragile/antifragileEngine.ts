@@ -59,6 +59,14 @@ export interface RegimeParameters {
   minConfidence: number;
 }
 
+export interface AntifragileOptions {
+  correlatedDrawdownThreshold: number;
+  correlatedDrawdownFatalThreshold: number;
+  correlatedDrawdownWindowMs: number;
+  massRugThreshold: number;
+  massRugWindowMs: number;
+}
+
 // ── CIRCUIT BREAKER ───────────────────────────────────────
 
 class CircuitBreaker {
@@ -146,16 +154,25 @@ export class AntifragileEngine {
   private lastHeartbeat: Date = new Date();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private readonly MAX_HEARTBEAT_GAP_MS = 120_000; // 2 minutes
+  private options: AntifragileOptions;
 
   // System start time
   private startTime: Date = new Date();
   private lastOverallStatus: SystemHealth['overallStatus'] = 'HEALTHY';
 
-  constructor() {
+  constructor(options?: Partial<AntifragileOptions>) {
     this.rpcPrimary = new CircuitBreaker('RPC_PRIMARY', 5, 30_000);
     this.rpcBackup = new CircuitBreaker('RPC_BACKUP', 5, 30_000);
     this.jupiterAPI = new CircuitBreaker('JUPITER_API', 3, 45_000);
     this.heliusWS = new CircuitBreaker('HELIUS_WS', 3, 60_000);
+    this.options = {
+      correlatedDrawdownThreshold: 3,
+      correlatedDrawdownFatalThreshold: 5,
+      correlatedDrawdownWindowMs: 300_000,
+      massRugThreshold: 2,
+      massRugWindowMs: 600_000,
+      ...(options ?? {}),
+    };
   }
 
   start(): void {
@@ -163,7 +180,7 @@ export class AntifragileEngine {
     this.heartbeatInterval = setInterval(() => this.checkHeartbeat(), 30_000);
     this.heartbeat();
     this.lastOverallStatus = this.getSystemHealth().overallStatus;
-    logger.info('AntifragileEngine started');
+    logger.info('AntifragileEngine started', { options: this.options });
   }
 
   stop(): void {
@@ -222,15 +239,18 @@ export class AntifragileEngine {
 
     // Check 1: Correlated drawdown — 3+ positions losing simultaneously
     const recentLossPositions = this.recentLosses
-      .filter(l => l.pnlPct < -10 && l.timestamp.getTime() > Date.now() - 300_000); // last 5 min
+      .filter(
+        (l) => l.pnlPct < -10 &&
+          l.timestamp.getTime() > Date.now() - this.options.correlatedDrawdownWindowMs
+      );
 
-    if (recentLossPositions.length >= 3) {
+    if (recentLossPositions.length >= this.options.correlatedDrawdownThreshold) {
       const event: BlackSwanEvent = {
         type: 'CORRELATED_DRAWDOWN',
-        severity: recentLossPositions.length >= 5 ? 'FATAL' : 'CRITICAL',
-        description: `${recentLossPositions.length} positions lost >10% in 5 minutes`,
+        severity: recentLossPositions.length >= this.options.correlatedDrawdownFatalThreshold ? 'FATAL' : 'CRITICAL',
+        description: `${recentLossPositions.length} positions lost >10% in ${Math.round(this.options.correlatedDrawdownWindowMs / 60_000)} minutes`,
         affectedPositions: recentLossPositions.map(l => l.tokenCA),
-        recommendedAction: recentLossPositions.length >= 5 ? 'HALT' : 'CLOSE_ALL',
+        recommendedAction: recentLossPositions.length >= this.options.correlatedDrawdownFatalThreshold ? 'HALT' : 'CLOSE_ALL',
         detectedAt: new Date(),
       };
 
@@ -262,13 +282,16 @@ export class AntifragileEngine {
 
     // Check 3: Mass rug — multiple positions hit stop loss within 10 min
     const stoppedOut = this.recentLosses
-      .filter(l => l.pnlPct <= -25 && l.timestamp.getTime() > Date.now() - 600_000);
+      .filter(
+        (l) => l.pnlPct <= -25 &&
+          l.timestamp.getTime() > Date.now() - this.options.massRugWindowMs
+      );
 
-    if (stoppedOut.length >= 2) {
+    if (stoppedOut.length >= this.options.massRugThreshold) {
       const event: BlackSwanEvent = {
         type: 'MASS_RUG',
         severity: 'CRITICAL',
-        description: `${stoppedOut.length} positions hit stop loss in 10 minutes`,
+        description: `${stoppedOut.length} positions hit stop loss in ${Math.round(this.options.massRugWindowMs / 60_000)} minutes`,
         affectedPositions: stoppedOut.map(l => l.tokenCA),
         recommendedAction: 'HALT',
         detectedAt: new Date(),

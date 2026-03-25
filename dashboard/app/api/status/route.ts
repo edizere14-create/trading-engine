@@ -15,6 +15,9 @@ interface StatusData {
   equityDD: string;
   edgesEnabled: string;
   journalCount: number;
+  lastHaltReason: string | null;
+  lastHaltAt: string | null;
+  haltCount10m: number;
 }
 
 export async function GET() {
@@ -32,6 +35,9 @@ export async function GET() {
     equityDD: '0.0%',
     edgesEnabled: '7/7',
     journalCount: 0,
+    lastHaltReason: null,
+    lastHaltAt: null,
+    haltCount10m: 0,
   };
 
   // Read wallet/deployer counts directly from data files
@@ -63,6 +69,7 @@ export async function GET() {
   try {
     const content = fs.readFileSync(logPath, 'utf-8');
     const lines = content.trim().split('\n');
+    const now = Date.now();
 
     // Parse from bottom up to get latest values
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -70,6 +77,18 @@ export async function GET() {
       try {
         const entry = JSON.parse(line);
         const msg: string = entry.message ?? '';
+        const ts: string | undefined = entry.timestamp;
+        const tsMs = ts ? Date.parse(ts) : NaN;
+
+        if (msg === 'SYSTEM HALT') {
+          if (!status.lastHaltReason) {
+            status.lastHaltReason = typeof entry.reason === 'string' ? entry.reason : 'unknown';
+            status.lastHaltAt = ts ?? null;
+          }
+          if (!Number.isNaN(tsMs) && now - tsMs <= 10 * 60_000) {
+            status.haltCount10m += 1;
+          }
+        }
 
         if (msg.includes('MODE:')) {
           status.mode = msg.replace(/.*MODE:\s*/, '').trim();
