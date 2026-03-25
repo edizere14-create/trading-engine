@@ -15,6 +15,7 @@ interface StatusData {
   equityDD: string;
   edgesEnabled: string;
   journalCount: number;
+  executedTrades: number;
   lastHaltReason: string | null;
   lastHaltAt: string | null;
   haltCount10m: number;
@@ -35,6 +36,7 @@ export async function GET() {
     equityDD: '0.0%',
     edgesEnabled: '7/7',
     journalCount: 0,
+    executedTrades: 0,
     lastHaltReason: null,
     lastHaltAt: null,
     haltCount10m: 0,
@@ -56,10 +58,13 @@ export async function GET() {
     const ptPath = path.join(ROOT, 'data', 'paperTrades.json');
     const pt = JSON.parse(fs.readFileSync(ptPath, 'utf-8'));
     if (Array.isArray(pt)) {
+      const completed = pt.filter((t: { outcome?: string }) => t.outcome !== undefined);
       const executed = pt.filter(
         (t: { outcome?: string }) => t.outcome && t.outcome !== 'AVOIDED' && t.outcome !== 'AVOIDED_RUG'
       );
-      status.paperTrades = executed.length;
+      // Keep this aligned with PaperTradeGate.getStatus().completedTrades
+      status.paperTrades = completed.length;
+      status.executedTrades = executed.length;
       status.journalCount = pt.length;
     }
   } catch (e) {
