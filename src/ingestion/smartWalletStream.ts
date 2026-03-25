@@ -18,11 +18,19 @@ const SWAP_PROGRAMS = new Set([
 const HEALTH_CHECK_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
+const EVENT_DEDUP_TTL_MS = 120_000;
+const EVENT_FINGERPRINT_TTL_MS = 10_000;
+const CLEANUP_INTERVAL_MS = 60_000;
 
 interface ClusterEntry {
   wallet: string;
   timestamp: number;
   pnl30d: number;
+}
+
+interface SubscriptionRef {
+  connection: Connection;
+  subId: number;
 }
 
 class ClusterDetector {
@@ -85,13 +93,16 @@ export class SmartWalletStream {
   private backupConnection: Connection | null;
   private activeConnection: Connection;
   private walletRegistry: WalletRegistry;
-  private subscriptions: number[] = [];
+  private subscriptions: SubscriptionRef[] = [];
   private clusterDetector: ClusterDetector;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private healthInterval: ReturnType<typeof setInterval> | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isStopped = false;
+  private recentSignatures: Map<string, number> = new Map();
+  private recentEventFingerprints: Map<string, number> = new Map();
+  private inFlightSignatures: Set<string> = new Set();
 
   constructor(connection: Connection, walletRegistry: WalletRegistry, backupConnection?: Connection) {
     this.primaryConnection = connection;
@@ -103,11 +114,17 @@ export class SmartWalletStream {
 
   async start(): Promise<void> {
     this.isStopped = false;
+    this.recentSignatures.clear();
+    this.recentEventFingerprints.clear();
+    this.inFlightSignatures.clear();
     await this.subscribe();
     this.startHealthCheck();
 
-    // Periodic cleanup of stale cluster entries every 60s
-    this.cleanupInterval = setInterval(() => this.clusterDetector.cleanup(), 60_000);
+    // Periodic cleanup for cluster state + dedupe cache
+    this.cleanupInterval = setInterval(() => {
+      this.clusterDetector.cleanup();
+      this.cleanupSignatureCache();
+    }, CLEANUP_INTERVAL_MS);
   }
 
   private async subscribe(): Promise<void> {
@@ -137,7 +154,10 @@ export class SmartWalletStream {
           },
           'confirmed'
         );
-        this.subscriptions.push(subId);
+        this.subscriptions.push({
+          connection: this.activeConnection,
+          subId,
+        });
       } catch (err) {
         logger.error('Wallet subscription failed', {
           wallet: wallet.address,
@@ -224,9 +244,29 @@ export class SmartWalletStream {
 
     if (!isSwap) return;
 
+    const dedupeKey = `${walletAddress}:${logs.signature}`;
+    const now = Date.now();
+    const seenAt = this.recentSignatures.get(dedupeKey);
+    if (seenAt && now - seenAt < EVENT_DEDUP_TTL_MS) {
+      return;
+    }
+    if (this.inFlightSignatures.has(dedupeKey)) {
+      return;
+    }
+    this.inFlightSignatures.add(dedupeKey);
+
     try {
       const event = await this.parseSwap(logs.signature, ctx.slot, walletAddress);
       if (event) {
+        const fingerprint = `${walletAddress}:${ctx.slot}:${event.tokenCA}:${event.action}:${event.amountSOL.toFixed(6)}`;
+        const seenFingerprintAt = this.recentEventFingerprints.get(fingerprint);
+        if (seenFingerprintAt && now - seenFingerprintAt < EVENT_FINGERPRINT_TTL_MS) {
+          this.recentSignatures.set(dedupeKey, now);
+          return;
+        }
+
+        this.recentSignatures.set(dedupeKey, now);
+        this.recentEventFingerprints.set(fingerprint, now);
         bus.emit('swap:detected', event);
 
         if (event.action === 'BUY') {
@@ -234,6 +274,7 @@ export class SmartWalletStream {
         }
 
         logger.info('Smart wallet swap detected', {
+          signature: logs.signature,
           wallet: walletAddress,
           tokenCA: event.tokenCA,
           action: event.action,
@@ -247,6 +288,8 @@ export class SmartWalletStream {
         wallet: walletAddress,
         err: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      this.inFlightSignatures.delete(dedupeKey);
     }
   }
 
@@ -323,10 +366,26 @@ export class SmartWalletStream {
     };
   }
 
+  private cleanupSignatureCache(): void {
+    const now = Date.now();
+    const cutoff = now - EVENT_DEDUP_TTL_MS;
+    const fingerprintCutoff = now - EVENT_FINGERPRINT_TTL_MS;
+    for (const [key, ts] of this.recentSignatures) {
+      if (ts < cutoff) {
+        this.recentSignatures.delete(key);
+      }
+    }
+    for (const [key, ts] of this.recentEventFingerprints) {
+      if (ts < fingerprintCutoff) {
+        this.recentEventFingerprints.delete(key);
+      }
+    }
+  }
+
   private async clearSubscriptions(): Promise<void> {
-    for (const subId of this.subscriptions) {
+    for (const sub of this.subscriptions) {
       try {
-        await this.activeConnection.removeOnLogsListener(subId);
+        await sub.connection.removeOnLogsListener(sub.subId);
       } catch {
         // Subscription may already be dead — ignore
       }

@@ -10,6 +10,7 @@ interface LogEntry {
   message: string;
   reason?: string;
   haltCount?: number;
+  count?: number;
   tokenCA?: string;
   deployer?: string;
   liqSOL?: number;
@@ -31,6 +32,7 @@ export async function GET() {
 
     const entries: LogEntry[] = [];
     const haltDedup = new Map<string, { timestampMs: number; index: number }>();
+    const eventDedup = new Map<string, { timestampMs: number; index: number }>();
     const relevant = [
       'Pool detected',
       'New pool detected',
@@ -57,12 +59,12 @@ export async function GET() {
       try {
         const parsed = JSON.parse(line);
         const msg: string = parsed.message ?? '';
+        const timestampMs = Date.parse(parsed.timestamp ?? '') || Date.now();
 
         if (!relevant.some((r) => msg.includes(r))) continue;
 
         if (msg === 'SYSTEM HALT') {
           const reason = typeof parsed.reason === 'string' ? parsed.reason : 'unknown';
-          const timestampMs = Date.parse(parsed.timestamp ?? '') || Date.now();
           const key = reason;
           const prev = haltDedup.get(key);
           if (prev && timestampMs - prev.timestampMs <= 60_000) {
@@ -82,10 +84,20 @@ export async function GET() {
           continue;
         }
 
+        const eventKey = `${msg}|${parsed.tokenCA ?? ''}|${parsed.wallet ?? ''}|${parsed.action ?? ''}`;
+        const prior = eventDedup.get(eventKey);
+        if (prior && timestampMs - prior.timestampMs <= 10_000) {
+          const priorEntry = entries[prior.index];
+          priorEntry.count = (priorEntry.count ?? 1) + 1;
+          eventDedup.set(eventKey, { timestampMs, index: prior.index });
+          continue;
+        }
+
         entries.push({
           timestamp: parsed.timestamp,
           level: parsed.level,
           message: msg,
+          count: 1,
           tokenCA: parsed.tokenCA,
           deployer: parsed.deployer,
           liqSOL: parsed.liqSOL,
@@ -95,6 +107,7 @@ export async function GET() {
           action: parsed.action,
           amountSOL: parsed.amountSOL,
         });
+        eventDedup.set(eventKey, { timestampMs, index: entries.length - 1 });
       } catch {
         // Skip non-JSON lines
       }

@@ -43,6 +43,7 @@ interface LogEntry {
   message: string;
   reason?: string;
   haltCount?: number;
+  count?: number;
   tokenCA?: string;
   liqSOL?: number;
   totalScore?: number;
@@ -297,7 +298,7 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
       <div className="overflow-auto max-h-[400px] p-2 space-y-1">
         {logs.length === 0 && (
           <div className="text-terminal-dim text-xs text-center py-8">
-            Waiting for pool events…
+            Waiting for autonomous events…
           </div>
         )}
         {[...logs].reverse().map((log, i) => (
@@ -305,6 +306,9 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
             <span className="text-terminal-dim">{formatTime(log.timestamp)}</span>{' '}
             <LogIcon message={log.message} />{' '}
             <span className="text-terminal-text">{truncMsg(log.message)}</span>
+            {log.count && log.count > 1 && (
+              <span className="text-terminal-dim ml-1">x{log.count}</span>
+            )}
             {log.haltCount && log.haltCount > 1 && (
               <span className="text-terminal-red ml-1">x{log.haltCount}</span>
             )}
