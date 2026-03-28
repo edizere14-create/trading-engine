@@ -15,5 +15,19 @@ __pycache__/
 .git/
 tests/
 pytest-cache-files-*/
-*.txt
 *.tmp
+# Exclude specific txt files but keep requirements.txt
+build-out.txt
+build-err.txt
+tsc_out.txt
+tsc_output.txt
+tsc_exit.txt
+npm_install.txt
+npm_tw.txt
+sqljs-files.txt
+sqljs-pkg.txt
+port-check.txt
+port3000.txt
+port3k.txt
+tail_log.txt
+test_results.txt
