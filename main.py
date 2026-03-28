@@ -194,30 +194,27 @@ async def process_signal(signal_data: Dict[str, Any]) -> bool:
 
 async def signal_listener():
     """
-    Signal ingestion loop. Replace the placeholder with your actual
-    Telegram scraper, WebSocket feed, or Redis subscriber.
+    Signal ingestion loop — subscribes to Redis Pub/Sub 'incoming_signals'
+    channel and dispatches each signal as a concurrent task.
+    Falls back to polling if Redis is unavailable.
     """
-    logger.info("Signal Listener active — waiting for alpha...")
-    while True:
-        # ── Replace with actual ingestion logic ──
-        # Example sources:
-        #   signal = await telegram_scraper.get()
-        #   signal = await websocket_feed.recv()
-        #   signal = await redis_subscriber.get_message()
-        #
-        # Expected signal shape:
-        # {
-        #     "address": "0x...",        # Token contract address
-        #     "symbol": "MEME",          # Token symbol
-        #     "price": 0.001,            # Current price (for PnL arrival)
-        #     "tokenCA": "0x...",        # Same as address (for signal_filter)
-        #     "liqSOL": 100.0,           # Pool liquidity in SOL
-        #     "amountSOL": 5.0,          # Trade size
-        #     "latency_ms": 150,         # Signal latency
-        #     "buyTaxPct": 0.0,          # Buy tax percentage
-        # }
+    logger.info("Signal Listener active — subscribing to incoming_signals channel...")
 
-        await asyncio.sleep(SIGNAL_POLL_INTERVAL)
+    state = get_state_manager()
+    try:
+        async for signal_data in state.subscribe_signals():
+            if not isinstance(signal_data, dict):
+                logger.warning("Non-dict signal received, skipping: %s", type(signal_data))
+                continue
+
+            symbol = signal_data.get("symbol", "UNKNOWN")
+            logger.info("SIGNAL RECEIVED: %s via Redis Pub/Sub", symbol)
+            asyncio.create_task(process_signal(signal_data))
+    except Exception as exc:
+        logger.error("Signal listener fatal error: %s — falling back to poll mode", exc)
+        # Fallback: sleep loop keeps the coroutine alive so asyncio.gather doesn't exit
+        while True:
+            await asyncio.sleep(SIGNAL_POLL_INTERVAL)
 
 
 # ── Health Check ────────────────────────────────────────────────────────────

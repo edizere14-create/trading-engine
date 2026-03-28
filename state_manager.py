@@ -198,6 +198,36 @@ class StateManager:
             print(f"[STATE_MANAGER] Backtest fetch failed: {exc}")
             return []
 
+    # ── Signal Subscription (Pub/Sub) ───────────────────────────────
+
+    SIGNAL_CHANNEL = os.getenv("SIGNAL_CHANNEL", "incoming_signals")
+
+    async def subscribe_signals(self):
+        """
+        Async generator that yields parsed signal dicts from the
+        'incoming_signals' Redis Pub/Sub channel.
+        Reconnects automatically on failure.
+        """
+        while True:
+            try:
+                await self._ensure_connection()
+                pubsub = self._redis.pubsub()
+                await pubsub.subscribe(self.SIGNAL_CHANNEL)
+                print(f"[STATE_MANAGER] Subscribed to channel: {self.SIGNAL_CHANNEL}")
+
+                async for message in pubsub.listen():
+                    if message["type"] != "message":
+                        continue
+                    try:
+                        data = json.loads(message["data"])
+                        yield data
+                    except (json.JSONDecodeError, TypeError) as exc:
+                        print(f"[STATE_MANAGER] Bad signal payload: {exc}")
+                        continue
+            except Exception as exc:
+                print(f"[STATE_MANAGER] Signal subscription error: {exc}, reconnecting in 5s...")
+                await asyncio.sleep(5)
+
     def status(self) -> Dict[str, Any]:
         return {
             "redis_url_set": bool(self._redis_url),

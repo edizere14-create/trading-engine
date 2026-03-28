@@ -271,12 +271,17 @@ class TestL3EcosystemSniper:
         assert result is None  # 20% above avg < 50% threshold
 
     def test_spike_detection_triggered(self):
-        # Build baseline of ~10 ETH flows
-        for _ in range(5):
-            self.sniper.detect_spike("apechain", 10.0)
+        # Build varied baseline (natural bridge flow variance, mean ≈ 10)
+        baseline = [8.0, 12.0, 9.0, 11.0, 10.0, 13.0, 7.0, 11.0, 9.0, 12.0,
+                    8.0, 10.0, 11.0, 9.0, 10.0, 12.0, 8.0, 11.0, 10.0, 9.0]
+        for val in baseline:
+            self.sniper.detect_spike("apechain", val)
 
-        # Spike: 20 ETH = 100% above average → triggers
-        result = self.sniper.detect_spike("apechain", 20.0)
+        # Sustained spike: 8 consecutive 30 ETH flows fills WINDOW_SHORT
+        # short_mean=30, Z=(30-10)/σ ≈ 12.6, spike_pct=200%
+        for _ in range(7):
+            self.sniper.detect_spike("apechain", 30.0)
+        result = self.sniper.detect_spike("apechain", 30.0)
         assert result is not None
         assert isinstance(result, BridgeSpike)
         assert result.spike_pct >= 50.0

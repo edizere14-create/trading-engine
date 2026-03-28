@@ -299,7 +299,7 @@ class L3EcosystemSniper:
             self._detected_spikes.append(spike)
             print(
                 f"[L3_SNIPER] Bridge spike on {spike.chain_name}: "
-                f"{flow_amount_eth:.2f} ETH vs avg {avg:.2f} ETH "
+                f"{flow_amount_eth:.2f} ETH vs avg {mu:.2f} ETH "
                 f"(+{spike_pct:.1f}%, Z={z_score:.2f})"
             )
             return spike
