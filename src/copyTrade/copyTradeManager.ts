@@ -1,15 +1,15 @@
 import { randomUUID } from 'crypto';
 import {
-  CopyPosition,
-  CopyTradeSignal,
-  CopyExitTier,
+  TradePosition,
+  TradeSignal,
+  TakeProfitTier,
   SystemMode,
   SurvivalSnapshot,
 } from '../core/types';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
 
-interface CopyTradeConfig {
+interface PositionConfig {
   mode: SystemMode;
   capitalUSD: number;
   copySizePct: number;       // fraction of capital per trade
@@ -20,14 +20,14 @@ interface CopyTradeConfig {
   solPriceUSD: number;       // current SOL price (updated externally)
 }
 
-export class CopyTradeManager {
-  private positions: Map<string, CopyPosition> = new Map(); // tokenCA → position
-  private closedPositions: CopyPosition[] = [];
+export class PositionManager {
+  private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
+  private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
-  private config: CopyTradeConfig;
+  private config: PositionConfig;
   private monitorInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(config: CopyTradeConfig) {
+  constructor(config: PositionConfig) {
     this.config = config;
   }
 
@@ -44,7 +44,7 @@ export class CopyTradeManager {
       setInterval(() => { this.tradesToday = 0; }, 86_400_000);
     }, msUntilMidnight);
 
-    logger.info('CopyTradeManager started', {
+    logger.info('PositionManager started', {
       mode: this.config.mode,
       maxConcurrent: this.config.maxConcurrent,
       maxTradesPerDay: this.config.maxTradesPerDay,
@@ -65,18 +65,18 @@ export class CopyTradeManager {
   }
 
   /**
-   * Attempt to open a copy trade from a signal. Returns true if trade was opened.
+   * Attempt to open a trade from a signal. Returns true if trade was opened.
    */
-  openTrade(signal: CopyTradeSignal, survival: SurvivalSnapshot): boolean {
+  openTrade(signal: TradeSignal, survival: SurvivalSnapshot): boolean {
     // Gate: survival halt
     if (survival.state === 'HALT') {
-      logger.warn('Copy trade blocked: SURVIVAL_HALT', { tokenCA: signal.tokenCA });
+      logger.warn('Trade blocked: SURVIVAL_HALT', { tokenCA: signal.tokenCA });
       return false;
     }
 
     // Gate: max concurrent
     if (this.positions.size >= this.config.maxConcurrent) {
-      logger.info('Copy trade blocked: MAX_CONCURRENT', {
+      logger.info('Trade blocked: MAX_CONCURRENT', {
         tokenCA: signal.tokenCA,
         openPositions: this.positions.size,
       });
@@ -85,7 +85,7 @@ export class CopyTradeManager {
 
     // Gate: max trades per day
     if (this.tradesToday >= this.config.maxTradesPerDay) {
-      logger.info('Copy trade blocked: MAX_DAILY_TRADES', {
+      logger.info('Trade blocked: MAX_DAILY_TRADES', {
         tokenCA: signal.tokenCA,
         tradesToday: this.tradesToday,
       });
@@ -94,7 +94,7 @@ export class CopyTradeManager {
 
     // Gate: already have position in this token
     if (this.positions.has(signal.tokenCA)) {
-      logger.debug('Copy trade skipped: already positioned', { tokenCA: signal.tokenCA });
+      logger.debug('Trade skipped: already positioned', { tokenCA: signal.tokenCA });
       return false;
     }
 
@@ -117,7 +117,7 @@ export class CopyTradeManager {
 
     const maxHoldMs = signal.overrideMaxHoldMs ?? this.config.maxHoldMs;
 
-    const position: CopyPosition = {
+    const position: TradePosition = {
       id: randomUUID(),
       tokenCA: signal.tokenCA,
       mode: this.config.mode,
@@ -140,7 +140,7 @@ export class CopyTradeManager {
 
     bus.emit('copy:opened', position);
 
-    logger.info('Copy trade OPENED', {
+    logger.info('Trade OPENED', {
       id: position.id,
       tokenCA: signal.tokenCA,
       mode: this.config.mode,
@@ -223,11 +223,11 @@ export class CopyTradeManager {
     return this.positions.has(tokenCA);
   }
 
-  getOpenPositions(): CopyPosition[] {
+  getOpenPositions(): TradePosition[] {
     return Array.from(this.positions.values());
   }
 
-  getClosedPositions(): CopyPosition[] {
+  getClosedPositions(): TradePosition[] {
     return this.closedPositions;
   }
 
@@ -271,7 +271,7 @@ export class CopyTradeManager {
 
     bus.emit('copy:closed', position);
 
-    logger.info('Copy trade CLOSED', {
+    logger.info('Trade CLOSED', {
       id: position.id,
       tokenCA,
       reason,
@@ -307,7 +307,7 @@ export class CopyTradeManager {
     }
   }
 
-  private calculateSize(signal: CopyTradeSignal, survival: SurvivalSnapshot): number {
+  private calculateSize(signal: TradeSignal, survival: SurvivalSnapshot): number {
     const baseSizeUSD = this.config.capitalUSD * this.config.copySizePct;
     let sizeUSD = baseSizeUSD;
 
@@ -322,7 +322,7 @@ export class CopyTradeManager {
     return sizeUSD / this.config.solPriceUSD;
   }
 
-  private buildExitTiers(): CopyExitTier[] {
+  private buildExitTiers(): TakeProfitTier[] {
     return [
       { multiple: 1.3, pct: 0.40, triggered: false },  // Take 40% at 1.3x
       { multiple: 1.6, pct: 0.30, triggered: false },  // Take 30% at 1.6x

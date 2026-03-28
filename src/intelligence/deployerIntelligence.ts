@@ -9,7 +9,7 @@
  * 3. Deployer wallet graph analysis (funding patterns)
  * 4. Launch success/failure tracking
  * 5. Fresh wallet detection
- * 6. Dynamic tier updates from copy-trade outcomes
+ * 6. Dynamic tier updates from trade outcomes
  */
 
 import { Connection, PublicKey } from '@solana/web3.js';

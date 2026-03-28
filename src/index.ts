@@ -29,7 +29,7 @@ import { JournalEntry } from './journal/journalTypes';
 import { TradeRecord } from './core/types';
 
 // ── Trade infrastructure ──────────────────────────────────
-import { CopyTradeManager } from './copyTrade/copyTradeManager';
+import { PositionManager } from './copyTrade/copyTradeManager';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -46,7 +46,7 @@ import { TelegramNotifier } from './notifications/telegramNotifier';
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
 let survivalEngine: SurvivalEngine | null = null;
-let copyTradeManager: CopyTradeManager | null = null;
+let positionManager: PositionManager | null = null;
 let antifragileEngine: AntifragileEngine | null = null;
 let onlineLearner: OnlineLearner | null = null;
 let regimeDetector: HiddenMarkovRegimeDetector | null = null;
@@ -187,7 +187,7 @@ async function boot(): Promise<void> {
   const SMART_WALLET_MIN_SWAP_SOL = 0.05;
   const SMART_WALLET_SIGNAL_TTL_MS = 120_000;
 
-  copyTradeManager = new CopyTradeManager(
+  positionManager = new PositionManager(
     {
       mode: cfg.isPaperMode ? 'PAPER' : 'LIVE',
       capitalUSD: cfg.INITIAL_CAPITAL_USD,
@@ -199,7 +199,7 @@ async function boot(): Promise<void> {
       solPriceUSD: currentSOLPrice,
     }
   );
-  copyTradeManager.start();
+  positionManager.start();
 
   logger.info('Trade infrastructure initialized', {
     copySizePct: cfg.COPY_SIZE_PCT,
@@ -415,7 +415,7 @@ async function boot(): Promise<void> {
         2.0,
         event.tokenCA,
         narrative,
-        [],  // current positions — would need access to copyTradeManager internal state
+        [],  // current positions — would need access to positionManager internal state
         regime,
         signal.confidence
       );
@@ -448,7 +448,7 @@ async function boot(): Promise<void> {
       return;
     }
 
-    if (copyTradeManager!.hasPosition(event.tokenCA)) {
+    if (positionManager!.hasPosition(event.tokenCA)) {
       return;
     }
 
@@ -495,8 +495,8 @@ async function boot(): Promise<void> {
     microExtractor.addSwap(event);
 
     // Keep autonomous positions marked-to-market from live swap prints.
-    if (copyTradeManager!.hasPosition(event.tokenCA)) {
-      copyTradeManager!.updatePrice(event.tokenCA, event.priceSOL);
+    if (positionManager!.hasPosition(event.tokenCA)) {
+      positionManager!.updatePrice(event.tokenCA, event.priceSOL);
     }
 
     if (!event.isSmartWallet || event.action !== 'BUY' || event.amountSOL < SMART_WALLET_MIN_SWAP_SOL) {
@@ -538,7 +538,7 @@ async function boot(): Promise<void> {
       confidence: 0.6,
     };
 
-    logger.info('Copy trade signal generated', {
+    logger.info('Smart wallet trade signal generated', {
       tokenCA: signal.tokenCA,
       wallet: signal.triggerWallet,
       tier: signal.walletTier,
@@ -636,12 +636,12 @@ async function boot(): Promise<void> {
         return;
       }
 
-      const stats = copyTradeManager!.getStats();
+      const stats = positionManager!.getStats();
       if (survival.state === 'HALT') {
         logger.warn('Autonomous execution blocked by survival HALT', { tokenCA: signal.tokenCA });
         return;
       }
-      if (copyTradeManager!.hasPosition(signal.tokenCA)) {
+      if (positionManager!.hasPosition(signal.tokenCA)) {
         logger.debug('Autonomous execution skipped: already positioned', { tokenCA: signal.tokenCA });
         return;
       }
@@ -725,7 +725,7 @@ async function boot(): Promise<void> {
     }
 
     // Open the trade
-    const opened = copyTradeManager!.openTrade(signal, survival);
+    const opened = positionManager!.openTrade(signal, survival);
     if (opened) {
       // Record heartbeat for antifragile dead-man's switch
       if (antifragileEngine) {
@@ -943,7 +943,7 @@ async function boot(): Promise<void> {
 
     // Stop all streams on halt
     // Close all positions in emergency
-    copyTradeManager?.emergencyCloseAll(event.reason);
+    positionManager?.emergencyCloseAll(event.reason);
     void stopAllStreams().catch((err) => {
       logger.error('Failed to stop streams during halt', {
         error: err instanceof Error ? err.message : String(err),
@@ -978,7 +978,7 @@ async function boot(): Promise<void> {
       `Stop: -${(position.stopLossPct * 100).toFixed(1)}%`
     );
 
-    const stats = copyTradeManager!.getStats();
+    const stats = positionManager!.getStats();
     logger.info('Trade stats', {
       openCount: stats.openCount,
       closedCount: stats.closedCount,
@@ -1130,7 +1130,7 @@ async function boot(): Promise<void> {
     }
 
     // Log running stats
-    const stats = copyTradeManager!.getStats();
+    const stats = positionManager!.getStats();
     logger.info('Running trade stats', {
       totalClosed: stats.closedCount,
       wins: stats.wins,
@@ -1179,7 +1179,7 @@ async function boot(): Promise<void> {
 
     // Emergency response
     if (event.severity === 'FATAL') {
-      copyTradeManager?.emergencyCloseAll(`Black swan: ${event.type}`);
+      positionManager?.emergencyCloseAll(`Black swan: ${event.type}`);
     }
   });
 
@@ -1318,7 +1318,7 @@ async function stopAllStreams(): Promise<void> {
   if (lpStream) await lpStream.stop();
   if (walletStream) await walletStream.stop();
   if (survivalEngine) survivalEngine.stop();
-  if (copyTradeManager) copyTradeManager.stop();
+  if (positionManager) positionManager.stop();
   if (antifragileEngine) antifragileEngine.stop();
   // Persist ML models on shutdown
   if (onlineLearner) {

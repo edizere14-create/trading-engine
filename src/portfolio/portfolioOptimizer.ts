@@ -13,7 +13,7 @@
  */
 
 import { logger } from '../core/logger';
-import { CopyPosition } from '../core/types';
+import { TradePosition } from '../core/types';
 import { HMMRegime } from '../ml/regimeHMM';
 
 export interface PortfolioState {
@@ -103,7 +103,7 @@ export class PortfolioOptimizer {
     expectedMultiple: number,
     tokenCA: string,
     narrative: string,
-    currentPositions: CopyPosition[],
+    currentPositions: TradePosition[],
     regime: HMMRegime,
     signal_confidence: number
   ): SizingRecommendation {
@@ -169,7 +169,7 @@ export class PortfolioOptimizer {
   /**
    * Get full portfolio risk snapshot
    */
-  getPortfolioState(capitalUSD: number, positions: CopyPosition[], regime: HMMRegime): PortfolioState {
+  getPortfolioState(capitalUSD: number, positions: TradePosition[], regime: HMMRegime): PortfolioState {
     const deployed = positions.reduce((s, p) => s + p.sizeUSD, 0);
     const cash = capitalUSD - deployed;
 
@@ -243,7 +243,7 @@ export class PortfolioOptimizer {
 
   // ── PRIVATE METHODS ─────────────────────────────────────
 
-  private getCorrelationAdjustment(tokenCA: string, positions: CopyPosition[]): number {
+  private getCorrelationAdjustment(tokenCA: string, positions: TradePosition[]): number {
     if (positions.length === 0) return 1.0;
 
     // Check narrative overlap
@@ -273,7 +273,7 @@ export class PortfolioOptimizer {
   private getNarrativeAdjustment(
     narrative: string,
     capitalUSD: number,
-    positions: CopyPosition[]
+    positions: TradePosition[]
   ): number {
     let narrativeExposure = 0;
     for (const pos of positions) {
@@ -290,7 +290,7 @@ export class PortfolioOptimizer {
     return 1.0;
   }
 
-  private getHeatAdjustment(positions: CopyPosition[], capitalUSD: number): number {
+  private getHeatAdjustment(positions: TradePosition[], capitalUSD: number): number {
     const deployed = positions.reduce((s, p) => s + p.sizeUSD, 0);
     const deployedPct = deployed / capitalUSD;
 
@@ -300,7 +300,7 @@ export class PortfolioOptimizer {
     return 1.0;
   }
 
-  private getCashReserve(capitalUSD: number, positions: CopyPosition[]): number {
+  private getCashReserve(capitalUSD: number, positions: TradePosition[]): number {
     const deployed = positions.reduce((s, p) => s + p.sizeUSD, 0);
     return capitalUSD - deployed;
   }
@@ -314,7 +314,7 @@ export class PortfolioOptimizer {
     }
   }
 
-  private buildCorrelationMatrix(positions: CopyPosition[]): number[][] {
+  private buildCorrelationMatrix(positions: TradePosition[]): number[][] {
     const n = positions.length;
     if (n < 2) return [[1]];
 
@@ -378,7 +378,7 @@ export class PortfolioOptimizer {
     return count > 0 ? sum / count : 0;
   }
 
-  private getConcentrationRisk(positions: CopyPosition[], capitalUSD: number): number {
+  private getConcentrationRisk(positions: TradePosition[], capitalUSD: number): number {
     if (positions.length === 0) return 0;
 
     // Herfindahl index of position sizes

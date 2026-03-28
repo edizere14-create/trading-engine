@@ -220,12 +220,12 @@ export interface SurvivalSnapshot {
 
 // ── TRADE SIGNAL TYPES ───────────────────────────────────────
 
-export type CopyTradeSource = 'AUTONOMOUS' | 'SINGLE_WALLET' | 'CLUSTER';
+export type TradeSource = 'AUTONOMOUS' | 'SINGLE_WALLET' | 'CLUSTER';
 export type WalletTier = 'S' | 'A' | 'B';
 
-export interface CopyTradeSignal {
+export interface TradeSignal {
   tokenCA: string;
-  source: CopyTradeSource;
+  source: TradeSource;
   triggerWallet: string;
   walletTier: WalletTier;
   walletPnL30d: number;
@@ -242,7 +242,7 @@ export interface CopyTradeSignal {
   overrideMaxHoldMs?: number;   // optional risk-engine hold override
 }
 
-export interface CopyPosition {
+export interface TradePosition {
   id: string;
   tokenCA: string;
   mode: SystemMode;
@@ -254,7 +254,7 @@ export interface CopyPosition {
   reBuyCount: number;           // how many re-buys from tracked wallets
   maxHoldMs: number;
   stopLossPct: number;          // e.g. 0.30 = -30%
-  takeProfitTiers: CopyExitTier[];
+  takeProfitTiers: TakeProfitTier[];
   peakPriceSOL: number;
   lastCheckedAt: Date;
   status: 'OPEN' | 'CLOSED';
@@ -264,7 +264,7 @@ export interface CopyPosition {
   outcome?: 'WIN' | 'LOSS' | 'BREAKEVEN';
 }
 
-export interface CopyExitTier {
+export interface TakeProfitTier {
   multiple: number;
   pct: number;                  // fraction of position to exit
   triggered: boolean;

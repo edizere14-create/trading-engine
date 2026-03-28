@@ -11,8 +11,8 @@ import {
   TradeRecord,
   EdgePerformance,
   SurvivalSnapshot,
-  CopyTradeSignal,
-  CopyPosition,
+  TradeSignal,
+  TradePosition,
   TokenSafetyResult,
   SimulationResult,
 } from './types';
@@ -39,9 +39,9 @@ export interface EngineEvents {
   'system:halt':           { reason: string; resumeAt?: Date };
   'data:blind':            { source: string; message: string };
   // Trade signal events
-  'copy:signal':           CopyTradeSignal;
-  'copy:opened':           CopyPosition;
-  'copy:closed':           CopyPosition;
+  'copy:signal':           TradeSignal;
+  'copy:opened':           TradePosition;
+  'copy:closed':           TradePosition;
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────
