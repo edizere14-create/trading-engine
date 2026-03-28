@@ -15,6 +15,7 @@ from signal_filter import validate_signal, register_migration_event
 from dynamic_tuner import get_tuner, MarketRegime
 from market_correlator import get_correlator
 from intent_signer import get_signer
+from intent_executor import get_executor
 
 load_dotenv()
 
@@ -1160,6 +1161,48 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             print(msg)
             send_telegram(msg)
             return
+
+        # Intent Executor routing — Dutch Auction via solver network
+        if os.getenv("ARB_PRIVATE_KEY") and regime == MarketRegime.SAFE_MODE:
+            executor = get_executor()
+            intent_params = executor.get_intent_params(regime)
+            signer = get_signer()
+            signed = None
+            if signer.is_ready:
+                signed = signer.sign_swap_intent(
+                    token_in=pool.get("tokenIn", ""),
+                    token_out=token_ca,
+                    amount=int(amount_sol * 1e18),
+                    expected_output=int(pool.get("expectedOutput", 0)),
+                    regime=regime,
+                )
+            intent = executor.create_onchain_intent(
+                token_ca=token_ca,
+                action=action,
+                amount=amount_sol,
+                expected_output=pool.get("expectedOutput", 0),
+                regime=regime,
+                signed_intent=signed,
+            )
+            result = executor.broadcast_intent_to_resolver(intent)
+            if result["ok"]:
+                msg = (
+                    f"[INTENT][{regime}] Dutch Auction dispatched -> "
+                    f"preset={intent_params['preset']} "
+                    f"minReturn={intent_params['min_return_pct']}% "
+                    f"auction={intent_params['auction_duration_s']}s "
+                    f"label={intent_params['label']} "
+                    f"order_id={result.get('order_id')} "
+                    f"token={token_ca}"
+                )
+                print(msg)
+                send_telegram(msg)
+                return
+            else:
+                print(
+                    f"[INTENT][{regime}] Solver broadcast failed: {result.get('error')}. "
+                    f"Falling through to standard execution for {token_ca}"
+                )
 
     # Block low-liquidity entries only
     if action == "BUY" and pool["liqSOL"] < MIN_LIQUIDITY_SOL:
