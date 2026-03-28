@@ -1,0 +1,65 @@
+services:
+  # The Brain: Distributed locking and event bus
+  redis:
+    image: redis:7-alpine
+    container_name: eddyi_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: always
+
+  # The Streamer: WebSocket gateway for the dashboard
+  api_gateway:
+    build: .
+    command: uvicorn api_server:app --host 0.0.0.0 --port 8000 --workers 1
+    container_name: eddyi_api
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+
+  # The Dashboard: Next.js trading UI
+  dashboard:
+    build: .
+    command: npx next start dashboard --port 3000
+    container_name: eddyi_dashboard
+    depends_on:
+      - api_gateway
+    ports:
+      - "3000:3000"
+    env_file: .env
+    restart: always
+
+  # The Executioner: Core trading logic (main.py Master Brain)
+  trading_bot:
+    build: .
+    command: python main.py
+    container_name: eddyi_engine
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+
+volumes:
+  redis_data:
