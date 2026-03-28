@@ -1184,7 +1184,7 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
                 regime=regime,
                 signed_intent=signed,
             )
-            result = executor.broadcast_intent_to_resolver(intent)
+            result = asyncio.run(executor.broadcast_intent_to_resolver(intent))
             if result["ok"]:
                 msg = (
                     f"[INTENT][{regime}] Dutch Auction dispatched -> "
@@ -1192,7 +1192,7 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
                     f"minReturn={intent_params['min_return_pct']}% "
                     f"auction={intent_params['auction_duration_s']}s "
                     f"label={intent_params['label']} "
-                    f"order_id={result.get('order_id')} "
+                    f"order_hash={result.get('order_hash')} "
                     f"token={token_ca}"
                 )
                 print(msg)

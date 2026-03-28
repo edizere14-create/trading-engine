@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import asyncio
 
 # Ensure project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -109,7 +110,7 @@ def test_broadcast_no_url():
     ex = IntentExecutor()
     ex._resolver_url = ""
     intent = {"token": "0xABC", "action": "BUY"}
-    result = ex.broadcast_intent_to_resolver(intent)
+    result = asyncio.run(ex.broadcast_intent_to_resolver(intent))
     assert result["ok"] is False
     assert "not configured" in result["error"]
     print("PASS test_broadcast_no_url")
@@ -141,6 +142,26 @@ def test_status():
     print("PASS test_status")
 
 
+# ── 11. async broadcast with unreachable URL returns error ──────────────────
+def test_broadcast_unreachable():
+    ex = IntentExecutor()
+    ex._resolver_url = "http://127.0.0.1:1"  # unreachable port
+    ex._broadcast_timeout = 2
+    intent = {"token": "0xABC", "action": "BUY"}
+    result = asyncio.run(ex.broadcast_intent_to_resolver(intent))
+    assert result["ok"] is False
+    assert result["error"], f"Expected non-empty error, got: {result!r}"
+    print(f"PASS test_broadcast_unreachable (error={result['error']})")
+
+
+# ── 12. api_key included in config ──────────────────────────────────────────
+def test_api_key_config():
+    from intent_executor import INTENT_API_KEY
+    # Just verify the config field exists and is a string
+    assert isinstance(INTENT_API_KEY, str)
+    print("PASS test_api_key_config")
+
+
 if __name__ == "__main__":
     tests = [
         test_singleton,
@@ -153,6 +174,8 @@ if __name__ == "__main__":
         test_broadcast_no_url,
         test_min_return_per_regime,
         test_status,
+        test_broadcast_unreachable,
+        test_api_key_config,
     ]
     passed = 0
     for t in tests:

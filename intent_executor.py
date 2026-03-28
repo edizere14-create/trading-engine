@@ -14,11 +14,14 @@ import os
 import time
 from typing import Any, Dict, Optional
 
+import aiohttp
+
 from dynamic_tuner import MarketRegime
 
 # ── Config ──────────────────────────────────────────────────────────────────
 RESOLVER_URL = (os.getenv("INTENT_RESOLVER_URL") or "").strip()
 ARB_PRIVATE_KEY = (os.getenv("ARB_PRIVATE_KEY") or "").strip()
+INTENT_API_KEY = (os.getenv("INTENT_API_KEY") or "").strip()
 BROADCAST_TIMEOUT = int(os.getenv("INTENT_BROADCAST_TIMEOUT", 10))
 
 # ── Dutch Auction Presets ───────────────────────────────────────────────────
@@ -104,33 +107,56 @@ class IntentExecutor:
 
         return intent
 
-    def broadcast_intent_to_resolver(
-        self, intent: Dict[str, Any]
+    async def broadcast_intent_to_resolver(
+        self, signed_intent: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Submit the intent to the off-chain solver/resolver network.
-        Returns {"ok": True/False, "order_id": ..., "error": ...}.
+        Submit the signed EIP-712 intent to the solver network
+        (1inch Fusion / CoW Protocol on Arbitrum).
+        Returns {"ok": True/False, "order_hash": ..., "error": ...}.
         """
         if not self._resolver_url:
             return {
                 "ok": False,
                 "error": "INTENT_RESOLVER_URL not configured",
-                "intent": intent,
+                "intent": signed_intent,
             }
 
-        try:
-            import requests as _req
+        url = f"{self._resolver_url}/submit"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Api-Key": INTENT_API_KEY,
+        }
 
-            resp = _req.post(
-                self._resolver_url,
-                json=intent,
-                timeout=self._broadcast_timeout,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return {"ok": True, "order_id": data.get("order_id"), "data": data}
+        try:
+            timeout = aiohttp.ClientTimeout(total=self._broadcast_timeout)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=signed_intent, headers=headers) as resp:
+                    if resp.status in (200, 201):
+                        result = await resp.json()
+                        order_hash = result.get("orderHash", "")
+                        print(
+                            f"[INTENT] Intent Accepted: orderHash={order_hash}"
+                        )
+                        return {
+                            "ok": True,
+                            "order_hash": order_hash,
+                            "data": result,
+                        }
+                    else:
+                        error_text = await resp.text()
+                        print(
+                            f"[INTENT] Resolver Rejected: {resp.status} - {error_text}"
+                        )
+                        return {
+                            "ok": False,
+                            "error": f"HTTP {resp.status}: {error_text}",
+                            "intent": signed_intent,
+                        }
         except Exception as exc:
-            return {"ok": False, "error": str(exc), "intent": intent}
+            err_msg = str(exc) or type(exc).__name__
+            print(f"[INTENT] Broadcast Critical Failure: {err_msg}")
+            return {"ok": False, "error": err_msg, "intent": signed_intent}
 
     def status(self) -> Dict[str, Any]:
         """Return executor configuration summary."""
