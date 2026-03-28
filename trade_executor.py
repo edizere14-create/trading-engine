@@ -17,6 +17,8 @@ from market_correlator import get_correlator
 from intent_signer import get_signer
 from intent_executor import get_executor
 from sentinel import get_sentinel
+from state_manager import get_state_manager
+from pnl_logger import get_pnl_logger
 
 load_dotenv()
 
@@ -1125,6 +1127,19 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
         print(f"Invalid amount_sol: {amount_sol}")
         return
 
+    # Distributed lock — prevent double-trading across instances
+    try:
+        lock_result = asyncio.run(get_state_manager().acquire_trade_lock(token_ca))
+        if not lock_result.acquired:
+            print(
+                f"[STATE_MANAGER] Trade skipped: lock not acquired for {token_ca} "
+                f"(error={lock_result.error})"
+            )
+            return
+    except Exception as exc:
+        # Redis down -> proceed without lock (single-instance fallback)
+        print(f"[STATE_MANAGER] Lock unavailable ({exc}), proceeding without lock")
+
     sol_usd_price = get_sol_usd_price()
     trade_notional_usd = amount_sol * sol_usd_price
     allowed, reason = check_risk_limits(token_ca, action, trade_notional_usd)
@@ -1139,6 +1154,21 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
 
     pool = get_pool_info(token_ca)
     regime = get_tuner().get_regime()
+
+    # Broadcast trade attempt to dashboard
+    try:
+        asyncio.run(get_state_manager().broadcast_event(
+            event_type="trade_attempt",
+            data={
+                "token_ca": token_ca,
+                "action": action,
+                "amount_sol": amount_sol,
+                "notional_usd": trade_notional_usd,
+            },
+            regime=regime,
+        ))
+    except Exception:
+        pass  # Redis down -> dashboard miss is non-fatal
 
     # Profit Shield — pre-flight signal validation (all 5 gates)
     if action == "BUY":
@@ -1175,6 +1205,18 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             executor = get_executor()
             intent_params = executor.get_intent_params(regime)
             signer = get_signer()
+
+            # PnL Logger — capture arrival price (AMM quote) before signing
+            arrival_price = pool.get("expectedOutput", 0)
+            if arrival_price > 0:
+                get_pnl_logger().capture_arrival(
+                    token_ca=token_ca,
+                    action=action,
+                    arrival_price=arrival_price,
+                    amount=amount_sol,
+                    regime=regime,
+                )
+
             signed = None
             if signer.is_ready:
                 signed = signer.sign_swap_intent(
@@ -1195,15 +1237,44 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             result = asyncio.run(executor.broadcast_intent_to_resolver(intent))
             if result["ok"]:
                 # Track intent for sentinel dead man's switch cancellation
-                intent["order_hash"] = result.get("order_hash", "")
+                order_hash = result.get("order_hash", "")
+                intent["order_hash"] = order_hash
                 get_sentinel().track_intent(intent)
+
+                # PnL Logger — update arrival snapshot with order hash
+                if arrival_price > 0:
+                    pnl = get_pnl_logger()
+                    # Re-key pending arrival with actual order_hash
+                    for k, snap in list(pnl._pending.items()):
+                        if snap.token_ca == token_ca and snap.action == action:
+                            snap.order_hash = order_hash
+                            pnl._pending[order_hash] = pnl._pending.pop(k)
+                            break
+
+                # Broadcast intent dispatch to dashboard
+                try:
+                    asyncio.run(get_state_manager().broadcast_event(
+                        event_type="intent_dispatched",
+                        data={
+                            "token_ca": token_ca,
+                            "action": action,
+                            "amount_sol": amount_sol,
+                            "preset": intent_params["preset"],
+                            "min_return_pct": intent_params["min_return_pct"],
+                            "order_hash": order_hash,
+                        },
+                        regime=regime,
+                    ))
+                except Exception:
+                    pass
+
                 msg = (
                     f"[INTENT][{regime}] Dutch Auction dispatched -> "
                     f"preset={intent_params['preset']} "
                     f"minReturn={intent_params['min_return_pct']}% "
                     f"auction={intent_params['auction_duration_s']}s "
                     f"label={intent_params['label']} "
-                    f"order_hash={result.get('order_hash')} "
+                    f"order_hash={order_hash} "
                     f"token={token_ca}"
                 )
                 print(msg)
