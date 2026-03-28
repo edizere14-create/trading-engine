@@ -41,6 +41,7 @@ from advanced_strategies.l3_ecosystem_sniper import get_l3_sniper
 from advanced_strategies.whale_shadow import get_whale_tracker
 from advanced_strategies.intent_arbitrage import get_intent_arbitrage
 from auto_graduation import get_graduation_monitor
+from telegram_reporter import daily_report_loop
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s — %(message)s"
@@ -307,6 +308,7 @@ async def main():
         await asyncio.gather(
             signal_listener(),
             health_check_loop(),
+            daily_report_loop(),
         )
     except asyncio.CancelledError:
         logger.info("Engine shutting down (CancelledError)...")
