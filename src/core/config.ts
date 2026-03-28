@@ -64,6 +64,10 @@ const envSchema = z.object({
 
   // Liquidity
   MIN_LIQUIDITY_SOL:       z.coerce.number().min(0).default(50),
+  MIN_POOL_DEPTH_USD:      z.coerce.number().min(0).default(5000), // $5k USD minimum pool depth
+
+  // Signal quality
+  MIN_CONSENSUS:           z.coerce.number().min(0).max(1).default(0.65), // minimum signal confidence to trade
 
   // Position parameters
   COPY_SIZE_PCT:           z.coerce.number().min(0.01).max(1).default(0.10), // % of capital per trade

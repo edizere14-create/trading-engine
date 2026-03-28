@@ -168,7 +168,7 @@ async function boot(): Promise<void> {
   survivalEngine = new SurvivalEngine(cfg.INITIAL_CAPITAL_USD, survivalThresholds);
   survivalEngine.start();
   const exitEngine = new ExitEngine();
-  const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS);
+  const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS, cfg.MIN_CONSENSUS);
 
   // 5b. Intelligence infrastructure
   const journal = new TradeJournal('./data/journal.db');
@@ -286,6 +286,17 @@ async function boot(): Promise<void> {
 
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
+
+    // Filter out pools below minimum USD depth
+    const poolDepthUSD = event.initialLiquiditySOL * currentSOLPrice;
+    if (poolDepthUSD < cfg.MIN_POOL_DEPTH_USD) {
+      logger.info('Pool skipped — below min pool depth', {
+        tokenCA: event.tokenCA,
+        poolDepthUSD: poolDepthUSD.toFixed(0),
+        minPoolDepthUSD: cfg.MIN_POOL_DEPTH_USD,
+      });
+      return;
+    }
 
     // Check circuit breakers before proceeding
     if (antifragileEngine && antifragileEngine.getSystemHealth().overallStatus === 'DEAD') {

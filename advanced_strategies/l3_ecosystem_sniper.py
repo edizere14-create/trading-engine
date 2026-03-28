@@ -11,6 +11,7 @@
 #   4. Broadcast sniper opportunities to dashboard via StateManager
 
 import asyncio
+import math
 import os
 import time
 import threading
@@ -24,6 +25,7 @@ from dynamic_tuner import get_tuner, MarketRegime
 # ── Config ──────────────────────────────────────────────────────────────────
 POLL_INTERVAL_SECONDS = int(os.getenv("L3_POLL_INTERVAL", 30))
 BRIDGE_SPIKE_THRESHOLD_PCT = float(os.getenv("L3_SPIKE_THRESHOLD_PCT", 50.0))
+MIN_BRIDGE_Z_SCORE = float(os.getenv("MIN_BRIDGE_Z_SCORE", 1.5))  # Only trade abnormal volume
 ROLLING_WINDOW_SIZE = int(os.getenv("L3_ROLLING_WINDOW", 20))  # 20 samples ~10 min
 MIN_BRIDGE_ETH = float(os.getenv("L3_MIN_BRIDGE_ETH", 5.0))
 MIN_PAIR_LIQUIDITY_USD = float(os.getenv("L3_MIN_PAIR_LIQ_USD", 10000.0))
@@ -71,6 +73,7 @@ class BridgeSpike(BaseModel):
     current_rate_eth: float
     rolling_avg_eth: float
     spike_pct: float
+    z_score: float = 0.0
     detected_at: float = Field(default_factory=time.time)
 
 
@@ -239,7 +242,7 @@ class L3EcosystemSniper:
     # ── Spike Detection ─────────────────────────────────────────────────
 
     def detect_spike(self, chain_key: str, flow_amount_eth: float) -> Optional[BridgeSpike]:
-        """Check if a new bridge flow constitutes a spike above rolling average."""
+        """Check if a new bridge flow constitutes a spike using Z-score."""
         with self._lock:
             history = self._bridge_history.get(chain_key, [])
             history.append(flow_amount_eth)
@@ -252,29 +255,43 @@ class L3EcosystemSniper:
             if len(history) < 3:
                 return None  # Not enough data
 
-            # Rolling average excluding the latest sample
-            avg = sum(history[:-1]) / len(history[:-1])
+            # Calculate mean and stddev excluding the latest sample
+            prior = history[:-1]
+            avg = sum(prior) / len(prior)
             if avg <= 0:
                 return None
 
+            variance = sum((x - avg) ** 2 for x in prior) / len(prior)
+            stddev = math.sqrt(variance) if variance > 0 else 0.0
+
+            # Z-score: how many standard deviations above mean
+            z_score = (flow_amount_eth - avg) / stddev if stddev > 0 else 0.0
             spike_pct = ((flow_amount_eth - avg) / avg) * 100
 
-            if spike_pct >= BRIDGE_SPIKE_THRESHOLD_PCT:
-                chain_info = L3_CHAINS.get(chain_key, {})
-                spike = BridgeSpike(
-                    chain_id=chain_info.get("chain_id", ""),
-                    chain_name=chain_info.get("name", chain_key),
-                    current_rate_eth=flow_amount_eth,
-                    rolling_avg_eth=round(avg, 4),
-                    spike_pct=round(spike_pct, 2),
-                )
-                self._detected_spikes.append(spike)
-                print(
-                    f"[L3_SNIPER] Bridge spike on {spike.chain_name}: "
-                    f"{flow_amount_eth:.2f} ETH vs avg {avg:.2f} ETH "
-                    f"(+{spike_pct:.1f}%)"
-                )
-                return spike
+            # Gate: only trigger on abnormal volume (Z > MIN_BRIDGE_Z_SCORE)
+            if z_score < MIN_BRIDGE_Z_SCORE:
+                return None
+
+            # Also require percentage spike above threshold
+            if spike_pct < BRIDGE_SPIKE_THRESHOLD_PCT:
+                return None
+
+            chain_info = L3_CHAINS.get(chain_key, {})
+            spike = BridgeSpike(
+                chain_id=chain_info.get("chain_id", ""),
+                chain_name=chain_info.get("name", chain_key),
+                current_rate_eth=flow_amount_eth,
+                rolling_avg_eth=round(avg, 4),
+                spike_pct=round(spike_pct, 2),
+                z_score=round(z_score, 3),
+            )
+            self._detected_spikes.append(spike)
+            print(
+                f"[L3_SNIPER] Bridge spike on {spike.chain_name}: "
+                f"{flow_amount_eth:.2f} ETH vs avg {avg:.2f} ETH "
+                f"(+{spike_pct:.1f}%, Z={z_score:.2f})"
+            )
+            return spike
 
         return None
 

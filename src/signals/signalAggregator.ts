@@ -15,15 +15,18 @@ export class SignalAggregator {
   private deployerRegistry: DeployerRegistry;
   private walletRegistry: WalletRegistry;
   private weights: CalibratedWeights;
+  private minConsensus: number;
 
   constructor(
     deployerRegistry: DeployerRegistry,
     walletRegistry: WalletRegistry,
-    weights: CalibratedWeights
+    weights: CalibratedWeights,
+    minConsensus: number = 0.65
   ) {
     this.deployerRegistry = deployerRegistry;
     this.walletRegistry = walletRegistry;
     this.weights = weights;
+    this.minConsensus = minConsensus;
   }
 
   updateWeights(weights: CalibratedWeights): void {
@@ -50,14 +53,15 @@ export class SignalAggregator {
 
     const confidence = this.calcDataConfidence(sources);
 
-    if (confidence < 0.3) {
+    if (confidence < this.minConsensus) {
       bus.emit('data:blind', {
         source: 'signalAggregator',
-        message: `Confidence ${confidence.toFixed(2)} below 0.3 threshold for ${event.tokenCA}`,
+        message: `Consensus ${confidence.toFixed(4)} below ${this.minConsensus} threshold for ${event.tokenCA}`,
       });
-      logger.error('DATA_BLIND — skipping signal', {
+      logger.error('LOW_CONSENSUS — skipping signal', {
         tokenCA: event.tokenCA,
         confidence,
+        minConsensus: this.minConsensus,
         sourcesDown: sources.filter((s) => !s.available).map((s) => s.name),
       });
       return null;
