@@ -23,8 +23,9 @@ class MarketRegime:
     SAFE_MODE = "SAFE_MODE"          # Risk-off: doubled liquidity, tripled conviction
     NORMAL = "NORMAL"                # Default parameters
     AGGRESSIVE = "AGGRESSIVE"        # Risk-on: filters lowered 20%
+    SUPER_BULL = "SUPER_BULL"        # Extreme risk-on: filters relaxed significantly
 
-    ALL = (SAFE_MODE, NORMAL, AGGRESSIVE)
+    ALL = (SAFE_MODE, NORMAL, AGGRESSIVE, SUPER_BULL)
 
 
 class RejectionRecord:
@@ -243,6 +244,11 @@ class DynamicTuner:
             conv = BASE_MIN_CONVICTION_SOL * 3.0
             lat = int(BASE_MAX_LATENCY_MS * 0.5)  # Tighter latency in safe mode
             reason = "SAFE_MODE: doubled liquidity, tripled conviction, halved latency"
+        elif regime == MarketRegime.SUPER_BULL:
+            liq = BASE_MIN_LIQUIDITY_SOL * 0.6
+            conv = BASE_MIN_CONVICTION_SOL * 0.6
+            lat = int(BASE_MAX_LATENCY_MS * 1.5)  # Most tolerant
+            reason = "SUPER_BULL: filters relaxed 40%, sniper gates loosened"
         elif regime == MarketRegime.AGGRESSIVE:
             liq = BASE_MIN_LIQUIDITY_SOL * 0.8
             conv = BASE_MIN_CONVICTION_SOL * 0.8

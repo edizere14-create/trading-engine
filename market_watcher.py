@@ -214,6 +214,18 @@ class RegimeWatcher:
         if all_stable and self._is_volume_increasing():
             return MarketRegime.AGGRESSIVE
 
+        # Check for SUPER_BULL: all assets rising >3% in 60min AND volume increasing
+        with self._lock:
+            all_rising = True
+            for symbol, history in self._price_history.items():
+                move = self._calc_move(history, now, RISK_OFF_WINDOW_SECONDS)
+                if move < RISK_OFF_DROP_PCT:  # Using same threshold but positive
+                    all_rising = False
+                    break
+
+        if all_rising and self._is_volume_increasing():
+            return MarketRegime.SUPER_BULL
+
         return MarketRegime.NORMAL
 
     def _apply_regime(self, new_regime: str) -> None:

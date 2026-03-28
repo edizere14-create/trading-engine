@@ -42,6 +42,13 @@ from advanced_strategies.whale_shadow import get_whale_tracker
 from advanced_strategies.intent_arbitrage import get_intent_arbitrage
 from auto_graduation import get_graduation_monitor
 from telegram_reporter import daily_report_loop
+from trade_executor import (
+    get_open_positions,
+    get_sol_usd_price,
+    get_pool_info,
+    execute_trade,
+    send_telegram,
+)
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s — %(message)s"
@@ -59,6 +66,9 @@ ENGINE_VERSION = "3.1"
 SIGNAL_POLL_INTERVAL = int(os.getenv("SIGNAL_POLL_INTERVAL", 10))
 HEALTH_CHECK_INTERVAL = int(os.getenv("HEALTH_CHECK_INTERVAL", 60))
 SHUTDOWN_TIMEOUT = int(os.getenv("SHUTDOWN_TIMEOUT", 10))
+STALE_EXIT_CHECK_INTERVAL = int(os.getenv("STALE_EXIT_CHECK_INTERVAL", 10))
+STALE_EXIT_GRACE_SECONDS = int(os.getenv("STALE_EXIT_GRACE_SECONDS", 60))
+STALE_EXIT_MIN_MOVE_PCT = float(os.getenv("STALE_EXIT_MIN_MOVE_PCT", 1.0))
 
 
 # ── Core Pipeline ───────────────────────────────────────────────────────────
@@ -243,6 +253,130 @@ async def health_check_loop():
             logger.warning("Health check error: %s", exc)
 
 
+# ── STALE_EXIT Position Monitor (Dead-on-Arrival Killswitch) ────────────────
+
+async def stale_exit_monitor():
+    """
+    Monitors open positions for "dead-on-arrival" tokens.
+    If a position hasn't moved +1% within 60 seconds of entry,
+    trigger an immediate STALE_EXIT sell to avoid slow bleed.
+    """
+    logger.info(
+        "STALE_EXIT monitor active — grace=%ds, min_move=+%.1f%%",
+        STALE_EXIT_GRACE_SECONDS,
+        STALE_EXIT_MIN_MOVE_PCT,
+    )
+    import time as _time
+
+    while True:
+        await asyncio.sleep(STALE_EXIT_CHECK_INTERVAL)
+        try:
+            positions = get_open_positions()
+            if not positions:
+                continue
+
+            now = _time.time()
+            for token_ca, pos in list(positions.items()):
+                entry_time = pos.get("entry_time", 0)
+                if entry_time <= 0:
+                    continue
+
+                age_seconds = now - entry_time
+                # Only check positions within the grace window (just past 60s)
+                if age_seconds < STALE_EXIT_GRACE_SECONDS:
+                    continue
+                # Don't re-check positions that are much older (already past the kill window)
+                if age_seconds > STALE_EXIT_GRACE_SECONDS * 3:
+                    continue
+
+                # Check current price vs entry price
+                entry_price_usd = pos.get("entry_price_usd", 0)
+                if entry_price_usd <= 0:
+                    entry_price_usd = pos.get("avg_entry_usd", 0)
+                if entry_price_usd <= 0:
+                    continue
+
+                pool = get_pool_info(token_ca)
+                if not pool or pool.get("liqSOL", 0) <= 0:
+                    # Can't price it — force exit to avoid holding dead tokens
+                    logger.warning(
+                        "STALE_EXIT: %s — no pool data after %ds, forcing exit",
+                        token_ca, int(age_seconds),
+                    )
+                    _trigger_stale_exit(token_ca, pos, 0.0, entry_price_usd, age_seconds)
+                    continue
+
+                # Estimate current token price via pool data
+                current_price_usd = _estimate_current_price_usd(token_ca, pos, pool)
+                if current_price_usd is None or current_price_usd <= 0:
+                    continue
+
+                move_pct = ((current_price_usd - entry_price_usd) / entry_price_usd) * 100.0
+                if move_pct < STALE_EXIT_MIN_MOVE_PCT:
+                    logger.warning(
+                        "STALE_EXIT: %s — only %.2f%% move in %ds (need +%.1f%%), killing position",
+                        token_ca, move_pct, int(age_seconds), STALE_EXIT_MIN_MOVE_PCT,
+                    )
+                    _trigger_stale_exit(token_ca, pos, move_pct, entry_price_usd, age_seconds)
+
+        except Exception as exc:
+            logger.warning("STALE_EXIT monitor error: %s", exc)
+
+
+def _estimate_current_price_usd(
+    token_ca: str, pos: Dict[str, Any], pool: Dict[str, Any]
+) -> Optional[float]:
+    """Estimate current token price in USD using a small Jupiter quote."""
+    try:
+        from trade_executor import _fetch_jupiter_quote, _safe_int, LAMPORTS_PER_SOL, SOL_MINT
+        # Probe with a tiny amount to get current rate
+        probe_amount_raw = int(0.01 * LAMPORTS_PER_SOL)
+        quote = _fetch_jupiter_quote(SOL_MINT, token_ca, probe_amount_raw)
+        if not quote:
+            return None
+        out_raw = _safe_int(quote.get("outAmount"), 0)
+        if out_raw <= 0:
+            return None
+        # Price = SOL_spent / tokens_received, converted to USD
+        sol_per_token = 0.01 / (out_raw / 1e9)  # rough estimate
+        sol_usd = get_sol_usd_price()
+        return sol_per_token * sol_usd
+    except Exception:
+        return None
+
+
+def _trigger_stale_exit(
+    token_ca: str,
+    pos: Dict[str, Any],
+    move_pct: float,
+    entry_price_usd: float,
+    age_seconds: float,
+) -> None:
+    """Execute immediate STALE_EXIT sell for a dead-on-arrival position."""
+    try:
+        token_amount = pos.get("token_amount", 0)
+        cost_basis_sol = pos.get("cost_basis_sol", 0)
+        if token_amount <= 0 or cost_basis_sol <= 0:
+            return
+
+        msg = (
+            f"[STALE_EXIT] Killing dead position\n"
+            f"Token: {token_ca}\n"
+            f"Age: {int(age_seconds)}s\n"
+            f"Price move: {move_pct:+.2f}% (needed +{STALE_EXIT_MIN_MOVE_PCT:.1f}%)\n"
+            f"Entry price: ${entry_price_usd:.8f}\n"
+            f"Selling full position: {token_amount:.8f} tokens"
+        )
+        logger.warning(msg)
+        send_telegram(msg)
+
+        # Execute the sell
+        execute_trade(token_ca, "SELL", cost_basis_sol)
+
+    except Exception as exc:
+        logger.error("STALE_EXIT execution failed for %s: %s", token_ca, exc)
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 async def _broadcast_safe(event_type: str, data: Dict[str, Any]) -> None:
@@ -308,6 +442,7 @@ async def main():
         await asyncio.gather(
             signal_listener(),
             health_check_loop(),
+            stale_exit_monitor(),
             daily_report_loop(),
         )
     except asyncio.CancelledError:

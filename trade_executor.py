@@ -1455,6 +1455,8 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
                 "avg_entry_sol": amount_sol / token_amount,
                 "avg_entry_usd": spend_usd / token_amount,
                 "buy_count": 1,
+                "entry_time": time.time(),
+                "entry_price_usd": spend_usd / token_amount,
             }
 
         state["trades_today"] += 1
