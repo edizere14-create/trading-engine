@@ -33,3 +33,14 @@ tests/__pycache__/
 *.pyc
 trade_state*.tmp
 trade_state.json
+
+# Internal utility / temp files
+_check_compile.py
+_install.py
+_regime_results.txt
+_test_output.txt
+test_results.txt
+sqljs-files.txt
+sqljs-pkg.txt
+data/sentinel_events.json
+data/backups/
