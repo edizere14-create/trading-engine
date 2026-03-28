@@ -26,7 +26,8 @@ from dynamic_tuner import get_tuner, MarketRegime
 POLL_INTERVAL_SECONDS = int(os.getenv("L3_POLL_INTERVAL", 30))
 BRIDGE_SPIKE_THRESHOLD_PCT = float(os.getenv("L3_SPIKE_THRESHOLD_PCT", 50.0))
 MIN_BRIDGE_Z_SCORE = float(os.getenv("MIN_BRIDGE_Z_SCORE", 1.5))  # Only trade abnormal volume
-ROLLING_WINDOW_SIZE = int(os.getenv("L3_ROLLING_WINDOW", 20))  # 20 samples ~10 min
+WINDOW_LONG = int(os.getenv("L3_WINDOW_LONG", 336))    # 7-day baseline (~336 samples at 30s polls)
+WINDOW_SHORT = int(os.getenv("L3_WINDOW_SHORT", 8))     # 4-min momentum window
 MIN_BRIDGE_ETH = float(os.getenv("L3_MIN_BRIDGE_ETH", 5.0))
 MIN_PAIR_LIQUIDITY_USD = float(os.getenv("L3_MIN_PAIR_LIQ_USD", 10000.0))
 MAX_PAIR_AGE_SECONDS = int(os.getenv("L3_MAX_PAIR_AGE", 3600))  # 1 hour
@@ -242,31 +243,41 @@ class L3EcosystemSniper:
     # ── Spike Detection ─────────────────────────────────────────────────
 
     def detect_spike(self, chain_key: str, flow_amount_eth: float) -> Optional[BridgeSpike]:
-        """Check if a new bridge flow constitutes a spike using Z-score."""
+        """Check if a new bridge flow constitutes a spike using dual-window Z-score.
+
+        Long window (WINDOW_LONG, default 336 = ~7 days) provides the baseline
+        mean and stddev. Short window (WINDOW_SHORT, default 8 = ~4 min) captures
+        current momentum.  Z = (short_mean - long_mean) / long_stddev.
+        """
         with self._lock:
             history = self._bridge_history.get(chain_key, [])
             history.append(flow_amount_eth)
 
-            # Trim to rolling window
-            if len(history) > ROLLING_WINDOW_SIZE:
-                history = history[-ROLLING_WINDOW_SIZE:]
+            # Trim to long window
+            if len(history) > WINDOW_LONG:
+                history = history[-WINDOW_LONG:]
             self._bridge_history[chain_key] = history
 
-            if len(history) < 3:
-                return None  # Not enough data
-
-            # Calculate mean and stddev excluding the latest sample
-            prior = history[:-1]
-            avg = sum(prior) / len(prior)
-            if avg <= 0:
+            # Need enough data for both windows
+            if len(history) < max(WINDOW_SHORT + 1, 10):
                 return None
 
-            variance = sum((x - avg) ** 2 for x in prior) / len(prior)
-            stddev = math.sqrt(variance) if variance > 0 else 0.0
+            # Long-window baseline (everything except the short tail)
+            baseline = history[:-WINDOW_SHORT] if len(history) > WINDOW_SHORT else history[:-1]
+            mu = sum(baseline) / len(baseline)
+            if mu <= 0:
+                return None
 
-            # Z-score: how many standard deviations above mean
-            z_score = (flow_amount_eth - avg) / stddev if stddev > 0 else 0.0
-            spike_pct = ((flow_amount_eth - avg) / avg) * 100
+            variance = sum((x - mu) ** 2 for x in baseline) / len(baseline)
+            sigma = math.sqrt(variance) if variance > 0 else 0.0
+
+            # Short-window current momentum
+            recent = history[-WINDOW_SHORT:]
+            x = sum(recent) / len(recent)
+
+            # Dynamic Z-score: short momentum vs long baseline
+            z_score = (x - mu) / sigma if sigma > 0 else 0.0
+            spike_pct = ((x - mu) / mu) * 100
 
             # Gate: only trigger on abnormal volume (Z > MIN_BRIDGE_Z_SCORE)
             if z_score < MIN_BRIDGE_Z_SCORE:
@@ -280,8 +291,8 @@ class L3EcosystemSniper:
             spike = BridgeSpike(
                 chain_id=chain_info.get("chain_id", ""),
                 chain_name=chain_info.get("name", chain_key),
-                current_rate_eth=flow_amount_eth,
-                rolling_avg_eth=round(avg, 4),
+                current_rate_eth=round(x, 4),
+                rolling_avg_eth=round(mu, 4),
                 spike_pct=round(spike_pct, 2),
                 z_score=round(z_score, 3),
             )
