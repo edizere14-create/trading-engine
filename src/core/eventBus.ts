@@ -38,12 +38,10 @@ export interface EngineEvents {
   'survival:stateChanged': SurvivalSnapshot;
   'system:halt':           { reason: string; resumeAt?: Date };
   'data:blind':            { source: string; message: string };
-  // Copy trade events
+  // Trade signal events
   'copy:signal':           CopyTradeSignal;
   'copy:opened':           CopyPosition;
   'copy:closed':           CopyPosition;
-  'copy:mirrorSell':       { tokenCA: string; wallet: string; amountSOL: number };
-  'copy:reBuy':            { tokenCA: string; wallet: string; amountSOL: number; reBuyCount: number };
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────

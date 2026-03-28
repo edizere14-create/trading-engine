@@ -3,13 +3,11 @@ import {
   CopyPosition,
   CopyTradeSignal,
   CopyExitTier,
-  SwapEvent,
   SystemMode,
   SurvivalSnapshot,
 } from '../core/types';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
-import { WalletPerformanceTracker } from './walletPerformanceTracker';
 
 interface CopyTradeConfig {
   mode: SystemMode;
@@ -19,8 +17,6 @@ interface CopyTradeConfig {
   maxTradesPerDay: number;
   stopLossPct: number;       // e.g. 0.30 = -30%
   maxHoldMs: number;
-  clusterBonusPct: number;   // extra size for cluster signals
-  reBuyExtendMs: number;     // extend hold on re-buy
   solPriceUSD: number;       // current SOL price (updated externally)
 }
 
@@ -29,12 +25,10 @@ export class CopyTradeManager {
   private closedPositions: CopyPosition[] = [];
   private tradesToday: number = 0;
   private config: CopyTradeConfig;
-  private walletTracker: WalletPerformanceTracker;
   private monitorInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(config: CopyTradeConfig, walletTracker: WalletPerformanceTracker) {
+  constructor(config: CopyTradeConfig) {
     this.config = config;
-    this.walletTracker = walletTracker;
   }
 
   start(): void {
@@ -104,15 +98,6 @@ export class CopyTradeManager {
       return false;
     }
 
-    // Gate: wallet on cooldown
-    if (this.walletTracker.isOnCooldown(signal.triggerWallet)) {
-      logger.info('Copy trade blocked: WALLET_COOLDOWN', {
-        wallet: signal.triggerWallet,
-        tokenCA: signal.tokenCA,
-      });
-      return false;
-    }
-
     // Size calculation
     let sizeSOL = this.calculateSize(signal, survival);
     if (typeof signal.overrideSizeUSD === 'number' && signal.overrideSizeUSD > 0) {
@@ -130,11 +115,7 @@ export class CopyTradeManager {
     // Build exit tiers — aggressive for memecoins
     const tiers = this.buildExitTiers();
 
-    // Determine max hold — extend for clusters
-    let maxHoldMs = signal.overrideMaxHoldMs ?? this.config.maxHoldMs;
-    if (!signal.overrideMaxHoldMs && signal.source === 'CLUSTER') {
-      maxHoldMs = Math.round(maxHoldMs * 1.5); // clusters have stronger signal, hold longer
-    }
+    const maxHoldMs = signal.overrideMaxHoldMs ?? this.config.maxHoldMs;
 
     const position: CopyPosition = {
       id: randomUUID(),
@@ -175,61 +156,6 @@ export class CopyTradeManager {
     });
 
     return true;
-  }
-
-  /**
-   * Handle a mirror sell: a tracked wallet sells a token we're holding.
-   */
-  handleMirrorSell(event: SwapEvent): void {
-    const position = this.positions.get(event.tokenCA);
-    if (!position) return;
-
-    // Only mirror sells from wallets that triggered our entry
-    if (!position.sourceWallets.includes(event.wallet)) return;
-
-    bus.emit('copy:mirrorSell', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      amountSOL: event.amountSOL,
-    });
-
-    logger.info('Mirror sell detected — closing position', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      amountSOL: event.amountSOL,
-    });
-
-    this.closePosition(event.tokenCA, 'MIRROR_SELL', event.priceSOL);
-  }
-
-  /**
-   * Handle a re-buy: a tracked wallet buys more of a token we're holding.
-   * Increases conviction — extend hold time.
-   */
-  handleReBuy(event: SwapEvent): void {
-    const position = this.positions.get(event.tokenCA);
-    if (!position) return;
-
-    position.reBuyCount++;
-    position.maxHoldMs += this.config.reBuyExtendMs;
-
-    if (!position.sourceWallets.includes(event.wallet)) {
-      position.sourceWallets.push(event.wallet);
-    }
-
-    bus.emit('copy:reBuy', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      amountSOL: event.amountSOL,
-      reBuyCount: position.reBuyCount,
-    });
-
-    logger.info('Re-buy conviction boost', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      reBuyCount: position.reBuyCount,
-      newMaxHoldMs: position.maxHoldMs,
-    });
   }
 
   /**
@@ -343,18 +269,6 @@ export class CopyTradeManager {
     this.positions.delete(tokenCA);
     this.closedPositions.push(position);
 
-    // Record in wallet performance tracker
-    for (const wallet of position.sourceWallets) {
-      if (wallet === 'AUTONOMOUS_ENGINE') {
-        continue;
-      }
-      this.walletTracker.recordCopyResult(
-        wallet,
-        position.outcome!,
-        position.realizedMultiple!
-      );
-    }
-
     bus.emit('copy:closed', position);
 
     logger.info('Copy trade CLOSED', {
@@ -401,15 +315,6 @@ export class CopyTradeManager {
     if (signal.score >= 7) sizeUSD *= 1.5;
     else if (signal.score >= 5) sizeUSD *= 1.0;
     else sizeUSD *= 0.5;
-
-    // Cluster bonus
-    if (signal.source === 'CLUSTER') {
-      sizeUSD *= (1 + this.config.clusterBonusPct);
-    }
-
-    // Tier bonus: S wallets get more allocation
-    if (signal.walletTier === 'S') sizeUSD *= 1.3;
-    else if (signal.walletTier === 'A') sizeUSD *= 1.1;
 
     // Survival multiplier
     sizeUSD *= survival.sizeMultiplier;

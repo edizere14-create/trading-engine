@@ -54,7 +54,7 @@ export interface RegimeParameters {
   maxTradesPerDay: number;
   stopLossPct: number;
   maxHoldMs: number;
-  copySizePct: number;
+  sizePct: number;
   minSignalScore: number;
   minConfidence: number;
 }
@@ -153,7 +153,8 @@ export class AntifragileEngine {
   // Dead man's switch
   private lastHeartbeat: Date = new Date();
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
-  private readonly MAX_HEARTBEAT_GAP_MS = 120_000; // 2 minutes
+  private readonly MAX_HEARTBEAT_GAP_MS = 300_000; // 5 minutes
+  private deadManSwitchTriggered = false;
   private options: AntifragileOptions;
 
   // System start time
@@ -192,6 +193,7 @@ export class AntifragileEngine {
 
   heartbeat(): void {
     this.lastHeartbeat = new Date();
+    this.deadManSwitchTriggered = false;
   }
 
   // ── CIRCUIT BREAKER API ─────────────────────────────────
@@ -364,7 +366,7 @@ export class AntifragileEngine {
           ...baseParams,
           maxConcurrent: baseParams.maxConcurrent + 1,
           maxTradesPerDay: baseParams.maxTradesPerDay + 2,
-          copySizePct: baseParams.copySizePct * 1.2,
+          sizePct: baseParams.sizePct * 1.2,
           stopLossPct: baseParams.stopLossPct * 0.9, // tighter stops in risk-on (protect gains)
           maxHoldMs: Math.round(baseParams.maxHoldMs * 1.5), // let winners run
           minSignalScore: baseParams.minSignalScore * 0.8, // lower bar
@@ -379,7 +381,7 @@ export class AntifragileEngine {
           ...baseParams,
           maxConcurrent: Math.max(1, baseParams.maxConcurrent - 1),
           maxTradesPerDay: Math.max(1, baseParams.maxTradesPerDay - 1),
-          copySizePct: baseParams.copySizePct * 0.5,
+          sizePct: baseParams.sizePct * 0.5,
           stopLossPct: baseParams.stopLossPct * 0.7, // tighter stops
           maxHoldMs: Math.round(baseParams.maxHoldMs * 0.6), // shorter holds
           minSignalScore: baseParams.minSignalScore * 1.3, // higher bar
@@ -391,7 +393,7 @@ export class AntifragileEngine {
           ...baseParams,
           maxConcurrent: 0,
           maxTradesPerDay: 0,
-          copySizePct: 0,
+          sizePct: 0,
           stopLossPct: 0.15, // ultra-tight
           maxHoldMs: 60_000, // 1 minute max
           minSignalScore: 9.5,
@@ -437,16 +439,17 @@ export class AntifragileEngine {
 
   private checkHeartbeat(): void {
     const gap = Date.now() - this.lastHeartbeat.getTime();
-    if (gap > this.MAX_HEARTBEAT_GAP_MS) {
-      logger.error('DEAD MAN SWITCH: No heartbeat detected', {
-        lastHeartbeat: this.lastHeartbeat.toISOString(),
-        gapMs: gap,
-      });
+    if (gap <= this.MAX_HEARTBEAT_GAP_MS || this.deadManSwitchTriggered) return;
 
-      bus.emit('system:halt', {
-        reason: `DEAD_MAN_SWITCH: No heartbeat for ${(gap / 1000).toFixed(0)}s`,
-      });
-    }
+    this.deadManSwitchTriggered = true;
+    logger.error('DEAD MAN SWITCH: No heartbeat detected', {
+      lastHeartbeat: this.lastHeartbeat.toISOString(),
+      gapMs: gap,
+    });
+
+    bus.emit('system:halt', {
+      reason: `DEAD_MAN_SWITCH: No heartbeat for ${(gap / 1000).toFixed(0)}s`,
+    });
   }
 
   private checkSystemHealth(): void {

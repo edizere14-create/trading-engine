@@ -137,7 +137,7 @@ describe('AntifragileEngine', () => {
       maxTradesPerDay: 20,
       stopLossPct: 0.3,
       maxHoldMs: 3600000,
-      copySizePct: 0.05,
+      sizePct: 0.05,
       minSignalScore: 6,
       minConfidence: 0.5,
     };
@@ -151,7 +151,7 @@ describe('AntifragileEngine', () => {
       const adjusted = engine.getRegimeParameters('CRISIS', baseParams);
       expect(adjusted.maxConcurrent).toBeLessThanOrEqual(baseParams.maxConcurrent);
       expect(adjusted.minSignalScore).toBeGreaterThanOrEqual(baseParams.minSignalScore);
-      expect(adjusted.copySizePct).toBeLessThanOrEqual(baseParams.copySizePct);
+      expect(adjusted.sizePct).toBeLessThanOrEqual(baseParams.sizePct);
     });
 
     it('should keep NEUTRAL regime close to base params', () => {

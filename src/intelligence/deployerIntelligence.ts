@@ -50,11 +50,6 @@ export interface DeployerProfile {
   reputationScore: number;        // 0-100 composite score
   lastUpdated: Date;
   lastLaunchTimestamp: Date | null;
-  
-  // Copy trade performance
-  copyTradeWins: number;
-  copyTradeLosses: number;
-  copyTradeROI: number;
 }
 
 export interface DeployerGraph {
@@ -172,9 +167,6 @@ export class DeployerIntelligence {
         reputationScore: 0,
         lastUpdated: new Date(),
         lastLaunchTimestamp: new Date(),
-        copyTradeWins: existing?.copyTradeWins ?? 0,
-        copyTradeLosses: existing?.copyTradeLosses ?? 0,
-        copyTradeROI: existing?.copyTradeROI ?? 0,
       };
 
       // Calculate reputation score
@@ -274,27 +266,6 @@ export class DeployerIntelligence {
   }
 
   /**
-   * Record copy trade outcome
-   */
-  recordCopyTradeOutcome(deployerAddress: string, pnlPct: number): void {
-    const profile = this.profiles.get(deployerAddress);
-    if (!profile) return;
-
-    if (pnlPct > 0) profile.copyTradeWins++;
-    else profile.copyTradeLosses++;
-
-    const totalCopyTrades = profile.copyTradeWins + profile.copyTradeLosses;
-    profile.copyTradeROI = ((profile.copyTradeROI * (totalCopyTrades - 1)) + pnlPct) / totalCopyTrades;
-
-    // Factor copy trade performance into reputation
-    profile.reputationScore = this.calculateReputationScore(profile, profile.walletAgeDays < 7);
-    profile.tier = this.scoreTier(profile.reputationScore, profile.totalLaunches);
-    profile.lastUpdated = new Date();
-
-    this.profiles.set(deployerAddress, profile);
-  }
-
-  /**
    * Get tier for a deployer address
    */
   getTier(address: string): DeployerTier {
@@ -381,14 +352,6 @@ export class DeployerIntelligence {
       score = score * 0.7 + avgLinkedScore * 0.3;
     }
 
-    // Copy trade performance factor (if we have data)
-    const totalCopyTrades = profile.copyTradeWins + profile.copyTradeLosses;
-    if (totalCopyTrades >= 5) {
-      const copyWinRate = profile.copyTradeWins / totalCopyTrades;
-      // Copy performance can swing ±15
-      score += (copyWinRate - 0.5) * 30;
-    }
-
     // Wallet age bonus (log scale)
     if (profile.walletAgeDays > 180) score += 5;
     else if (profile.walletAgeDays > 30) score += 3;
@@ -411,9 +374,8 @@ export class DeployerIntelligence {
     // More data = more confidence
     const launchConfidence = Math.min(1, profile.totalLaunches / 10);
     const ageConfidence = Math.min(1, profile.walletAgeDays / 90);
-    const copyConfidence = Math.min(1, (profile.copyTradeWins + profile.copyTradeLosses) / 20);
 
-    return (launchConfidence * 0.4 + ageConfidence * 0.3 + copyConfidence * 0.3);
+    return (launchConfidence * 0.5 + ageConfidence * 0.5);
   }
 
   private async analyzeFundingSources(
@@ -493,9 +455,6 @@ export class DeployerIntelligence {
       reputationScore: 50,
       lastUpdated: new Date(),
       lastLaunchTimestamp: new Date(),
-      copyTradeWins: 0,
-      copyTradeLosses: 0,
-      copyTradeROI: 0,
     };
   }
 

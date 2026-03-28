@@ -133,20 +133,6 @@ describe('DeployerIntelligence', () => {
     });
   });
 
-  describe('Copy Trade Outcome Tracking', () => {
-    it('should track copy trade wins and losses', () => {
-      const addr = 'deployerCopy';
-      intel.recordLaunchOutcome(addr, 2.0, false, false, true, true, 0.1, 30000);
-
-      intel.recordCopyTradeOutcome(addr, 50);  // +50% win
-      intel.recordCopyTradeOutcome(addr, -20); // -20% loss
-
-      const profile = intel.getProfile(addr);
-      expect(profile!.copyTradeWins).toBe(1);
-      expect(profile!.copyTradeLosses).toBe(1);
-    });
-  });
-
   describe('Ranked Deployers', () => {
     it('should return deployers sorted by reputation', () => {
       intel.recordLaunchOutcome('low', 1.5, false, false, true, true, 0.3, 30000);
