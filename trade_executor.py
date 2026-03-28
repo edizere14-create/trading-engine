@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from signal_filter import validate_signal, register_migration_event
 from dynamic_tuner import get_tuner, MarketRegime
 from market_correlator import get_correlator
+from intent_signer import get_signer
 
 load_dotenv()
 
@@ -720,6 +721,18 @@ def prepare_intent_bundle(
     all_met = all(c["met"] for c in conditions)
     regime = get_tuner().get_regime()
 
+    # EIP-712 Intent Signing (Arbitrum layer)
+    signer = get_signer()
+    intent_sig = None
+    if signer.is_ready and all_met and action == "BUY":
+        intent_sig = signer.sign_swap_intent(
+            token_in=pool_info.get("tokenIn", ""),
+            token_out=token_ca,
+            amount=int(amount_sol * 1e18),
+            expected_output=int(pool_info.get("expectedOutput", 0)),
+            regime=regime,
+        )
+
     bundle = {
         "token_ca": token_ca,
         "action": action,
@@ -731,6 +744,8 @@ def prepare_intent_bundle(
         "jito_tip_lamports": JITO_TIP_LAMPORTS if MEV_PROTECTION_ENABLED else 0,
         "regime": regime,
         "created_at": time.time(),
+        "intent_signature": intent_sig.get("signature") if intent_sig and intent_sig.get("ok") else None,
+        "intent_message": intent_sig.get("message") if intent_sig and intent_sig.get("ok") else None,
     }
 
     if not all_met:
