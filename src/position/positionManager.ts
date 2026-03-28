@@ -12,7 +12,7 @@ import { logger } from '../core/logger';
 interface PositionConfig {
   mode: SystemMode;
   capitalUSD: number;
-  copySizePct: number;       // fraction of capital per trade
+  sizePct: number;           // fraction of capital per trade
   maxConcurrent: number;
   maxTradesPerDay: number;
   stopLossPct: number;       // e.g. 0.30 = -30%
@@ -138,7 +138,7 @@ export class PositionManager {
     this.positions.set(signal.tokenCA, position);
     this.tradesToday++;
 
-    bus.emit('copy:opened', position);
+    bus.emit('position:opened', position);
 
     logger.info('Trade OPENED', {
       id: position.id,
@@ -269,7 +269,7 @@ export class PositionManager {
     this.positions.delete(tokenCA);
     this.closedPositions.push(position);
 
-    bus.emit('copy:closed', position);
+    bus.emit('position:closed', position);
 
     logger.info('Trade CLOSED', {
       id: position.id,
@@ -313,7 +313,7 @@ export class PositionManager {
   }
 
   private calculateSize(signal: TradeSignal, survival: SurvivalSnapshot): number {
-    const baseSizeUSD = this.config.capitalUSD * this.config.copySizePct;
+    const baseSizeUSD = this.config.capitalUSD * this.config.sizePct;
     let sizeUSD = baseSizeUSD;
 
     // Score multiplier: higher score = larger position

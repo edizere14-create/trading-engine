@@ -39,9 +39,9 @@ export interface EngineEvents {
   'system:halt':           { reason: string; resumeAt?: Date };
   'data:blind':            { source: string; message: string };
   // Trade signal events
-  'copy:signal':           TradeSignal;
-  'copy:opened':           TradePosition;
-  'copy:closed':           TradePosition;
+  'trade:signal':          TradeSignal;
+  'position:opened':       TradePosition;
+  'position:closed':       TradePosition;
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────

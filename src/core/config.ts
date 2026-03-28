@@ -70,9 +70,9 @@ const envSchema = z.object({
   MIN_CONSENSUS:           z.coerce.number().min(0).max(1).default(0.65), // minimum signal confidence to trade
 
   // Position parameters
-  COPY_SIZE_PCT:           z.coerce.number().min(0.01).max(1).default(0.10), // % of capital per trade
-  COPY_MAX_HOLD_MS:        z.coerce.number().int().min(10000).default(300_000), // 5 min default
-  COPY_STOP_LOSS_PCT:      z.coerce.number().min(0.05).max(0.90).default(0.30), // -30%
+  TRADE_SIZE_PCT:          z.coerce.number().min(0.01).max(1).default(0.10), // % of capital per trade
+  TRADE_MAX_HOLD_MS:       z.coerce.number().int().min(10000).default(300_000), // 5 min default
+  TRADE_STOP_LOSS_PCT:     z.coerce.number().min(0.05).max(0.90).default(0.30), // -30%
   TOKEN_MAX_AGE_MS:        z.coerce.number().int().min(0).default(3_600_000), // skip tokens >1hr old
 
   // Calibration

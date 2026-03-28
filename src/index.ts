@@ -30,7 +30,7 @@ import { TradeRecord } from './core/types';
 import * as fs from 'fs';
 
 // ── Trade infrastructure ──────────────────────────────────
-import { PositionManager } from './copyTrade/copyTradeManager';
+import { PositionManager } from './position/positionManager';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -222,20 +222,20 @@ async function boot(): Promise<void> {
     {
       mode: cfg.isPaperMode ? 'PAPER' : 'LIVE',
       capitalUSD: cfg.INITIAL_CAPITAL_USD,
-      copySizePct: cfg.COPY_SIZE_PCT,
+      sizePct: cfg.TRADE_SIZE_PCT,
       maxConcurrent: cfg.MAX_CONCURRENT_POSITIONS,
       maxTradesPerDay: cfg.MAX_TRADES_PER_DAY,
-      stopLossPct: cfg.COPY_STOP_LOSS_PCT,
-      maxHoldMs: cfg.COPY_MAX_HOLD_MS,
+      stopLossPct: cfg.TRADE_STOP_LOSS_PCT,
+      maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
       solPriceUSD: currentSOLPrice,
     }
   );
   positionManager.start();
 
   logger.info('Trade infrastructure initialized', {
-    copySizePct: cfg.COPY_SIZE_PCT,
-    stopLossPct: cfg.COPY_STOP_LOSS_PCT,
-    maxHoldMs: cfg.COPY_MAX_HOLD_MS,
+    sizePct: cfg.TRADE_SIZE_PCT,
+    stopLossPct: cfg.TRADE_STOP_LOSS_PCT,
+    maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -370,7 +370,7 @@ async function boot(): Promise<void> {
       }
       const sandwichRisk = simulator.estimateSandwichRisk(
         simResult.reserveSOL,
-        cfg.INITIAL_CAPITAL_USD / currentSOLPrice * (cfg.COPY_SIZE_PCT),
+        cfg.INITIAL_CAPITAL_USD / currentSOLPrice * (cfg.TRADE_SIZE_PCT),
         simResult.buyImpact[1]?.impactPct ?? 5
       );
 
@@ -519,7 +519,7 @@ async function boot(): Promise<void> {
       executionMode: risk.executionMode,
       maxHoldMs: risk.maxHoldMs,
     });
-    bus.emit('copy:signal', autonomousSignal);
+    bus.emit('trade:signal', autonomousSignal);
   });
 
   bus.on('swap:detected', (event) => {
@@ -591,11 +591,11 @@ async function boot(): Promise<void> {
       confidence: signal.confidence.toFixed(2),
     });
 
-    bus.emit('copy:signal', signal);
+    bus.emit('trade:signal', signal);
   });
 
   // ── SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
-  bus.on('copy:signal', async (signal) => {
+  bus.on('trade:signal', async (signal) => {
     // Check antifragile health
     if (antifragileEngine) {
       const health = antifragileEngine.getSystemHealth();
@@ -1002,7 +1002,7 @@ async function boot(): Promise<void> {
 
   // ── TRADE EVENT HANDLERS ─────────────────────────────────
 
-  bus.on('copy:opened', (position) => {
+  bus.on('position:opened', (position) => {
     logger.info('═══ TRADE OPENED ═══', {
       id: position.id,
       tokenCA: position.tokenCA,
@@ -1029,7 +1029,7 @@ async function boot(): Promise<void> {
     });
   });
 
-  bus.on('copy:closed', (position) => {
+  bus.on('position:closed', (position) => {
     // Record PnL in survival engine
     const pnlUSD = (position.realizedPnLSOL ?? 0) * currentSOLPrice;
     survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
@@ -1312,9 +1312,9 @@ async function boot(): Promise<void> {
   logger.info(`  SOCIAL: ${socialEngine ? 'ACTIVE' : 'DISABLED'}`);
   logger.info(`  SIMULATOR: ${simulator ? 'ACTIVE' : 'DISABLED'}`);
   logger.info('  ── TRADE CONFIG ──');
-  logger.info(`  POSITION SIZE: ${(cfg.COPY_SIZE_PCT * 100).toFixed(0)}% of capital`);
-  logger.info(`  STOP LOSS: -${(cfg.COPY_STOP_LOSS_PCT * 100).toFixed(0)}%`);
-  logger.info(`  MAX HOLD: ${Math.round(cfg.COPY_MAX_HOLD_MS / 1000)}s`);
+  logger.info(`  POSITION SIZE: ${(cfg.TRADE_SIZE_PCT * 100).toFixed(0)}% of capital`);
+  logger.info(`  STOP LOSS: -${(cfg.TRADE_STOP_LOSS_PCT * 100).toFixed(0)}%`);
+  logger.info(`  MAX HOLD: ${Math.round(cfg.TRADE_MAX_HOLD_MS / 1000)}s`);
   logger.info(`  MAX CONCURRENT: ${cfg.MAX_CONCURRENT_POSITIONS}`);
   logger.info(`  MAX DAILY: ${cfg.MAX_TRADES_PER_DAY}`);
   logger.info(`  KELLY FRACTION: ${cfg.KELLY_FRACTION}`);
