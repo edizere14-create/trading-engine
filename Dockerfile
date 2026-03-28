@@ -3,7 +3,7 @@ FROM node:22-slim AS dashboard-builder
 
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm install --ignore-scripts
 COPY dashboard/ dashboard/
 COPY next.config.js tailwind.config.js postcss.config.js ./
 RUN npx next build dashboard
@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Node deps (production only — for Next.js runtime)
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev --ignore-scripts
+RUN npm install --omit=dev --ignore-scripts
 
 # Copy built dashboard
 COPY --from=dashboard-builder /app/dashboard/.next dashboard/.next
