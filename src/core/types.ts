@@ -15,7 +15,7 @@ export type EdgeName      =
   | 'COORDINATION'
   | 'KOL'
   | 'TELEGRAM'
-  | 'COPY_TRADE';
+  | 'AUTONOMOUS';
 
 export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
 export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT';
@@ -218,9 +218,9 @@ export interface SurvivalSnapshot {
   message: string;
 }
 
-// ── COPY TRADE TYPES ──────────────────────────────────────
+// ── TRADE SIGNAL TYPES ───────────────────────────────────────
 
-export type CopyTradeSource = 'SINGLE_WALLET' | 'CLUSTER' | 'MIRROR_SELL' | 'AUTONOMOUS';
+export type CopyTradeSource = 'AUTONOMOUS' | 'SINGLE_WALLET' | 'CLUSTER';
 export type WalletTier = 'S' | 'A' | 'B';
 
 export interface CopyTradeSignal {
@@ -284,21 +284,7 @@ export interface TokenSafetyResult {
   checkedAt: Date;
 }
 
-export interface WalletPerformanceStats {
-  address: string;
-  tier: WalletTier;
-  copiedTrades: number;
-  copiedWins: number;
-  copiedLosses: number;
-  copiedWinRate: number;
-  avgWinMultiple: number;
-  avgLossMultiple: number;
-  totalPnLSOL: number;
-  recentAccuracy: number;       // win rate over last 10 copied trades
-  lastCopiedAt?: Date;
-  isCoolingDown: boolean;       // temporarily stop copying after streak losses
-  cooldownUntil?: Date;
-}
+
 
 // ══════════════════════════════════════════════════════════════
 //  ADVANCED ENGINE TYPES

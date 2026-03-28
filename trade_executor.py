@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import base64
 import json
+import math
 import os
 import time
 from datetime import date
@@ -10,6 +11,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from dotenv import load_dotenv
+from signal_filter import validate_signal, register_migration_event
+from dynamic_tuner import get_tuner, MarketRegime
+from market_correlator import get_correlator
 
 load_dotenv()
 
@@ -69,6 +73,20 @@ LIVE_TX_CONFIRM_POLL_SECONDS = max(
 )
 LIVE_PRIORITY_FEE_LAMPORTS = max(0, int(os.getenv("LIVE_PRIORITY_FEE_LAMPORTS", 0)))
 LIVE_SKIP_PREFLIGHT = os.getenv("LIVE_SKIP_PREFLIGHT", "false").strip().lower() == "true"
+
+# ── MEV Shield / Private RPC Config ─────────────────────────────────────────
+PRIVATE_RPC_URL = (os.getenv("PRIVATE_RPC_URL") or "").strip()  # Jito/Flashbots
+JITO_BUNDLE_URL = (
+    os.getenv("JITO_BUNDLE_URL")
+    or "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
+).strip()
+JITO_TIP_LAMPORTS = max(0, int(os.getenv("JITO_TIP_LAMPORTS", 1_000_000)))
+MEV_PROTECTION_ENABLED = os.getenv("MEV_PROTECTION_ENABLED", "true").strip().lower() == "true"
+INTENT_MAX_BUY_TAX_PCT = float(os.getenv("INTENT_MAX_BUY_TAX_PCT", 1.0))
+INTENT_MIN_LIQUIDITY_SOL = float(os.getenv("INTENT_MIN_LIQUIDITY_SOL", 25.0))
+DYNAMIC_SLIPPAGE_ENABLED = os.getenv("DYNAMIC_SLIPPAGE_ENABLED", "true").strip().lower() == "true"
+DYNAMIC_SLIPPAGE_FLOOR_BPS = max(1, int(os.getenv("DYNAMIC_SLIPPAGE_FLOOR_BPS", 30)))
+DYNAMIC_SLIPPAGE_CEILING_BPS = max(1, int(os.getenv("DYNAMIC_SLIPPAGE_CEILING_BPS", 300)))
 
 def _parse_probe_sizes(raw_value: str) -> Tuple[float, ...]:
     parsed: List[float] = []
@@ -662,6 +680,117 @@ def _build_sell_quote_context(
     }
 
 
+# ── Intent Bundle System ────────────────────────────────────────────────────
+
+def prepare_intent_bundle(
+    token_ca: str,
+    action: str,
+    amount_sol: float,
+    pool_info: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Wrap a trade into an Intent Bundle with on-chain conditions.
+    Returns a bundle dict that can be submitted through Jito or used
+    as pre-flight conditions before execution.
+
+    Conditions enforced:
+      - Pool liquidity >= INTENT_MIN_LIQUIDITY_SOL
+      - Buy tax <= INTENT_MAX_BUY_TAX_PCT
+      - Dynamic slippage based on PoolLiquidity / TradeSize ratio
+    """
+    liq_sol = pool_info.get("liqSOL", 0)
+    buy_tax_pct = pool_info.get("buyTaxPct", 0.0)
+    slippage_bps = _compute_dynamic_slippage_bps(liq_sol, amount_sol)
+
+    conditions = [
+        {
+            "type": "MIN_LIQUIDITY",
+            "required": INTENT_MIN_LIQUIDITY_SOL,
+            "actual": liq_sol,
+            "met": liq_sol >= INTENT_MIN_LIQUIDITY_SOL,
+        },
+        {
+            "type": "MAX_BUY_TAX",
+            "required_max_pct": INTENT_MAX_BUY_TAX_PCT,
+            "actual_pct": buy_tax_pct,
+            "met": buy_tax_pct <= INTENT_MAX_BUY_TAX_PCT,
+        },
+    ]
+
+    all_met = all(c["met"] for c in conditions)
+    regime = get_tuner().get_regime()
+
+    bundle = {
+        "token_ca": token_ca,
+        "action": action,
+        "amount_sol": amount_sol,
+        "slippage_bps": slippage_bps,
+        "conditions": conditions,
+        "all_conditions_met": all_met,
+        "use_private_rpc": MEV_PROTECTION_ENABLED and bool(PRIVATE_RPC_URL or JITO_BUNDLE_URL),
+        "jito_tip_lamports": JITO_TIP_LAMPORTS if MEV_PROTECTION_ENABLED else 0,
+        "regime": regime,
+        "created_at": time.time(),
+    }
+
+    if not all_met:
+        failed = [c["type"] for c in conditions if not c["met"]]
+        print(
+            f"[INTENT] Bundle conditions NOT met for {token_ca}: {failed} "
+            f"regime={regime}"
+        )
+    else:
+        print(
+            f"[INTENT] Bundle ready: {action} {amount_sol:.4f} SOL of {token_ca} "
+            f"slippage={slippage_bps}bps private_rpc={bundle['use_private_rpc']} "
+            f"regime={regime}"
+        )
+
+    return bundle
+
+
+def _compute_dynamic_slippage_bps(pool_liquidity_sol: float, trade_size_sol: float) -> int:
+    """
+    Dynamic slippage buffer based on PoolLiquidity / TradeSize ratio.
+
+    High ratio (deep pool, small trade) → low slippage.
+    Low ratio (thin pool, large trade) → high slippage.
+    """
+    if not DYNAMIC_SLIPPAGE_ENABLED:
+        return JUPITER_SLIPPAGE_BPS
+
+    if pool_liquidity_sol <= 0 or trade_size_sol <= 0:
+        return DYNAMIC_SLIPPAGE_CEILING_BPS
+
+    ratio = pool_liquidity_sol / trade_size_sol
+
+    # ratio >= 100 → floor (very safe, deep pool)
+    # ratio <= 2   → ceiling (very thin, risky)
+    # In between   → logarithmic interpolation
+    if ratio >= 100:
+        return DYNAMIC_SLIPPAGE_FLOOR_BPS
+    if ratio <= 2:
+        return DYNAMIC_SLIPPAGE_CEILING_BPS
+
+    # log interpolation: map ratio 2..100 → ceiling..floor
+    log_min = math.log(2)
+    log_max = math.log(100)
+    t = (math.log(ratio) - log_min) / (log_max - log_min)  # 0..1
+    bps = DYNAMIC_SLIPPAGE_CEILING_BPS - t * (DYNAMIC_SLIPPAGE_CEILING_BPS - DYNAMIC_SLIPPAGE_FLOOR_BPS)
+    return max(DYNAMIC_SLIPPAGE_FLOOR_BPS, min(DYNAMIC_SLIPPAGE_CEILING_BPS, int(bps)))
+
+
+def _get_send_rpc_url() -> str:
+    """
+    Returns the RPC endpoint for sending transactions.
+    If MEV protection is enabled and a private RPC is configured, use it.
+    Otherwise fall back to the standard HELIUS_RPC_URL.
+    """
+    if MEV_PROTECTION_ENABLED and PRIVATE_RPC_URL:
+        return PRIVATE_RPC_URL
+    return HELIUS_RPC_URL
+
+
 def _rpc_call(method: str, params: List[Any]) -> Tuple[Optional[Any], str]:
     if not HELIUS_RPC_URL:
         return None, "PRIMARY_RPC/HELIUS_RPC_URL is not configured."
@@ -911,11 +1040,18 @@ def _execute_live_swap(
     if not signed_b64 or not local_signature:
         return None, "Signed transaction is empty."
 
+    # MEV Shield: route through private RPC if available
+    send_url = _get_send_rpc_url()
+    if send_url != HELIUS_RPC_URL:
+        print(f"[MEV_SHIELD] Routing transaction through private RPC")
+
     final_send_error = ""
     for _ in range(LIVE_TX_SEND_RETRIES):
-        _, send_error = _rpc_call(
-            "sendTransaction",
-            [
+        send_payload = {
+            "jsonrpc": "2.0",
+            "id": "trade-executor-send",
+            "method": "sendTransaction",
+            "params": [
                 signed_b64,
                 {
                     "encoding": "base64",
@@ -924,9 +1060,14 @@ def _execute_live_swap(
                     "maxRetries": 0,
                 },
             ],
-        )
-        if send_error:
-            final_send_error = send_error
+        }
+        response = _request_json("rpc", "POST", send_url, json=send_payload)
+        if not response or response.get("error"):
+            final_send_error = (
+                str(response.get("error")) if response else "Private RPC send failed"
+            )
+        else:
+            final_send_error = ""
 
         confirmed, confirm_error = _wait_for_signature(local_signature)
         if confirmed:
@@ -973,11 +1114,42 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
         return
 
     pool = get_pool_info(token_ca)
+    regime = get_tuner().get_regime()
+
+    # Profit Shield — pre-flight signal validation (all 5 gates)
+    if action == "BUY":
+        sig_valid, sig_reason = validate_signal({
+            "tokenCA": token_ca,
+            "liqSOL": pool["liqSOL"],
+            "amountSOL": amount_sol,
+            "latency_ms": pool.get("latency_ms", 0),
+            "buyTaxPct": pool.get("buyTaxPct", 0.0),
+        })
+        if not sig_valid:
+            msg = (
+                f"[BLOCKED][{regime}] Signal filter rejected: {sig_reason}\n"
+                f"token={token_ca} liqSOL={pool['liqSOL']:.2f} amountSOL={amount_sol:.4f}"
+            )
+            print(msg)
+            send_telegram(msg)
+            return
+
+        # Intent Bundle — validate on-chain conditions before execution
+        bundle = prepare_intent_bundle(token_ca, action, amount_sol, pool)
+        if not bundle["all_conditions_met"]:
+            failed = [c["type"] for c in bundle["conditions"] if not c["met"]]
+            msg = (
+                f"[BLOCKED][{regime}] Intent bundle conditions failed: {failed}\n"
+                f"token={token_ca}"
+            )
+            print(msg)
+            send_telegram(msg)
+            return
 
     # Block low-liquidity entries only
     if action == "BUY" and pool["liqSOL"] < MIN_LIQUIDITY_SOL:
         msg = (
-            f"[BLOCKED] Trade blocked: Pool {token_ca}\n"
+            f"[BLOCKED][{regime}] Trade blocked: Pool {token_ca}\n"
             f"liqSOL: {pool['liqSOL']:.2f} (min: {MIN_LIQUIDITY_SOL})\n"
             f"impactPct@liq: {pool['impactPct']:.2f}% (threshold: {pool['impactThresholdPct']:.2f}%)\n"
             f"route: {pool.get('routeLabel') or 'n/a'}"
@@ -1326,6 +1498,34 @@ def preview_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             f"trades_today={simulated_state['trades_today']}/{MAX_TRADES_PER_DAY}"
         )
         return False
+
+    regime = get_tuner().get_regime()
+
+    # Profit Shield — pre-flight signal validation (all 5 gates)
+    if action == "BUY":
+        sig_valid, sig_reason = validate_signal({
+            "tokenCA": token_ca,
+            "liqSOL": pool["liqSOL"],
+            "amountSOL": amount_sol,
+            "latency_ms": pool.get("latency_ms", 0),
+            "buyTaxPct": pool.get("buyTaxPct", 0.0),
+        })
+        if not sig_valid:
+            print(
+                f"[DRY-RUN][BLOCKED][{regime}] signal filter: {sig_reason} | "
+                f"token={token_ca} liqSOL={pool['liqSOL']:.2f} amountSOL={amount_sol:.4f}"
+            )
+            return False
+
+        # Intent Bundle — validate on-chain conditions
+        bundle = prepare_intent_bundle(token_ca, action, amount_sol, pool)
+        if not bundle["all_conditions_met"]:
+            failed = [c["type"] for c in bundle["conditions"] if not c["met"]]
+            print(
+                f"[DRY-RUN][BLOCKED][{regime}] intent bundle conditions failed: {failed} | "
+                f"token={token_ca}"
+            )
+            return False
 
     if action == "BUY" and pool["liqSOL"] < MIN_LIQUIDITY_SOL:
         print(

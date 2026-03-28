@@ -28,10 +28,8 @@ import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
 import { TradeRecord } from './core/types';
 
-// ── Copy trade infrastructure ─────────────────────────────
-import { SwapSignalEvaluator } from './signals/swapSignalEvaluator';
+// ── Trade infrastructure ──────────────────────────────────
 import { CopyTradeManager } from './copyTrade/copyTradeManager';
-import { WalletPerformanceTracker } from './copyTrade/walletPerformanceTracker';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -57,6 +55,15 @@ let executionEngine: ExecutionEngine | null = null;
 let deployerIntel: DeployerIntelligence | null = null;
 let socialEngine: SocialSignalEngine | null = null;
 let simulator: OnChainSimulator | null = null;
+
+function getSmartWalletSignalScore(walletTier: 'S' | 'A' | 'B', amountSOL: number): number {
+  let score = walletTier === 'S' ? 7.0 : walletTier === 'A' ? 5.0 : 3.0;
+
+  if (amountSOL >= 1.0) score += 1.0;
+  else if (amountSOL >= 0.25) score += 0.5;
+
+  return Math.max(0, Math.min(10, score));
+}
 
 function loadExecutionWallet(secret?: string): Keypair | null {
   const trimmed = (secret ?? '').trim();
@@ -171,24 +178,14 @@ async function boot(): Promise<void> {
   const microExtractor = new MicrostructureFeatureExtractor();
   const replayEngine = new ReplaySimulator(journal, riskEngine);
 
-  // 5c. Copy trade infrastructure
-  const walletTracker = new WalletPerformanceTracker(
-    walletRegistry,
-    cfg.WALLET_COOLDOWN_LOSSES,
-    cfg.WALLET_COOLDOWN_HOURS
-  );
-
-  const swapEvaluator = new SwapSignalEvaluator(
-    walletRegistry,
-    cfg.MIN_COPY_SWAP_SOL,
-    cfg.MAX_COPY_SWAP_SOL,
-    cfg.TOKEN_MAX_AGE_MS
-  );
-
+  // 5c. Trade infrastructure
   const tokenSafety = new TokenSafetyChecker(cfg.connection);
 
   // SOL price estimate — will be updated by market engine
   let currentSOLPrice = 150; // conservative default
+  const smartWalletSignalDedupe = new Map<string, number>();
+  const SMART_WALLET_MIN_SWAP_SOL = 0.05;
+  const SMART_WALLET_SIGNAL_TTL_MS = 120_000;
 
   copyTradeManager = new CopyTradeManager(
     {
@@ -199,17 +196,12 @@ async function boot(): Promise<void> {
       maxTradesPerDay: cfg.MAX_TRADES_PER_DAY,
       stopLossPct: cfg.COPY_STOP_LOSS_PCT,
       maxHoldMs: cfg.COPY_MAX_HOLD_MS,
-      clusterBonusPct: cfg.COPY_CLUSTER_BONUS_PCT,
-      reBuyExtendMs: cfg.REBUY_CONVICTION_EXTEND_MS,
       solPriceUSD: currentSOLPrice,
-    },
-    walletTracker
+    }
   );
   copyTradeManager.start();
 
-  logger.info('Copy trade infrastructure initialized', {
-    minSwapSOL: cfg.MIN_COPY_SWAP_SOL,
-    maxSwapSOL: cfg.MAX_COPY_SWAP_SOL,
+  logger.info('Trade infrastructure initialized', {
     copySizePct: cfg.COPY_SIZE_PCT,
     stopLossPct: cfg.COPY_STOP_LOSS_PCT,
     maxHoldMs: cfg.COPY_MAX_HOLD_MS,
@@ -290,6 +282,8 @@ async function boot(): Promise<void> {
   // 6. Wire event bus listeners
 
   bus.on('pool:created', async (event) => {
+    antifragileEngine?.heartbeat();
+
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
 
@@ -442,7 +436,7 @@ async function boot(): Promise<void> {
       regimeMultiplier: regimeMultiplier.toFixed(2),
     });
 
-    if (!cfg.isAutonomousOnly || !risk.tradeAllowed) {
+    if (!risk.tradeAllowed) {
       return;
     }
 
@@ -454,7 +448,7 @@ async function boot(): Promise<void> {
       return;
     }
 
-    if (copyTradeManager!.hasPosition(event.tokenCA) || swapEvaluator.hasEmitted(event.tokenCA)) {
+    if (copyTradeManager!.hasPosition(event.tokenCA)) {
       return;
     }
 
@@ -487,6 +481,8 @@ async function boot(): Promise<void> {
   });
 
   bus.on('swap:detected', (event) => {
+    antifragileEngine?.heartbeat();
+
     logger.debug('Swap detected', {
       wallet: event.wallet,
       tokenCA: event.tokenCA,
@@ -503,65 +499,81 @@ async function boot(): Promise<void> {
       copyTradeManager!.updatePrice(event.tokenCA, event.priceSOL);
     }
 
-    // Autonomous-only mode disables wallet-copy entries.
-    if (cfg.isAutonomousOnly) {
+    if (!event.isSmartWallet || event.action !== 'BUY' || event.amountSOL < SMART_WALLET_MIN_SWAP_SOL) {
       return;
     }
 
-    // ── SELL HANDLING: mirror sells for open positions ──
-    if (event.action === 'SELL' && copyTradeManager!.hasPosition(event.tokenCA)) {
-      copyTradeManager!.handleMirrorSell(event);
+    const walletStats = walletRegistry.getWalletStats(event.wallet);
+    if (!walletStats) {
       return;
     }
 
-    // ── BUY HANDLING: evaluate for copy trade ──
-    if (event.action === 'BUY') {
-      // Check for re-buy on existing position
-      if (copyTradeManager!.hasPosition(event.tokenCA)) {
-        copyTradeManager!.handleReBuy(event);
-        return;
+    const now = event.timestamp.getTime();
+    for (const [key, seenAt] of smartWalletSignalDedupe) {
+      if (now - seenAt > SMART_WALLET_SIGNAL_TTL_MS) {
+        smartWalletSignalDedupe.delete(key);
       }
-
-      // Evaluate signal quality
-      const signal = swapEvaluator.evaluate(event);
-      if (!signal) return;
-
-      // Deduplicate: don't open same token twice
-      if (swapEvaluator.hasEmitted(signal.tokenCA)) {
-        logger.debug('Signal deduped — already traded', { tokenCA: signal.tokenCA });
-        return;
-      }
-
-      // Emit the signal
-      bus.emit('copy:signal', signal);
     }
+
+    const dedupeKey = `${event.wallet}:${event.tokenCA}:${event.slot}`;
+    if (smartWalletSignalDedupe.has(dedupeKey)) {
+      return;
+    }
+    smartWalletSignalDedupe.set(dedupeKey, now);
+
+    const signal = {
+      tokenCA: event.tokenCA,
+      source: 'SINGLE_WALLET' as const,
+      triggerWallet: event.wallet,
+      walletTier: walletStats.tier,
+      walletPnL30d: walletStats.pnl30d,
+      convictionSOL: event.amountSOL,
+      clusterWallets: [],
+      clusterSize: 1,
+      totalClusterSOL: event.amountSOL,
+      entryPriceSOL: Math.max(event.priceSOL, 0.000001),
+      timestamp: event.timestamp,
+      slot: event.slot,
+      score: getSmartWalletSignalScore(walletStats.tier, event.amountSOL),
+      confidence: 0.6,
+    };
+
+    logger.info('Copy trade signal generated', {
+      tokenCA: signal.tokenCA,
+      wallet: signal.triggerWallet,
+      tier: signal.walletTier,
+      amountSOL: signal.convictionSOL,
+      score: signal.score.toFixed(2),
+      source: signal.source,
+      clusterSize: signal.clusterSize,
+      confidence: signal.confidence.toFixed(2),
+    });
+
+    bus.emit('copy:signal', signal);
   });
 
-  // ── COPY SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
+  // ── SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
   bus.on('copy:signal', async (signal) => {
     // Check antifragile health
     if (antifragileEngine) {
       const health = antifragileEngine.getSystemHealth();
       if (health.overallStatus === 'CRITICAL' || health.overallStatus === 'DEAD') {
-        logger.warn('Copy signal BLOCKED — system health', { state: health.overallStatus });
+        logger.warn('Signal BLOCKED — system health', { state: health.overallStatus });
         return;
       }
     }
 
-    logger.info('Copy signal received', {
+    logger.info('Trade signal received', {
       tokenCA: signal.tokenCA,
       source: signal.source,
-      wallet: signal.triggerWallet,
-      tier: signal.walletTier,
       score: signal.score.toFixed(1),
       convictionSOL: signal.convictionSOL,
-      clusterSize: signal.clusterSize,
     });
 
     // Token safety check (async — uses RPC)
     const safety = await tokenSafety.check(signal.tokenCA);
     if (!safety.isSafe) {
-      logger.warn('Copy trade BLOCKED by safety', {
+      logger.warn('Trade BLOCKED by safety', {
         tokenCA: signal.tokenCA,
         rugScore: safety.rugScore,
         reasons: safety.reasons,
@@ -569,21 +581,11 @@ async function boot(): Promise<void> {
       return;
     }
 
-    // ── Deployer intelligence check ──
-    if (deployerIntel && signal.source !== 'AUTONOMOUS') {
-      // Try to identify deployer from the signal context
-      const profile = deployerIntel.getProfile(signal.triggerWallet);
-      if (profile && profile.tier === 'BLACKLIST') {
-        logger.warn('Copy trade BLOCKED — trigger wallet linked to blacklisted deployer');
-        return;
-      }
-    }
-
     // Get survival state
     const survival = survivalEngine!.getSnapshot();
 
     // ── Portfolio optimization sizing ──
-    if (portfolioOptimizer && signal.source !== 'AUTONOMOUS') {
+    if (portfolioOptimizer) {
       const regime = regimeDetector?.getLatestSnapshot().currentRegime ?? 'NEUTRAL';
       const narrative = portfolioOptimizer.classifyNarrative(signal.tokenCA, '');
 
@@ -607,7 +609,7 @@ async function boot(): Promise<void> {
       );
 
       if (sizing.recommendedSizeUSD < 1) {
-        logger.warn('Copy trade BLOCKED — portfolio optimizer rejected', {
+        logger.warn('Trade BLOCKED — portfolio optimizer rejected', {
           tokenCA: signal.tokenCA,
           reason: sizing.reason,
           coldStart: mlSamples < 20,
@@ -616,7 +618,7 @@ async function boot(): Promise<void> {
       }
     }
 
-    if (signal.source === 'AUTONOMOUS' && !cfg.isPaperMode) {
+    if (!cfg.isPaperMode) {
       if (!executionEngine || !executionWallet) {
         logger.error('Autonomous execution blocked: execution engine or wallet unavailable', {
           tokenCA: signal.tokenCA,
@@ -725,13 +727,11 @@ async function boot(): Promise<void> {
     // Open the trade
     const opened = copyTradeManager!.openTrade(signal, survival);
     if (opened) {
-      swapEvaluator.markEmitted(signal.tokenCA);
-
       // Record heartbeat for antifragile dead-man's switch
       if (antifragileEngine) {
         antifragileEngine.heartbeat();
       }
-    } else if (signal.source === 'AUTONOMOUS' && !cfg.isPaperMode) {
+    } else if (!cfg.isPaperMode) {
       logger.error('Autonomous signal failed to open a local position after execution checks', {
         tokenCA: signal.tokenCA,
       });
@@ -748,46 +748,6 @@ async function boot(): Promise<void> {
       wallets: alert.wallets,
       totalWeightedPnL: alert.totalWeightedPnL,
       windowSeconds: alert.windowSeconds,
-    });
-
-    if (cfg.isAutonomousOnly) {
-      return;
-    }
-
-    // ── CLUSTER = HIGHEST CONFIDENCE SIGNAL ──
-    // If we already have a position, the re-buy handler covers it.
-    // If not, and we haven't traded this token, generate a cluster signal.
-    if (copyTradeManager!.hasPosition(alert.tokenCA)) {
-      logger.info('Cluster alert on existing position — conviction reinforced', {
-        tokenCA: alert.tokenCA,
-      });
-      return;
-    }
-
-    if (swapEvaluator.hasEmitted(alert.tokenCA)) {
-      return;
-    }
-
-    // Build a high-confidence cluster signal
-    const bestWallet = alert.wallets[0];
-    const walletStats = walletRegistry.getWalletStats(bestWallet);
-    const tier = walletStats?.tier ?? 'B';
-
-    bus.emit('copy:signal', {
-      tokenCA: alert.tokenCA,
-      source: 'CLUSTER',
-      triggerWallet: bestWallet,
-      walletTier: tier,
-      walletPnL30d: walletStats?.pnl30d ?? 0,
-      convictionSOL: alert.totalWeightedPnL / 100, // rough estimate
-      clusterWallets: alert.wallets,
-      clusterSize: alert.wallets.length,
-      totalClusterSOL: alert.totalWeightedPnL / 100,
-      entryPriceSOL: 0, // will be filled from swap data
-      timestamp: alert.triggeredAt,
-      slot: 0,
-      score: Math.min(10, 4 + alert.wallets.length * 1.5), // cluster = high score
-      confidence: Math.min(1, 0.5 + alert.wallets.length * 0.1),
     });
   });
 
@@ -845,13 +805,6 @@ async function boot(): Promise<void> {
     }
 
     // ── Update deployer intelligence with trade outcome ──
-    if (deployerIntel && trade.deployerTier !== 'UNKNOWN') {
-      const pnlPct = trade.realizedPnLUSD && trade.sizeUSD > 0
-        ? (trade.realizedPnLUSD / trade.sizeUSD) * 100
-        : 0;
-      deployerIntel.recordCopyTradeOutcome(trade.tokenCA, pnlPct);
-    }
-
     // ── Record antifragile heartbeat ──
     if (antifragileEngine) {
       antifragileEngine.heartbeat();
@@ -989,7 +942,7 @@ async function boot(): Promise<void> {
     );
 
     // Stop all streams on halt
-    // Close all copy positions in emergency
+    // Close all positions in emergency
     copyTradeManager?.emergencyCloseAll(event.reason);
     void stopAllStreams().catch((err) => {
       logger.error('Failed to stop streams during halt', {
@@ -1005,31 +958,28 @@ async function boot(): Promise<void> {
     });
   });
 
-  // ── COPY TRADE EVENT HANDLERS ───────────────────────────
+  // ── TRADE EVENT HANDLERS ─────────────────────────────────
 
   bus.on('copy:opened', (position) => {
-    logger.info('═══ COPY TRADE OPENED ═══', {
+    logger.info('═══ TRADE OPENED ═══', {
       id: position.id,
       tokenCA: position.tokenCA,
       mode: position.mode,
       sizeSOL: position.sizeSOL.toFixed(4),
       sizeUSD: position.sizeUSD.toFixed(2),
-      sourceWallets: position.sourceWallets.length,
       maxHoldMs: position.maxHoldMs,
       stopLossPct: position.stopLossPct,
     });
-    const strategy = position.sourceWallets.includes('AUTONOMOUS_ENGINE') ? 'AUTONOMOUS' : 'COPY';
     void telegram.send(
-      `[${position.mode}] ${strategy} OPEN\n` +
+      `[${position.mode}] TRADE OPEN\n` +
       `Token: ${position.tokenCA}\n` +
       `Size: ${position.sizeSOL.toFixed(4)} SOL ($${position.sizeUSD.toFixed(2)})\n` +
       `Max Hold: ${Math.round(position.maxHoldMs / 1000)}s\n` +
       `Stop: -${(position.stopLossPct * 100).toFixed(1)}%`
     );
 
-    // Record in survival engine as a pending trade
     const stats = copyTradeManager!.getStats();
-    logger.info('Copy trade stats', {
+    logger.info('Trade stats', {
       openCount: stats.openCount,
       closedCount: stats.closedCount,
       tradesToday: stats.tradesToday,
@@ -1042,13 +992,6 @@ async function boot(): Promise<void> {
     const pnlUSD = (position.realizedPnLSOL ?? 0) * currentSOLPrice;
     survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
 
-    // ── ML + Intelligence Feedback ──
-    if (deployerIntel) {
-      const pnlPct = pnlUSD > 0 && position.sizeUSD > 0
-        ? (pnlUSD / position.sizeUSD) * 100
-        : 0;
-      deployerIntel.recordCopyTradeOutcome(position.tokenCA, pnlPct);
-    }
     if (antifragileEngine) {
       antifragileEngine.heartbeat();
       if (position.outcome === 'LOSS') {
@@ -1059,7 +1002,7 @@ async function boot(): Promise<void> {
       }
     }
 
-    logger.info('═══ COPY TRADE CLOSED ═══', {
+    logger.info('═══ TRADE CLOSED ═══', {
       id: position.id,
       tokenCA: position.tokenCA,
       outcome: position.outcome,
@@ -1068,11 +1011,9 @@ async function boot(): Promise<void> {
       pnlUSD: pnlUSD.toFixed(2),
       exitReason: position.exitReason,
       holdMs: Date.now() - position.entryTimestamp.getTime(),
-      reBuyCount: position.reBuyCount,
     });
-    const strategy = position.sourceWallets.includes('AUTONOMOUS_ENGINE') ? 'AUTONOMOUS' : 'COPY';
     void telegram.send(
-      `[${position.mode}] ${strategy} CLOSED\n` +
+      `[${position.mode}] TRADE CLOSED\n` +
       `Token: ${position.tokenCA}\n` +
       `Outcome: ${position.outcome ?? 'UNKNOWN'}\n` +
       `Multiple: ${(position.realizedMultiple ?? 0).toFixed(3)}x\n` +
@@ -1095,7 +1036,7 @@ async function boot(): Promise<void> {
       entryLiquiditySOL: 0,
       entryVolumeSOL: 0,
       entryHolderCount: 0,
-      entrySmartWalletCount: position.sourceWallets.length,
+      entrySmartWalletCount: 0,
       entryBuyPressure: 0,
       entrySlippage1K: 0,
       entryMarketState: 'NORMAL',
@@ -1105,7 +1046,7 @@ async function boot(): Promise<void> {
       signalDeployerQuality: 0,
       signalOrganicFlow: 0,
       signalManipulationRisk: 0,
-      signalCoordinationStrength: position.sourceWallets.length > 1 ? 1 : 0,
+      signalCoordinationStrength: 0,
       signalSocialVelocity: 0,
       signalTotalScore: 0,
       signalConfidence: 0,
@@ -1116,7 +1057,7 @@ async function boot(): Promise<void> {
       sizeUSD: position.sizeUSD,
       stopPriceSOL: 0,
       maxHoldMs: position.maxHoldMs,
-      executionMode: 'COPY_TRADE',
+      executionMode: 'SAFE',
       deployerAddress: '',
       deployerTier: 'B',
       rugScore: 0,
@@ -1134,9 +1075,8 @@ async function boot(): Promise<void> {
       outcome: position.outcome,
       peakMultiple: position.peakPriceSOL && position.entryPriceSOL > 0
         ? position.peakPriceSOL / position.entryPriceSOL : undefined,
-      edgesFired: ['COPY_TRADE'],
-      primaryEdge: 'COPY_TRADE',
-      notes: `Source: COPY_TRADE, Wallets: ${position.sourceWallets.length}, ReBuys: ${position.reBuyCount}`,
+      edgesFired: ['AUTONOMOUS'],
+      primaryEdge: 'AUTONOMOUS',
     };
     journal.insert(journalEntry);
 
@@ -1166,13 +1106,13 @@ async function boot(): Promise<void> {
           deployerQuality: 0,
           organicFlow: 0,
           manipulationRisk: 0,
-          coordinationStrength: position.sourceWallets.length > 1 ? 5 : 0,
+          coordinationStrength: 0,
           socialVelocity: 0,
           totalScore: 0,
           confidence: 0,
         },
         rugRisk: 'LOW',
-        edgesFired: ['COPY_TRADE'],
+        edgesFired: ['AUTONOMOUS'],
         marketState: 'NORMAL',
         regime: 'NORMAL',
         deployerTier: 'B',
@@ -1191,44 +1131,12 @@ async function boot(): Promise<void> {
 
     // Log running stats
     const stats = copyTradeManager!.getStats();
-    logger.info('Running copy stats', {
+    logger.info('Running trade stats', {
       totalClosed: stats.closedCount,
       wins: stats.wins,
       losses: stats.losses,
       winRate: (stats.winRate * 100).toFixed(1) + '%',
       totalPnLSOL: stats.totalPnLSOL.toFixed(4),
-    });
-
-    // Wallet performance rankings (every 10 trades)
-    if (stats.closedCount % 10 === 0) {
-      const ranked = walletTracker.getRankedWallets();
-      if (ranked.length > 0) {
-        logger.info('Wallet performance rankings', {
-          top3: ranked.slice(0, 3).map(w => ({
-            wallet: w.address.slice(0, 8) + '...',
-            winRate: (w.copiedWinRate * 100).toFixed(0) + '%',
-            pnlSOL: w.totalPnLSOL.toFixed(3),
-            trades: w.copiedTrades,
-          })),
-        });
-      }
-    }
-  });
-
-  bus.on('copy:mirrorSell', (event) => {
-    logger.info('Mirror sell executed', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      amountSOL: event.amountSOL,
-    });
-  });
-
-  bus.on('copy:reBuy', (event) => {
-    logger.info('Re-buy conviction boost', {
-      tokenCA: event.tokenCA,
-      wallet: event.wallet,
-      amountSOL: event.amountSOL,
-      reBuyCount: event.reBuyCount,
     });
   });
 
@@ -1341,7 +1249,7 @@ async function boot(): Promise<void> {
   logger.info('════════════════════════════════════════════');
   logger.info(`  STATUS: ACTIVE`);
   logger.info(`  MODE: ${cfg.isPaperMode ? 'PAPER' : 'LIVE'}`);
-  logger.info(`  STRATEGY: ${cfg.isAutonomousOnly ? 'AUTONOMOUS_ONLY' : 'COPY_ENABLED'}`);
+  logger.info(`  STRATEGY: AUTONOMOUS_ONLY`);
   logger.info(`  TELEGRAM: ${telegram.isEnabled() ? 'ENABLED' : 'DISABLED'}`);
   logger.info(`  WALLETS: ${walletRegistry.count()}`);
   logger.info(`  DEPLOYERS: ${deployerRegistry.count()}`);
@@ -1361,8 +1269,7 @@ async function boot(): Promise<void> {
   logger.info(`  ANTIFRAGILE: ${antifragileEngine?.getSystemHealth().overallStatus ?? 'N/A'}`);
   logger.info(`  SOCIAL: ${socialEngine ? 'ACTIVE' : 'DISABLED'}`);
   logger.info(`  SIMULATOR: ${simulator ? 'ACTIVE' : 'DISABLED'}`);
-  logger.info('  ── COPY TRADE CONFIG ──');
-  logger.info(`  MIN SWAP: ${cfg.MIN_COPY_SWAP_SOL} SOL`);
+  logger.info('  ── TRADE CONFIG ──');
   logger.info(`  POSITION SIZE: ${(cfg.COPY_SIZE_PCT * 100).toFixed(0)}% of capital`);
   logger.info(`  STOP LOSS: -${(cfg.COPY_STOP_LOSS_PCT * 100).toFixed(0)}%`);
   logger.info(`  MAX HOLD: ${Math.round(cfg.COPY_MAX_HOLD_MS / 1000)}s`);

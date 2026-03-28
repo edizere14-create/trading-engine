@@ -35,6 +35,19 @@ export class SignalAggregator {
     clusterAlert: ClusterAlert | null,
     sources: DataSourceStatus[]
   ): SignalVector | null {
+    // Hard reject: pump.fun tokens with < 50 SOL liquidity are not viable
+    if (event.tokenCA.endsWith('pump') && event.initialLiquiditySOL < 50) {
+      bus.emit('data:blind', {
+        source: 'signalAggregator',
+        message: `Pump.fun token ${event.tokenCA} rejected — initialLiquiditySOL ${event.initialLiquiditySOL} < 50`,
+      });
+      logger.warn('PUMP_LOW_LIQ — skipping pump.fun token below 50 SOL', {
+        tokenCA: event.tokenCA,
+        initialLiquiditySOL: event.initialLiquiditySOL,
+      });
+      return null;
+    }
+
     const confidence = this.calcDataConfidence(sources);
 
     if (confidence < 0.3) {
