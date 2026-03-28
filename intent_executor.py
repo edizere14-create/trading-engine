@@ -25,6 +25,8 @@ INTENT_API_KEY = (os.getenv("INTENT_API_KEY") or "").strip()
 BROADCAST_TIMEOUT = int(os.getenv("INTENT_BROADCAST_TIMEOUT", 10))
 
 # ── Dutch Auction Presets ───────────────────────────────────────────────────
+STALE_EXIT_PRESET = "stale_exit"  # Exported for use by stale_exit_monitor
+
 _PRESETS: Dict[str, Dict[str, Any]] = {
     MarketRegime.SAFE_MODE: {
         "preset": "fast",
@@ -43,6 +45,12 @@ _PRESETS: Dict[str, Dict[str, Any]] = {
         "auction_duration_s": 60,
         "min_return_pct": 99.0,
         "label": "STANDARD",
+    },
+    STALE_EXIT_PRESET: {
+        "preset": "stale_exit",
+        "auction_duration_s": 30,
+        "min_return_pct": 95.0,
+        "label": "STALE_EXIT FAST AUCTION",
     },
 }
 

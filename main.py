@@ -48,6 +48,7 @@ from trade_executor import (
     get_pool_info,
     execute_trade,
     send_telegram,
+    LIQUIDITY_MAX_PRICE_IMPACT_PCT,
 )
 
 # ── Logging ─────────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ SHUTDOWN_TIMEOUT = int(os.getenv("SHUTDOWN_TIMEOUT", 10))
 STALE_EXIT_CHECK_INTERVAL = int(os.getenv("STALE_EXIT_CHECK_INTERVAL", 10))
 STALE_EXIT_GRACE_SECONDS = int(os.getenv("STALE_EXIT_GRACE_SECONDS", 60))
 STALE_EXIT_MIN_MOVE_PCT = float(os.getenv("STALE_EXIT_MIN_MOVE_PCT", 1.0))
+STALE_EXIT_MAX_PRICE_IMPACT_PCT = float(os.getenv("STALE_EXIT_MAX_PRICE_IMPACT_PCT", 5.0))
 
 
 # ── Core Pipeline ───────────────────────────────────────────────────────────
@@ -352,12 +354,38 @@ def _trigger_stale_exit(
     entry_price_usd: float,
     age_seconds: float,
 ) -> None:
-    """Execute immediate STALE_EXIT sell for a dead-on-arrival position."""
+    """
+    Execute STALE_EXIT via Fast Dutch Auction (30s) to preserve principal.
+
+    Flow:
+      1. Check pool price impact — if impact > threshold, use Intent auction
+      2. Build a STALE_EXIT intent with 30s fast auction + 95% min return
+      3. Broadcast via solver network so MEV bots compete for the fill
+      4. Fall back to direct execute_trade only if Intent system is unavailable
+    """
     try:
         token_amount = pos.get("token_amount", 0)
         cost_basis_sol = pos.get("cost_basis_sol", 0)
         if token_amount <= 0 or cost_basis_sol <= 0:
             return
+
+        # ── Price Impact Guard ──────────────────────────────────────────
+        pool = get_pool_info(token_ca)
+        pool_liq_sol = pool.get("liqSOL", 0) if pool else 0
+        impact_pct = pool.get("impactPct", 0) if pool else 0
+
+        # Estimate impact: position_size / pool_liquidity as a rough proxy
+        estimated_impact = (
+            (cost_basis_sol / pool_liq_sol) * 100.0
+            if pool_liq_sol > 0
+            else 999.0
+        )
+        use_intent = (
+            estimated_impact > STALE_EXIT_MAX_PRICE_IMPACT_PCT
+            or impact_pct > STALE_EXIT_MAX_PRICE_IMPACT_PCT
+        )
+
+        exit_method = "INTENT_FAST_AUCTION" if use_intent else "DIRECT_SELL"
 
         msg = (
             f"[STALE_EXIT] Killing dead position\n"
@@ -365,16 +393,113 @@ def _trigger_stale_exit(
             f"Age: {int(age_seconds)}s\n"
             f"Price move: {move_pct:+.2f}% (needed +{STALE_EXIT_MIN_MOVE_PCT:.1f}%)\n"
             f"Entry price: ${entry_price_usd:.8f}\n"
+            f"Pool liq: {pool_liq_sol:.2f} SOL | Est. impact: {estimated_impact:.2f}%\n"
+            f"Exit method: {exit_method}\n"
             f"Selling full position: {token_amount:.8f} tokens"
         )
         logger.warning(msg)
         send_telegram(msg)
 
-        # Execute the sell
-        execute_trade(token_ca, "SELL", cost_basis_sol)
+        # ── Intent Fast Auction Path ────────────────────────────────────
+        if use_intent:
+            _stale_exit_via_intent(token_ca, pos, cost_basis_sol, entry_price_usd)
+        else:
+            # Low-impact: safe to do a direct market sell
+            execute_trade(token_ca, "SELL", cost_basis_sol)
 
     except Exception as exc:
         logger.error("STALE_EXIT execution failed for %s: %s", token_ca, exc)
+
+
+def _stale_exit_via_intent(
+    token_ca: str,
+    pos: Dict[str, Any],
+    cost_basis_sol: float,
+    entry_price_usd: float,
+) -> None:
+    """
+    Route STALE_EXIT through a 30-second Fast Dutch Auction.
+    Solvers compete to fill the order, preventing AMM price cratering.
+    Falls back to direct sell if the Intent system is unavailable.
+    """
+    try:
+        from intent_executor import get_executor, STALE_EXIT_PRESET
+        from intent_signer import get_signer
+
+        executor = get_executor()
+        params = executor.get_intent_params(STALE_EXIT_PRESET)
+
+        # Sign the exit intent
+        signer = get_signer()
+        signed = None
+        if signer.is_ready:
+            signed = signer.sign_swap_intent(
+                token_in=token_ca,
+                token_out="",  # Selling to SOL/ETH
+                amount=int(cost_basis_sol * 1e18),
+                expected_output=int(entry_price_usd * 1e18),
+                regime=STALE_EXIT_PRESET,
+            )
+
+        intent = executor.create_onchain_intent(
+            token_ca=token_ca,
+            action="SELL",
+            amount=cost_basis_sol,
+            expected_output=entry_price_usd,
+            regime=STALE_EXIT_PRESET,
+            signed_intent=signed,
+        )
+
+        # Broadcast to solver network
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            future = asyncio.ensure_future(
+                executor.broadcast_intent_to_resolver(intent)
+            )
+            # Schedule fallback check: if intent not filled, do direct sell
+            async def _check_intent_result():
+                result = await future
+                if result.get("ok"):
+                    order_hash = result.get("order_hash", "")
+                    logger.info(
+                        "[STALE_EXIT] Intent accepted: hash=%s auction=%ds minReturn=%s%%",
+                        order_hash,
+                        params["auction_duration_s"],
+                        params["min_return_pct"],
+                    )
+                    send_telegram(
+                        f"[STALE_EXIT] Fast Auction dispatched for {token_ca}\n"
+                        f"Duration: {params['auction_duration_s']}s\n"
+                        f"Min return: {params['min_return_pct']}%\n"
+                        f"Order hash: {order_hash}"
+                    )
+                else:
+                    logger.warning(
+                        "[STALE_EXIT] Intent broadcast failed: %s — falling back to direct sell",
+                        result.get("error"),
+                    )
+                    send_telegram(
+                        f"[STALE_EXIT] Intent failed for {token_ca}, using direct sell fallback"
+                    )
+                    execute_trade(token_ca, "SELL", cost_basis_sol)
+
+            asyncio.ensure_future(_check_intent_result())
+        else:
+            # No running event loop — fall back to direct sell
+            logger.warning("[STALE_EXIT] No event loop for intent broadcast — direct sell fallback")
+            execute_trade(token_ca, "SELL", cost_basis_sol)
+
+    except Exception as exc:
+        logger.error(
+            "[STALE_EXIT] Intent path failed for %s: %s — falling back to direct sell",
+            token_ca, exc,
+        )
+        execute_trade(token_ca, "SELL", cost_basis_sol)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
