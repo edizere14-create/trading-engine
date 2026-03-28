@@ -19,6 +19,7 @@ from intent_executor import get_executor
 from sentinel import get_sentinel
 from state_manager import get_state_manager
 from pnl_logger import get_pnl_logger
+from token_security_checker import get_security_checker
 
 load_dotenv()
 
@@ -1172,6 +1173,33 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
 
     # Profit Shield — pre-flight signal validation (all 5 gates)
     if action == "BUY":
+        # Token Security Pre-flight — GoPlus + Honeypot.is scan
+        try:
+            verdict = asyncio.run(get_security_checker().scan_token(token_ca))
+            if not verdict.passed:
+                msg = (
+                    f"[BLOCKED][SECURITY] Token rejected: {token_ca}\n"
+                    f"risk={verdict.risk_level} reasons={verdict.rejection_reasons}"
+                )
+                print(msg)
+                send_telegram(msg)
+                try:
+                    asyncio.run(get_state_manager().broadcast_event(
+                        event_type="SECURITY_REJECTED",
+                        data={
+                            "token_ca": token_ca,
+                            "risk_level": verdict.risk_level,
+                            "reasons": verdict.rejection_reasons,
+                            "duration_ms": verdict.duration_ms,
+                        },
+                        regime=regime,
+                    ))
+                except Exception:
+                    pass
+                return
+        except Exception as exc:
+            print(f"[SECURITY] Scan error ({exc}), proceeding with caution")
+
         sig_valid, sig_reason = validate_signal({
             "tokenCA": token_ca,
             "liqSOL": pool["liqSOL"],
@@ -1205,6 +1233,24 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             executor = get_executor()
             intent_params = executor.get_intent_params(regime)
             signer = get_signer()
+
+            # Intent Arbitrage — cross-DEX price check (Camelot vs UniV3)
+            try:
+                from advanced_strategies.intent_arbitrage import get_intent_arbitrage
+                arb_override = asyncio.run(
+                    get_intent_arbitrage().check_arbitrage(token_ca, amount_sol)
+                )
+                if arb_override.use_override:
+                    intent_params["start_price"] = arb_override.start_price
+                    intent_params["min_return_pct"] = arb_override.min_return_pct
+                    print(
+                        f"[INTENT_ARB] Override applied: "
+                        f"start={arb_override.start_price:.8f} "
+                        f"gap={arb_override.gap_pct:.2f}% "
+                        f"from={arb_override.source_dex}"
+                    )
+            except Exception as exc:
+                print(f"[INTENT_ARB] Check skipped ({exc})")
 
             # PnL Logger — capture arrival price (AMM quote) before signing
             arrival_price = pool.get("expectedOutput", 0)
@@ -1643,6 +1689,18 @@ def preview_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
 
     # Profit Shield — pre-flight signal validation (all 5 gates)
     if action == "BUY":
+        # Token Security Pre-flight — GoPlus + Honeypot.is scan (dry-run)
+        try:
+            verdict = asyncio.run(get_security_checker().scan_token(token_ca))
+            if not verdict.passed:
+                print(
+                    f"[DRY-RUN][BLOCKED][SECURITY] {token_ca}: "
+                    f"risk={verdict.risk_level} reasons={verdict.rejection_reasons}"
+                )
+                return False
+        except Exception as exc:
+            print(f"[DRY-RUN][SECURITY] Scan error ({exc}), proceeding")
+
         sig_valid, sig_reason = validate_signal({
             "tokenCA": token_ca,
             "liqSOL": pool["liqSOL"],
