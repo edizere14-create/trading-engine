@@ -16,6 +16,7 @@ from dynamic_tuner import get_tuner, MarketRegime
 from market_correlator import get_correlator
 from intent_signer import get_signer
 from intent_executor import get_executor
+from sentinel import get_sentinel
 
 load_dotenv()
 
@@ -1108,6 +1109,13 @@ def _execute_live_swap(
 def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: Optional[float] = None) -> None:
     reset_daily_state_if_needed()
 
+    # Sentinel heartbeat — proves the bot is alive
+    get_sentinel().heartbeat()
+
+    if get_sentinel().is_triggered:
+        print(f"[SENTINEL] Trade blocked: Dead Man's Switch is active")
+        return
+
     action = action.upper().strip()
     if action not in {"BUY", "SELL"}:
         print(f"Invalid action: {action}")
@@ -1186,6 +1194,9 @@ def execute_trade(token_ca: str, action: str, amount_sol: float, token_amount: O
             )
             result = asyncio.run(executor.broadcast_intent_to_resolver(intent))
             if result["ok"]:
+                # Track intent for sentinel dead man's switch cancellation
+                intent["order_hash"] = result.get("order_hash", "")
+                get_sentinel().track_intent(intent)
                 msg = (
                     f"[INTENT][{regime}] Dutch Auction dispatched -> "
                     f"preset={intent_params['preset']} "
