@@ -296,8 +296,13 @@ export class PositionManager {
         continue;
       }
 
-      // Stale check: if we haven't updated price in 2 minutes, something is wrong
+      // Stale check: if we haven't updated price in 2 minutes, warn
+      // If stale for 5+ minutes, force-close — we can't evaluate stop-loss without price data
       const staleSince = now - position.lastCheckedAt.getTime();
+      if (staleSince > 300_000) {
+        this.closePosition(tokenCA, `STALE_EXIT (no price data for ${Math.round(staleSince / 1000)}s)`);
+        continue;
+      }
       if (staleSince > 120_000) {
         logger.warn('Position price stale', {
           tokenCA,

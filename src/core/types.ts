@@ -18,7 +18,7 @@ export type EdgeName      =
   | 'AUTONOMOUS';
 
 export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
-export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT';
+export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT' | 'STALE_EXIT';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
 
