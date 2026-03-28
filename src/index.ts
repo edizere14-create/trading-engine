@@ -27,6 +27,7 @@ import { MicrostructureFeatureExtractor } from './microstructure/featureExtracto
 import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
 import { TradeRecord } from './core/types';
+import * as fs from 'fs';
 
 // ── Trade infrastructure ──────────────────────────────────
 import { PositionManager } from './copyTrade/copyTradeManager';
@@ -139,8 +140,38 @@ async function boot(): Promise<void> {
 
   // 4. Paper gate check — throws if live mode attempted before validation
   if (!cfg.isPaperMode) {
+    // Also check Python-side auto-graduation proof
+    const gradPath = './data/graduation.json';
+    let pyGraduated = false;
+    try {
+      if (fs.existsSync(gradPath)) {
+        const grad = JSON.parse(fs.readFileSync(gradPath, 'utf-8'));
+        pyGraduated = grad.verdict === 'ACTIVE';
+      }
+    } catch { /* graduation.json missing or malformed — not graduated */ }
+
+    if (!pyGraduated) {
+      throw new Error('LIVE_CAPITAL_LOCKED: Python auto-graduation not earned yet. Run in PAPER mode until graduation.json is written.');
+    }
     paperGate.assertLiveCapitalAllowed();
   }
+
+  // Check graduation status for logging
+  try {
+    const gradPath = './data/graduation.json';
+    if (fs.existsSync(gradPath)) {
+      const grad = JSON.parse(fs.readFileSync(gradPath, 'utf-8'));
+      if (grad.verdict === 'ACTIVE') {
+        logger.info('Auto-graduation EARNED', {
+          profitFactor: grad.profit_factor,
+          winRate: grad.win_rate,
+          maxDrawdown: grad.max_drawdown_pct,
+          trades: grad.total_trades,
+          graduatedAt: new Date(grad.graduated_at * 1000).toISOString(),
+        });
+      }
+    }
+  } catch { /* non-fatal */ }
   logger.info('Paper gate status', {
     trades: `${gateStatus.completedTrades}/${gateStatus.requiredTrades}`,
     wpAccuracy: gateStatus.wpCalibrationAccuracy.toFixed(3),

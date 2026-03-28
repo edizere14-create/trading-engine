@@ -40,6 +40,7 @@ from pnl_logger import get_pnl_logger
 from advanced_strategies.l3_ecosystem_sniper import get_l3_sniper
 from advanced_strategies.whale_shadow import get_whale_tracker
 from advanced_strategies.intent_arbitrage import get_intent_arbitrage
+from auto_graduation import get_graduation_monitor
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s — %(message)s"
@@ -236,6 +237,7 @@ async def health_check_loop():
                 "l3_sniper": get_l3_sniper().get_status(),
                 "whale_tracker": get_whale_tracker().get_status(),
                 "arb_stats": get_intent_arbitrage().get_stats(),
+                "graduation": get_graduation_monitor().get_status(),
             }
             await _broadcast_safe("HEALTH_CHECK", status)
             logger.debug("Health check: regime=%s sentinel=%s", regime, sentinel.is_triggered)
@@ -273,9 +275,12 @@ async def start_background_services():
     # Whale Shadow Tracker — meme whale convergence detection
     get_whale_tracker().start()
 
+    # Auto-Graduation Monitor — proves profitability before LIVE unlock
+    get_graduation_monitor().start()
+
     logger.info(
         "Background services started: "
-        "MarketWatcher, DynamicTuner, Sentinel, L3Sniper, WhaleTracker"
+        "MarketWatcher, DynamicTuner, Sentinel, L3Sniper, WhaleTracker, GraduationMonitor"
     )
 
 
