@@ -359,6 +359,16 @@ async function boot(): Promise<void> {
         });
         return;
       }
+
+      // Gate: UNKNOWN deployers with low confidence are high-risk
+      if (deployerProfile.tier === 'UNKNOWN' && deployerProfile.confidence < 0.3) {
+        logger.warn('Pool BLOCKED — unknown deployer with low confidence', {
+          deployer: event.deployer,
+          confidence: deployerProfile.confidence.toFixed(2),
+          walletAgeDays: deployerProfile.walletAgeDays.toFixed(1),
+        });
+        return;
+      }
     }
 
     // ── On-Chain Simulation ──
@@ -957,6 +967,7 @@ async function boot(): Promise<void> {
   let haltInProgress = false;
   let lastHaltReason = '';
   let lastHaltAt = 0;
+  const HALT_RECOVERY_DELAY_MS = 30_000; // 30s cooldown before restarting streams
   bus.on('system:halt', (event) => {
     const now = Date.now();
     if (haltInProgress) {
@@ -980,16 +991,40 @@ async function boot(): Promise<void> {
       resumeAt: event.resumeAt?.toISOString(),
     });
     void telegram.send(
-      `SYSTEM HALT\nReason: ${event.reason}\nResume: ${event.resumeAt?.toISOString() ?? 'manual'}`
+      `SYSTEM HALT\nReason: ${event.reason}\nResume: auto-recovery in ${HALT_RECOVERY_DELAY_MS / 1000}s`
     );
 
-    // Stop all streams on halt
     // Close all positions in emergency
     positionManager?.emergencyCloseAll(event.reason);
-    void stopAllStreams().catch((err) => {
+    void stopAllStreams().then(() => {
+      // Auto-recover: restart streams after cooldown
+      logger.info(`Halt recovery scheduled in ${HALT_RECOVERY_DELAY_MS / 1000}s`);
+      setTimeout(async () => {
+        try {
+          logger.info('Halt recovery: restarting streams...');
+          lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
+          walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
+          await lpStream.start();
+          await walletStream.start();
+          if (antifragileEngine) {
+            antifragileEngine.heartbeat();
+          }
+          haltInProgress = false;
+          logger.info('Halt recovery: streams restarted successfully');
+          void telegram.send('SYSTEM RECOVERED\nStreams restarted after halt cooldown');
+        } catch (err) {
+          logger.error('Halt recovery FAILED — streams still down', {
+            error: err instanceof Error ? err.message : String(err),
+          });
+          haltInProgress = false;
+          // Will be retried on next dead man switch cycle
+        }
+      }, HALT_RECOVERY_DELAY_MS);
+    }).catch((err) => {
       logger.error('Failed to stop streams during halt', {
         error: err instanceof Error ? err.message : String(err),
       });
+      haltInProgress = false;
     });
   });
 

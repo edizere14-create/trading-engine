@@ -73,10 +73,10 @@ class AdvancedStrategyConfig:
                 or "https://mainnet.block-engine.jito.wtf/api/v1/bundles"
             ).strip(),
             jito_tip_lamports=_as_int("JITO_TIP_LAMPORTS", 1_000_000),
-            bundle_scan_limit=_as_int("BUNDLE_SCAN_LIMIT", 5),
-            bundle_same_root_threshold=_as_int("BUNDLE_SAME_ROOT_WALLET_THRESHOLD", 5),
-            bundle_concentration_threshold=_as_float("BUNDLE_CONCENTRATION_THRESHOLD", 0.20),
-            bundle_funder_lookback_blocks=_as_int("BUNDLE_FUNDER_LOOKBACK_BLOCKS", 100),
+            bundle_scan_limit=_as_int("BUNDLE_SCAN_LIMIT", 10),
+            bundle_same_root_threshold=_as_int("BUNDLE_SAME_ROOT_WALLET_THRESHOLD", 3),
+            bundle_concentration_threshold=_as_float("BUNDLE_CONCENTRATION_THRESHOLD", 0.12),
+            bundle_funder_lookback_blocks=_as_int("BUNDLE_FUNDER_LOOKBACK_BLOCKS", 200),
             birdeye_api_key=(os.getenv("BIRDEYE_API_KEY") or "").strip(),
             dexscreener_base_url=(
                 os.getenv("DEXSCREENER_BASE_URL") or "https://api.dexscreener.com/latest/dex"

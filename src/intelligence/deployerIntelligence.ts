@@ -69,8 +69,8 @@ export class DeployerIntelligence {
   // Tier thresholds
   private readonly S_TIER_MIN_SCORE = 80;
   private readonly A_TIER_MIN_SCORE = 60;
-  private readonly B_TIER_MIN_SCORE = 35;
-  private readonly BLACKLIST_MAX_SCORE = 15;
+  private readonly B_TIER_MIN_SCORE = 45;
+  private readonly BLACKLIST_MAX_SCORE = 20;
   private readonly MIN_LAUNCHES_FOR_TIER = 3;
 
   constructor(connection: Connection, filePath: string = './data/deployer_intelligence.json') {
@@ -367,7 +367,7 @@ export class DeployerIntelligence {
     if (score >= this.A_TIER_MIN_SCORE) return 'A';
     if (score >= this.B_TIER_MIN_SCORE) return 'B';
     if (score <= this.BLACKLIST_MAX_SCORE) return 'BLACKLIST';
-    return 'B';
+    return 'BLACKLIST';  // Below B threshold = blacklist, not default B
   }
 
   private calculateConfidence(profile: DeployerProfile): number {

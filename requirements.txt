@@ -8,7 +8,7 @@ requests>=2.31,<3
 python-dotenv>=1.0,<2
 
 # Optional: EIP-712 intent signing (Arbitrum layer)
-# eth-account>=0.11,<1
+eth-account>=0.11,<1
 
 # Testing (not needed in production)
 # pytest>=8.0

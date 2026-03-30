@@ -173,6 +173,20 @@ export class PositionManager {
     }
 
     const multiple = currentPriceSOL / position.entryPriceSOL;
+    const holdMs = Date.now() - position.entryTimestamp.getTime();
+
+    // Rapid dump protection: if price drops >15% within first 60 seconds, exit immediately
+    // This catches bundled launches that dump on block 1-2 buyers
+    if (holdMs < 60_000 && multiple <= 0.85) {
+      this.closePosition(tokenCA, `RAPID_DUMP_EXIT (${((1 - multiple) * 100).toFixed(1)}% drop in ${Math.round(holdMs / 1000)}s)`, currentPriceSOL);
+      return;
+    }
+
+    // Accelerated stop: if price drops >20% within first 3 minutes, exit early
+    if (holdMs < 180_000 && multiple <= 0.80) {
+      this.closePosition(tokenCA, `EARLY_STOP (${((1 - multiple) * 100).toFixed(1)}% drop in ${Math.round(holdMs / 1000)}s)`, currentPriceSOL);
+      return;
+    }
 
     // Stop loss
     if (multiple <= (1 - position.stopLossPct)) {
