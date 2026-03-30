@@ -256,6 +256,7 @@ export interface TradePosition {
   stopLossPct: number;          // e.g. 0.30 = -30%
   takeProfitTiers: TakeProfitTier[];
   peakPriceSOL: number;
+  lastPriceSOL: number;            // most recent price we saw (for stale/time exits)
   lastCheckedAt: Date;
   status: 'OPEN' | 'CLOSED';
   exitReason?: string;

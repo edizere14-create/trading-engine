@@ -131,6 +131,7 @@ export class PositionManager {
       stopLossPct: this.config.stopLossPct,
       takeProfitTiers: tiers,
       peakPriceSOL: signal.entryPriceSOL,
+      lastPriceSOL: signal.entryPriceSOL,
       lastCheckedAt: new Date(),
       status: 'OPEN',
     };
@@ -166,6 +167,7 @@ export class PositionManager {
     if (!position) return;
 
     position.lastCheckedAt = new Date();
+    position.lastPriceSOL = currentPriceSOL;
 
     // Track peak
     if (currentPriceSOL > position.peakPriceSOL) {
@@ -268,13 +270,15 @@ export class PositionManager {
     position.status = 'CLOSED';
     position.exitReason = reason;
 
-    if (exitPriceSOL) {
-      const multiple = exitPriceSOL / position.entryPriceSOL;
+    // Use provided exit price, fall back to last known price, then 0.7x safety floor
+    const effectiveExitPrice = exitPriceSOL ?? position.lastPriceSOL;
+    if (effectiveExitPrice && effectiveExitPrice !== position.entryPriceSOL) {
+      const multiple = effectiveExitPrice / position.entryPriceSOL;
       position.realizedMultiple = multiple;
       position.realizedPnLSOL = (multiple - 1) * position.sizeSOL;
       position.outcome = multiple >= 1.02 ? 'WIN' : multiple <= 0.98 ? 'LOSS' : 'BREAKEVEN';
     } else {
-      // No price available — assume loss (conservative)
+      // Never got a price update — use conservative 0.7x safety floor
       position.realizedMultiple = 0.7;
       position.realizedPnLSOL = -0.3 * position.sizeSOL;
       position.outcome = 'LOSS';
@@ -304,9 +308,9 @@ export class PositionManager {
     for (const [tokenCA, position] of this.positions) {
       const holdMs = now - position.entryTimestamp.getTime();
 
-      // Time exit: edge expired
+      // Time exit: edge expired — pass last known price so we don't fallback to 0.7x
       if (holdMs > position.maxHoldMs) {
-        this.closePosition(tokenCA, `TIME_EXIT (held ${Math.round(holdMs / 1000)}s)`);
+        this.closePosition(tokenCA, `TIME_EXIT (held ${Math.round(holdMs / 1000)}s)`, position.lastPriceSOL);
         continue;
       }
 
@@ -314,7 +318,7 @@ export class PositionManager {
       // If stale for 5+ minutes, force-close — we can't evaluate stop-loss without price data
       const staleSince = now - position.lastCheckedAt.getTime();
       if (staleSince > 300_000) {
-        this.closePosition(tokenCA, `STALE_EXIT (no price data for ${Math.round(staleSince / 1000)}s)`);
+        this.closePosition(tokenCA, `STALE_EXIT (no price data for ${Math.round(staleSince / 1000)}s)`, position.lastPriceSOL);
         continue;
       }
       if (staleSince > 120_000) {
