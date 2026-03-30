@@ -43,6 +43,9 @@ import { AntifragileEngine } from './antifragile/antifragileEngine';
 import { SocialSignalEngine } from './social/socialSignalEngine';
 import { OnChainSimulator } from './simulation/onChainSimulator';
 import { TelegramNotifier } from './notifications/telegramNotifier';
+import { StatArbEngine } from './execution/statArbEngine';
+import { SmartMoneyTracker } from './intelligence/smartMoneyTracker';
+import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -56,6 +59,9 @@ let executionEngine: ExecutionEngine | null = null;
 let deployerIntel: DeployerIntelligence | null = null;
 let socialEngine: SocialSignalEngine | null = null;
 let simulator: OnChainSimulator | null = null;
+let statArbEngine: StatArbEngine | null = null;
+let smartMoneyTracker: SmartMoneyTracker | null = null;
+let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 
 function getSmartWalletSignalScore(walletTier: 'S' | 'A' | 'B', amountSOL: number): number {
   let score = walletTier === 'S' ? 7.0 : walletTier === 'A' ? 5.0 : 3.0;
@@ -309,6 +315,21 @@ async function boot(): Promise<void> {
   // 5k. On-Chain Simulator — pre-trade pool analysis
   simulator = new OnChainSimulator(cfg.connection);
   logger.info('On-chain simulator initialized');
+
+  // 5l. Statistical Arbitrage Engine — cross-DEX spread capture
+  statArbEngine = new StatArbEngine(cfg.connection);
+  statArbEngine.start();
+  logger.info('StatArb engine started');
+
+  // 5m. Smart Money Tracker — behavioral wallet clustering (10s window)
+  smartMoneyTracker = new SmartMoneyTracker(walletRegistry);
+  smartMoneyTracker.start();
+  logger.info('Smart money tracker started', { trackedWallets: walletRegistry.count() });
+
+  // 5n. Toxic Flow Backrunner — post-sandwich dip capture
+  toxicFlowBackrunner = new ToxicFlowBackrunner(cfg.connection);
+  toxicFlowBackrunner.start();
+  logger.info('Toxic flow backrunner started');
 
   // 6. Wire event bus listeners
 
@@ -1079,6 +1100,15 @@ async function boot(): Promise<void> {
       }
     }
 
+    // Update smart money wallet performance tracking
+    if (smartMoneyTracker && position.sourceWallets.length > 0) {
+      const won = position.outcome === 'WIN';
+      const multiple = position.realizedMultiple ?? 1;
+      for (const wallet of position.sourceWallets) {
+        smartMoneyTracker.updateWalletPerformance(wallet, won, multiple);
+      }
+    }
+
     logger.info('═══ TRADE CLOSED ═══', {
       id: position.id,
       tokenCA: position.tokenCA,
@@ -1397,6 +1427,9 @@ async function stopAllStreams(): Promise<void> {
   if (survivalEngine) survivalEngine.stop();
   if (positionManager) positionManager.stop();
   if (antifragileEngine) antifragileEngine.stop();
+  if (statArbEngine) statArbEngine.stop();
+  if (smartMoneyTracker) smartMoneyTracker.stop();
+  if (toxicFlowBackrunner) toxicFlowBackrunner.stop();
   // Persist ML models on shutdown
   if (onlineLearner) {
     try { onlineLearner.save(); } catch { /* ignore */ }
