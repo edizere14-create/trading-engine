@@ -29,8 +29,9 @@ const CLEANUP_INTERVAL_MS = 60_000;
 const MAX_SUBS_PER_CONNECTION = 400; // conservative buffer under RPC ~512 ceiling
 const SUBSCRIBE_BATCH_SIZE = 50;
 const SUBSCRIBE_BATCH_DELAY_MS = 200;
-const SILENCE_THRESHOLD_MS = 5 * 60_000; // 5 min — whale wallets transact frequently
+const SILENCE_THRESHOLD_MS = 30 * 60_000; // 30 min — most wallets don't transact every few minutes
 const SILENCE_CHECK_INTERVAL_MS = 60_000;
+const SILENCE_RESUB_MAX_PER_CYCLE = 10; // limit churn per cycle
 const COVERAGE_WARMUP_MS = 10 * 60_000; // 10 min warmup before coverage checks fire
 const COVERAGE_DEGRADED_PCT = 0.15;    // warn below 15% (realistic: most wallets don't transact every 10 min)
 const COVERAGE_CRITICAL_PCT = 0.05;    // halt only below 5% (near-total subscription failure)
@@ -304,7 +305,7 @@ export class SmartWalletStream {
         const silentMs = now - (sub.lastLogAt ?? sub.subscribedAt);
 
         if (silentMs > SILENCE_THRESHOLD_MS) {
-          logger.warn('[WalletStream] Wallet silent — resubscribing', {
+          logger.debug('[WalletStream] Wallet silent — resubscribing', {
             wallet: address,
             silentMinutes: Math.round(silentMs / 60_000),
           });
@@ -312,8 +313,7 @@ export class SmartWalletStream {
           resubCount++;
 
           // Don't resubscribe too many at once
-          if (resubCount >= SUBSCRIBE_BATCH_SIZE) {
-            logger.warn('[WalletStream] Batch resubscribe limit reached, will continue next cycle');
+          if (resubCount >= SILENCE_RESUB_MAX_PER_CYCLE) {
             break;
           }
         }
