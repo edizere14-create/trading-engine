@@ -119,6 +119,14 @@ function getSolPrice(): number {
   return currentSOLPrice;
 }
 
+// Estimate payoff multiple from signal quality instead of hardcoding 2.0
+// Maps score [0–10] → expected payoff [1.2x–3.5x]
+// Score 5 → 2.35x (close to old 2.0 baseline), Score 10 → 3.5x, Score 3 → 1.89x
+function estimatePayoffMultiple(score: number): number {
+  const clamped = Math.min(Math.max(score, 0), 10);
+  return 1.2 + (clamped / 10) * 2.3;
+}
+
 function startPriceRefreshLoop(): void {
   const interval = setInterval(async () => {
     try {
@@ -423,6 +431,7 @@ async function boot(): Promise<void> {
   // 6. Wire event bus listeners
 
   bus.on('pool:created', async (event) => {
+   try {
     antifragileEngine?.heartbeat();
 
     // Filter out micro-liquidity pools
@@ -571,7 +580,7 @@ async function boot(): Promise<void> {
       marketSnapshot,
       survival,
       mlWinProb,
-      2.0 // default predicted multiple
+      estimatePayoffMultiple(signal.totalScore)
     );
 
     // ── Portfolio-level sizing ──
@@ -581,7 +590,7 @@ async function boot(): Promise<void> {
       const sizing = portfolioOptimizer.calculateOptimalSize(
         cfg.INITIAL_CAPITAL_USD,
         mlWinProb,
-        2.0,
+        estimatePayoffMultiple(signal.totalScore),
         event.tokenCA,
         narrative,
         [],  // current positions — would need access to positionManager internal state
@@ -647,6 +656,13 @@ async function boot(): Promise<void> {
       maxHoldMs: risk.maxHoldMs,
     });
     bus.emit('trade:signal', autonomousSignal);
+   } catch (err) {
+    logger.error('pool:created handler crashed', {
+      tokenCA: event.tokenCA,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+   }
   });
 
   bus.on('swap:detected', (event) => {
@@ -723,6 +739,7 @@ async function boot(): Promise<void> {
 
   // ── SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
   bus.on('trade:signal', async (signal) => {
+   try {
     // Block new signals during shutdown
     if (isShuttingDown) return;
 
@@ -780,7 +797,7 @@ async function boot(): Promise<void> {
       const sizing = portfolioOptimizer.calculateOptimalSize(
         cfg.INITIAL_CAPITAL_USD,
         coldStartWinProb,
-        2.0,
+        estimatePayoffMultiple(signal.score),
         signal.tokenCA,
         narrative,
         [],
@@ -932,6 +949,13 @@ async function boot(): Promise<void> {
         `AUTONOMOUS WARNING\nToken: ${signal.tokenCA}\nReason: local position tracking failed`
       );
     }
+   } catch (err) {
+    logger.error('trade:signal handler crashed', {
+      tokenCA: signal.tokenCA,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
+   }
   });
 
   bus.on('cluster:alert', (alert) => {
@@ -1658,7 +1682,8 @@ process.on('unhandledRejection', (reason) => {
     stack: reason instanceof Error ? reason.stack : undefined,
   });
   console.error('UNHANDLED REJECTION:', reason);
-  // Don't crash — log and continue
+  // Trigger graceful shutdown — continuing after unhandled rejection risks zombie state
+  void shutdown();
 });
 
 boot().catch((err) => {
