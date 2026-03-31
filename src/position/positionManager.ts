@@ -235,6 +235,13 @@ export class PositionManager {
     }
   }
 
+  /**
+   * Force close a position from an external strategy (e.g. CURVE_SAFETY_EXIT).
+   */
+  forceClose(tokenCA: string, reason: string, exitPriceSOL?: number): void {
+    this.closePosition(tokenCA, reason, exitPriceSOL);
+  }
+
   hasPosition(tokenCA: string): boolean {
     return this.positions.has(tokenCA);
   }
@@ -270,15 +277,16 @@ export class PositionManager {
     position.status = 'CLOSED';
     position.exitReason = reason;
 
-    // Use provided exit price, fall back to last known price, then 0.7x safety floor
+    // Use provided exit price, fall back to lastPriceSOL (initialized to entryPriceSOL).
+    // The 0.7x fallback only fires if effectiveExitPrice is somehow 0 (should never happen).
     const effectiveExitPrice = exitPriceSOL ?? position.lastPriceSOL;
-    if (effectiveExitPrice && effectiveExitPrice !== position.entryPriceSOL) {
+    if (effectiveExitPrice > 0) {
       const multiple = effectiveExitPrice / position.entryPriceSOL;
       position.realizedMultiple = multiple;
       position.realizedPnLSOL = (multiple - 1) * position.sizeSOL;
       position.outcome = multiple >= 1.02 ? 'WIN' : multiple <= 0.98 ? 'LOSS' : 'BREAKEVEN';
     } else {
-      // Never got a price update — use conservative 0.7x safety floor
+      // Defensive fallback — should never trigger since lastPriceSOL = entryPriceSOL on open
       position.realizedMultiple = 0.7;
       position.realizedPnLSOL = -0.3 * position.sizeSOL;
       position.outcome = 'LOSS';

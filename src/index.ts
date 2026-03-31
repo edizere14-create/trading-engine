@@ -46,6 +46,7 @@ import { TelegramNotifier } from './notifications/telegramNotifier';
 import { StatArbEngine } from './execution/statArbEngine';
 import { SmartMoneyTracker } from './intelligence/smartMoneyTracker';
 import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
+import { HybridPowerPlay } from './execution/hybridPowerPlay';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -62,6 +63,7 @@ let simulator: OnChainSimulator | null = null;
 let statArbEngine: StatArbEngine | null = null;
 let smartMoneyTracker: SmartMoneyTracker | null = null;
 let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
+let hybridPowerPlay: HybridPowerPlay | null = null;
 
 function getSmartWalletSignalScore(walletTier: 'S' | 'A' | 'B', amountSOL: number): number {
   let score = walletTier === 'S' ? 7.0 : walletTier === 'A' ? 5.0 : 3.0;
@@ -330,6 +332,11 @@ async function boot(): Promise<void> {
   toxicFlowBackrunner = new ToxicFlowBackrunner(cfg.connection);
   toxicFlowBackrunner.start();
   logger.info('Toxic flow backrunner started');
+
+  // 5o. Hybrid Power Play — three-stage PumpFun lifecycle strategy
+  hybridPowerPlay = new HybridPowerPlay(cfg.connection, positionManager!);
+  await hybridPowerPlay.start();
+  logger.info('Hybrid Power Play started');
 
   // 6. Wire event bus listeners
 
@@ -634,6 +641,14 @@ async function boot(): Promise<void> {
         logger.warn('Signal BLOCKED — system health', { state: health.overallStatus });
         return;
       }
+    }
+
+    // HybridPowerPlay: suppress signals during migration cooldown
+    if (hybridPowerPlay?.shouldSuppressSignal(signal.tokenCA)) {
+      logger.info('Signal BLOCKED — HybridPowerPlay migration suppression', {
+        tokenCA: signal.tokenCA,
+      });
+      return;
     }
 
     logger.info('Trade signal received', {
@@ -1083,6 +1098,11 @@ async function boot(): Promise<void> {
       tradesToday: stats.tradesToday,
       winRate: (stats.winRate * 100).toFixed(1) + '%',
     });
+
+    // HybridPowerPlay: track this token through bonding curve lifecycle
+    if (hybridPowerPlay) {
+      hybridPowerPlay.trackToken(position.tokenCA, position.sourceWallets);
+    }
   });
 
   bus.on('position:closed', (position) => {
@@ -1430,6 +1450,7 @@ async function stopAllStreams(): Promise<void> {
   if (statArbEngine) statArbEngine.stop();
   if (smartMoneyTracker) smartMoneyTracker.stop();
   if (toxicFlowBackrunner) toxicFlowBackrunner.stop();
+  if (hybridPowerPlay) hybridPowerPlay.stop();
   // Persist ML models on shutdown
   if (onlineLearner) {
     try { onlineLearner.save(); } catch { /* ignore */ }
