@@ -3,6 +3,7 @@ import { logger } from './core/logger';
 import { bus } from './core/eventBus';
 import { Keypair } from '@solana/web3.js';
 import bs58 from 'bs58';
+import axios from 'axios';
 
 import { WalletRegistry } from './registry/walletRegistry';
 import { DeployerRegistry } from './registry/deployerRegistry';
@@ -66,6 +67,81 @@ let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
+
+// ── SOL Price State ──────────────────────────────────────
+let currentSOLPrice: number | null = null;
+let lastPriceUpdate = 0;
+const SOL_PRICE_STALENESS_MS = 30_000;
+const SOL_PRICE_HALT_MS = 60_000;
+
+async function fetchSOLPrice(): Promise<number> {
+  // Primary: Jupiter Price API (already used for swaps)
+  const res = await axios.get('https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', { timeout: 5_000 });
+  const price = res.data?.data?.So11111111111111111111111111111111111111112?.price;
+  const parsed = typeof price === 'number' ? price : parseFloat(price);
+  if (parsed > 0) return parsed;
+  throw new Error('Invalid price from Jupiter');
+}
+
+async function fetchSOLPriceWithRetry(attempts = 5): Promise<number> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchSOLPrice();
+    } catch (err) {
+      logger.warn('[Price] Jupiter fetch failed', { attempt: i + 1, error: err instanceof Error ? err.message : String(err) });
+    }
+    // CoinGecko fallback on attempts 2+
+    if (i >= 1) {
+      try {
+        const res = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { timeout: 5_000 });
+        if (res.data?.solana?.usd > 0) return res.data.solana.usd;
+      } catch { /* continue retry loop */ }
+    }
+    if (i < attempts - 1) await new Promise(r => setTimeout(r, 1_000 * (i + 1)));
+  }
+  throw new Error('Cannot fetch SOL price after 5 attempts — refusing to start');
+}
+
+function getSolPrice(): number {
+  if (currentSOLPrice === null) throw new Error('SOL price not initialized');
+
+  const ageMs = Date.now() - lastPriceUpdate;
+
+  if (ageMs > SOL_PRICE_HALT_MS) {
+    bus.emit('system:halt', { reason: `SOL price stale ${Math.round(ageMs / 1000)}s`, resumeAt: undefined });
+    throw new Error(`SOL price stale ${Math.round(ageMs / 1000)}s — halting`);
+  }
+
+  if (ageMs > SOL_PRICE_STALENESS_MS) {
+    throw new Error(`SOL price stale ${Math.round(ageMs / 1000)}s — blocking sizing`);
+  }
+
+  return currentSOLPrice;
+}
+
+function startPriceRefreshLoop(): void {
+  const interval = setInterval(async () => {
+    try {
+      const price = await fetchSOLPrice();
+      if (price > 0) {
+        currentSOLPrice = price;
+        lastPriceUpdate = Date.now();
+      }
+    } catch {
+      try {
+        const res = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { timeout: 5_000 });
+        if (res.data?.solana?.usd > 0) {
+          currentSOLPrice = res.data.solana.usd;
+          lastPriceUpdate = Date.now();
+          logger.warn('[Price] Updated from CoinGecko fallback');
+        }
+      } catch {
+        logger.error('[Price] All sources failed — staleness guard will block trades');
+      }
+    }
+  }, 15_000);
+  interval.unref();
+}
 
 function getSmartWalletSignalScore(walletTier: 'S' | 'A' | 'B', amountSOL: number): number {
   let score = walletTier === 'S' ? 7.0 : walletTier === 'A' ? 5.0 : 3.0;
@@ -222,8 +298,12 @@ async function boot(): Promise<void> {
   // 5c. Trade infrastructure
   const tokenSafety = new TokenSafetyChecker(cfg.connection);
 
-  // SOL price estimate — will be updated by market engine
-  let currentSOLPrice = 150; // conservative default
+  // SOL price — fetch real price before any sizing decisions
+  currentSOLPrice = await fetchSOLPriceWithRetry();
+  lastPriceUpdate = Date.now();
+  logger.info('[Engine] SOL price initialized', { price: currentSOLPrice });
+  startPriceRefreshLoop();
+
   const smartWalletSignalDedupe = new Map<string, number>();
   const SMART_WALLET_MIN_SWAP_SOL = 0.05;
   const SMART_WALLET_SIGNAL_TTL_MS = 120_000;
@@ -237,7 +317,7 @@ async function boot(): Promise<void> {
       maxTradesPerDay: cfg.MAX_TRADES_PER_DAY,
       stopLossPct: cfg.TRADE_STOP_LOSS_PCT,
       maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
-      solPriceUSD: currentSOLPrice,
+      solPriceUSD: currentSOLPrice!,
     }
   );
   positionManager.start();
@@ -349,7 +429,7 @@ async function boot(): Promise<void> {
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
 
     // Filter out pools below minimum USD depth
-    const poolDepthUSD = event.initialLiquiditySOL * currentSOLPrice;
+    const poolDepthUSD = event.initialLiquiditySOL * getSolPrice();
     if (poolDepthUSD < cfg.MIN_POOL_DEPTH_USD) {
       logger.info('Pool skipped — below min pool depth', {
         tokenCA: event.tokenCA,
@@ -410,7 +490,7 @@ async function boot(): Promise<void> {
       }
       const sandwichRisk = simulator.estimateSandwichRisk(
         simResult.reserveSOL,
-        cfg.INITIAL_CAPITAL_USD / currentSOLPrice * (cfg.TRADE_SIZE_PCT),
+        cfg.INITIAL_CAPITAL_USD / getSolPrice() * (cfg.TRADE_SIZE_PCT),
         simResult.buyImpact[1]?.impactPct ?? 5
       );
 
@@ -540,7 +620,7 @@ async function boot(): Promise<void> {
       triggerWallet: 'AUTONOMOUS_ENGINE',
       walletTier: 'S' as const,
       walletPnL30d: 0,
-      convictionSOL: risk.sizeUSD / Math.max(currentSOLPrice, 1),
+      convictionSOL: risk.sizeUSD / Math.max(getSolPrice(), 1),
       clusterWallets: [] as string[],
       clusterSize: 0,
       totalClusterSOL: 0,
@@ -755,7 +835,7 @@ async function boot(): Promise<void> {
 
       const amountSOL = Math.max(
         signal.overrideSizeUSD && signal.overrideSizeUSD > 0
-          ? signal.overrideSizeUSD / Math.max(currentSOLPrice, 1)
+          ? signal.overrideSizeUSD / Math.max(getSolPrice(), 1)
           : signal.convictionSOL,
         0.01
       );
@@ -1125,14 +1205,14 @@ async function boot(): Promise<void> {
 
   bus.on('position:closed', (position) => {
     // Record PnL in survival engine
-    const pnlUSD = (position.realizedPnLSOL ?? 0) * currentSOLPrice;
+    const pnlUSD = (position.realizedPnLSOL ?? 0) * (currentSOLPrice ?? 0);
     survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
 
     if (antifragileEngine) {
       antifragileEngine.heartbeat();
       if (position.outcome === 'LOSS') {
         const pnlPct = position.sizeUSD > 0
-          ? ((position.realizedPnLSOL ?? 0) * currentSOLPrice / position.sizeUSD) * 100
+          ? ((position.realizedPnLSOL ?? 0) * (currentSOLPrice ?? 0) / position.sizeUSD) * 100
           : 0;
         antifragileEngine.recordTradeOutcome(position.tokenCA, pnlPct);
       }
@@ -1177,7 +1257,7 @@ async function boot(): Promise<void> {
       poolAddress: '',
       entryTimestamp: position.entryTimestamp,
       entryPriceSOL: position.entryPriceSOL,
-      entryPriceUSD: position.entryPriceSOL * currentSOLPrice,
+      entryPriceUSD: position.entryPriceSOL * (currentSOLPrice ?? 0),
       entryLiquiditySOL: 0,
       entryVolumeSOL: 0,
       entryHolderCount: 0,

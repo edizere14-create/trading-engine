@@ -12,9 +12,10 @@ export const POOL_PROGRAMS = {
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-const HEALTH_CHECK_INTERVAL_MS = 30_000; // Check every 30s
-const RECONNECT_BASE_DELAY_MS = 2_000;
-const RECONNECT_MAX_DELAY_MS = 60_000;
+const HEALTH_CHECK_INTERVAL_MS = 5_000; // Check every 5s
+const RECONNECT_BASE_DELAY_MS = 500;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 export class LPCreationStream {
   private primaryConnection: Connection;
@@ -77,13 +78,14 @@ export class LPCreationStream {
 
       const silentMs = Date.now() - this.lastEventTime;
 
-      // If no events for 5 minutes, subscriptions are likely dead
-      if (silentMs > 300_000) {
+      // If no events for 60s, subscriptions are likely dead
+      if (silentMs > 60_000) {
         logger.warn('LP stream silent — reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
         });
         await this.reconnect();
+        return;
       }
 
       // Also verify connection is healthy via a lightweight RPC call
@@ -98,6 +100,12 @@ export class LPCreationStream {
 
   private async reconnect(): Promise<void> {
     if (this.isStopped) return;
+
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      logger.error('LP stream max reconnect attempts reached — triggering HALT');
+      bus.emit('system:halt', { reason: 'LP stream WebSocket unrecoverable', resumeAt: undefined });
+      return;
+    }
 
     this.reconnectAttempts++;
     const delay = Math.min(
@@ -118,6 +126,7 @@ export class LPCreationStream {
 
     try {
       await this.subscribe();
+      this.reconnectAttempts = 0;
       this.lastEventTime = Date.now(); // Reset timer after reconnection
       logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {

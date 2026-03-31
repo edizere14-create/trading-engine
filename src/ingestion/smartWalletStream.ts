@@ -17,9 +17,10 @@ const SWAP_PROGRAMS = new Set([
   'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',   // PumpSwap AMM
 ]);
 
-const HEALTH_CHECK_INTERVAL_MS = 30_000;
-const RECONNECT_BASE_DELAY_MS = 2_000;
-const RECONNECT_MAX_DELAY_MS = 60_000;
+const HEALTH_CHECK_INTERVAL_MS = 5_000;
+const RECONNECT_BASE_DELAY_MS = 500;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 const EVENT_DEDUP_TTL_MS = 120_000;
 const EVENT_FINGERPRINT_TTL_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 60_000;
@@ -182,13 +183,14 @@ export class SmartWalletStream {
 
       const silentMs = Date.now() - this.lastEventTime;
 
-      // If no events for 5 minutes, subscriptions are likely dead
-      if (silentMs > 300_000) {
+      // If no events for 60s, subscriptions are likely dead
+      if (silentMs > 60_000) {
         logger.warn('Wallet stream silent \u2014 reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
         });
         await this.reconnect();
+        return;
       }
 
       // Verify connection is healthy
@@ -203,6 +205,12 @@ export class SmartWalletStream {
 
   private async reconnect(): Promise<void> {
     if (this.isStopped) return;
+
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      logger.error('Wallet stream max reconnect attempts reached \u2014 triggering HALT');
+      bus.emit('system:halt', { reason: 'Wallet stream WebSocket unrecoverable', resumeAt: undefined });
+      return;
+    }
 
     this.reconnectAttempts++;
     const delay = Math.min(
@@ -223,6 +231,7 @@ export class SmartWalletStream {
 
     try {
       await this.subscribe();
+      this.reconnectAttempts = 0;
       this.lastEventTime = Date.now();
       logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {
