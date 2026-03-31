@@ -21,6 +21,7 @@ interface PositionConfig {
 }
 
 export class PositionManager {
+  private readonly MAX_CLOSED_POSITIONS = 500;
   private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
   private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
@@ -294,6 +295,11 @@ export class PositionManager {
 
     this.positions.delete(tokenCA);
     this.closedPositions.push(position);
+
+    // Cap in-memory buffer — full history lives in SQLite journal
+    if (this.closedPositions.length > this.MAX_CLOSED_POSITIONS) {
+      this.closedPositions.splice(0, this.closedPositions.length - this.MAX_CLOSED_POSITIONS);
+    }
 
     bus.emit('position:closed', position);
 

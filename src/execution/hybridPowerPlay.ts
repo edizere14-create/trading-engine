@@ -529,6 +529,8 @@ export class HybridPowerPlay {
 
   // ── CLEANUP ──────────────────────────────────────────────
 
+  private readonly MAX_TRACKED_TOKENS = 300;
+
   private cleanup(): void {
     const now = Date.now();
     for (const [tokenCA, lifecycle] of this.tokens) {
@@ -537,10 +539,17 @@ export class HybridPowerPlay {
         this.tokens.delete(tokenCA);
         continue;
       }
-      // Remove stale tokens with no activity
-      if (now - lifecycle.enteredAt > STALE_TOKEN_MS && lifecycle.stage === 'BONDING_CURVE') {
+      // Remove stale tokens with no activity (any stage)
+      if (now - lifecycle.enteredAt > STALE_TOKEN_MS) {
         this.tokens.delete(tokenCA);
       }
+    }
+
+    // Hard cap — evict oldest entries (Map preserves insertion order)
+    while (this.tokens.size > this.MAX_TRACKED_TOKENS) {
+      const oldestKey = this.tokens.keys().next().value;
+      if (oldestKey) this.tokens.delete(oldestKey);
+      else break;
     }
   }
 

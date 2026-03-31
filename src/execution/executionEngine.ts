@@ -390,6 +390,9 @@ export class ExecutionEngine {
 
       // Record for TCA
       this.executionHistory.push(result);
+      if (this.executionHistory.length > 200) {
+        this.executionHistory.splice(0, this.executionHistory.length - 200);
+      }
       this.updateRollingMetrics(result);
 
       return result;
