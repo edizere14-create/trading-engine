@@ -28,55 +28,114 @@ export class TokenSafetyChecker {
       return cached.result;
     }
 
+    // Retry up to 3 times before failing closed
+    const MAX_ATTEMPTS = 3;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        const result = await this.performChecks(tokenCA);
+        this.cache.set(tokenCA, { result, cachedAt: Date.now() });
+        bus.emit('safety:checked', result);
+
+        if (!result.isSafe) {
+          bus.emit('safety:blocked', { tokenCA, reasons: result.reasons });
+          logger.warn('Token BLOCKED by safety check', {
+            tokenCA,
+            rugScore: result.rugScore,
+            reasons: result.reasons,
+          });
+        } else {
+          logger.info('Token passed safety check', {
+            tokenCA,
+            rugScore: result.rugScore,
+            mintAuthRevoked: result.mintAuthRevoked,
+            freezeAuthRevoked: result.freezeAuthRevoked,
+            topHolderPct: (result.topHolderPct * 100).toFixed(1) + '%',
+          });
+        }
+
+        return result;
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_ATTEMPTS - 1) {
+          const delay = 300 * (attempt + 1);
+          logger.warn('[Safety] Check attempt failed — retrying', {
+            tokenCA,
+            attempt: attempt + 1,
+            delayMs: delay,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          await new Promise(r => setTimeout(r, delay));
+        }
+      }
+    }
+
+    // All retries exhausted — fail CLOSED
+    logger.error('[Safety] All attempts failed — failing closed (blocking token)', {
+      tokenCA,
+      error: lastError instanceof Error ? lastError.message : String(lastError),
+    });
+
+    const failedResult: TokenSafetyResult = {
+      tokenCA,
+      isSafe: false,
+      reasons: ['SAFETY_CHECK_FAILED — RPC error, all retries exhausted'],
+      rugScore: 10,
+      topHolderPct: 0,
+      lpLocked: false,
+      mintAuthRevoked: false,
+      freezeAuthRevoked: false,
+      isHoneypot: false,
+      checkedAt: new Date(),
+    };
+
+    // Cache the failure briefly (30s) so we don't hammer a dead RPC
+    this.cache.set(tokenCA, { result: failedResult, cachedAt: Date.now() - CACHE_TTL_MS + 30_000 });
+    bus.emit('safety:checked', failedResult);
+    bus.emit('safety:blocked', { tokenCA, reasons: failedResult.reasons });
+
+    return failedResult;
+  }
+
+  private async performChecks(tokenCA: string): Promise<TokenSafetyResult> {
     const reasons: string[] = [];
     let rugScore = 0;
     let topHolderPct = 0;
-    let lpLocked = false;
+    const lpLocked = false;
     let mintAuthRevoked = false;
     let freezeAuthRevoked = false;
-    let isHoneypot = false;
+    const isHoneypot = false;
 
-    try {
-      // 1. Check mint authority — revoked is safe
-      const mintInfo = await this.getMintInfo(tokenCA);
-      mintAuthRevoked = mintInfo.mintAuthRevoked;
-      freezeAuthRevoked = mintInfo.freezeAuthRevoked;
+    // 1. Check mint authority — revoked is safe
+    const mintInfo = await this.getMintInfo(tokenCA);
+    mintAuthRevoked = mintInfo.mintAuthRevoked;
+    freezeAuthRevoked = mintInfo.freezeAuthRevoked;
 
-      if (!mintAuthRevoked) {
-        reasons.push('MINT_AUTHORITY_ACTIVE — deployer can inflate supply');
-        rugScore += 3;
-      }
-      if (!freezeAuthRevoked) {
-        reasons.push('FREEZE_AUTHORITY_ACTIVE — deployer can freeze accounts');
-        rugScore += 4;
-      }
+    if (!mintAuthRevoked) {
+      reasons.push('MINT_AUTHORITY_ACTIVE — deployer can inflate supply');
+      rugScore += 3;
+    }
+    if (!freezeAuthRevoked) {
+      reasons.push('FREEZE_AUTHORITY_ACTIVE — deployer can freeze accounts');
+      rugScore += 4;
+    }
 
-      // 2. Check top holder concentration
-      topHolderPct = await this.getTopHolderConcentration(tokenCA);
-      if (topHolderPct > 0.50) {
-        reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
-        rugScore += 3;
-      } else if (topHolderPct > 0.30) {
-        reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — high`);
-        rugScore += 2;
-      } else if (topHolderPct > 0.20) {
-        rugScore += 1;
-      }
-
-    } catch (err) {
-      // If safety checks fail, allow trade but note it
-      logger.warn('Token safety check failed — proceeding with caution', {
-        tokenCA,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      reasons.push('SAFETY_CHECK_FAILED — RPC error');
+    // 2. Check top holder concentration
+    topHolderPct = await this.getTopHolderConcentration(tokenCA);
+    if (topHolderPct > 0.50) {
+      reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
+      rugScore += 3;
+    } else if (topHolderPct > 0.30) {
+      reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — high`);
+      rugScore += 2;
+    } else if (topHolderPct > 0.20) {
       rugScore += 1;
     }
 
-    // Determine overall safety
     const isSafe = rugScore <= 5 && !isHoneypot;
 
-    const result: TokenSafetyResult = {
+    return {
       tokenCA,
       isSafe,
       reasons,
@@ -88,30 +147,6 @@ export class TokenSafetyChecker {
       isHoneypot,
       checkedAt: new Date(),
     };
-
-    // Cache result
-    this.cache.set(tokenCA, { result, cachedAt: Date.now() });
-
-    bus.emit('safety:checked', result);
-
-    if (!isSafe) {
-      bus.emit('safety:blocked', { tokenCA, reasons });
-      logger.warn('Token BLOCKED by safety check', {
-        tokenCA,
-        rugScore,
-        reasons,
-      });
-    } else {
-      logger.info('Token passed safety check', {
-        tokenCA,
-        rugScore,
-        mintAuthRevoked,
-        freezeAuthRevoked,
-        topHolderPct: (topHolderPct * 100).toFixed(1) + '%',
-      });
-    }
-
-    return result;
   }
 
   /**
@@ -148,25 +183,21 @@ export class TokenSafetyChecker {
   }
 
   private async getTopHolderConcentration(tokenCA: string): Promise<number> {
-    try {
-      const mintPubkey = new PublicKey(tokenCA);
-      const largestAccounts = await this.connection.getTokenLargestAccounts(mintPubkey);
+    const mintPubkey = new PublicKey(tokenCA);
+    const largestAccounts = await this.connection.getTokenLargestAccounts(mintPubkey);
 
-      if (!largestAccounts.value || largestAccounts.value.length === 0) return 0;
+    if (!largestAccounts.value || largestAccounts.value.length === 0) return 0;
 
-      // Get total supply
-      const supply = await this.connection.getTokenSupply(mintPubkey);
-      const totalSupply = Number(supply.value.amount);
-      if (totalSupply === 0) return 0;
+    // Get total supply
+    const supply = await this.connection.getTokenSupply(mintPubkey);
+    const totalSupply = Number(supply.value.amount);
+    if (totalSupply === 0) return 0;
 
-      // Sum top 5 holders
-      const top5 = largestAccounts.value.slice(0, 5);
-      const top5Total = top5.reduce((sum, acct) => sum + Number(acct.amount), 0);
+    // Sum top 5 holders
+    const top5 = largestAccounts.value.slice(0, 5);
+    const top5Total = top5.reduce((sum, acct) => sum + Number(acct.amount), 0);
 
-      return top5Total / totalSupply;
-    } catch {
-      return 0; // fail open — can't determine concentration
-    }
+    return top5Total / totalSupply;
   }
 
   private cleanupCache(): void {
