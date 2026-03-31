@@ -177,6 +177,7 @@ export class ExecutionEngine {
   private txFetchTimeoutMs: number;
   private tcaHistory: TCAReport[] = [];
   private executionHistory: ExecutionResult[] = [];
+  private _inflightCount = 0;
 
   // Rolling execution quality metrics
   private avgSlippageBps: number = 0;
@@ -360,7 +361,12 @@ export class ExecutionEngine {
 
   // ── EXECUTE ───────────────────────────────────────────
 
+  get inflightCount(): number {
+    return this._inflightCount;
+  }
+
   async execute(plan: ExecutionPlan, wallet: Keypair): Promise<ExecutionResult> {
+    this._inflightCount++;
     const startTime = Date.now();
 
     logger.info('Executing trade', {
@@ -418,6 +424,8 @@ export class ExecutionEngine {
         fillVerified: false,
         error: (err as Error).message,
       };
+    } finally {
+      this._inflightCount--;
     }
   }
 

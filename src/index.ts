@@ -64,6 +64,8 @@ let statArbEngine: StatArbEngine | null = null;
 let smartMoneyTracker: SmartMoneyTracker | null = null;
 let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
+let journal: TradeJournal | null = null;
+let isShuttingDown = false;
 
 function getSmartWalletSignalScore(walletTier: 'S' | 'A' | 'B', amountSOL: number): number {
   let score = walletTier === 'S' ? 7.0 : walletTier === 'A' ? 5.0 : 3.0;
@@ -210,7 +212,7 @@ async function boot(): Promise<void> {
   const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS, cfg.MIN_CONSENSUS);
 
   // 5b. Intelligence infrastructure
-  const journal = new TradeJournal('./data/journal.db');
+  journal = new TradeJournal('./data/journal.db');
   await journal.waitReady();
   const factorEngine = new FactorEngine(journal);
   const equityCtrl = new EquityCurveController(cfg.INITIAL_CAPITAL_USD, journal);
@@ -634,6 +636,9 @@ async function boot(): Promise<void> {
 
   // ── SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
   bus.on('trade:signal', async (signal) => {
+    // Block new signals during shutdown
+    if (isShuttingDown) return;
+
     // Check antifragile health
     if (antifragileEngine) {
       const health = antifragileEngine.getSystemHealth();
@@ -984,7 +989,7 @@ async function boot(): Promise<void> {
       edgesFired: trade.edgesFired,
       primaryEdge: trade.edgesFired[0] ?? 'UNKNOWN',
     };
-    journal.insert(journalEntry);
+    journal?.insert(journalEntry);
 
     // Log equity state
     const aggression = equityCtrl.getAggressionLevel();
@@ -1218,7 +1223,7 @@ async function boot(): Promise<void> {
       edgesFired: ['AUTONOMOUS'],
       primaryEdge: 'AUTONOMOUS',
     };
-    journal.insert(journalEntry);
+    journal?.insert(journalEntry);
 
     // Record in paper gate for gate progression
     if (position.mode === 'PAPER') {
@@ -1453,18 +1458,41 @@ async function boot(): Promise<void> {
   logger.info('Operations snapshot interval started (300s)');
 }
 
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/**
+ * Wait for in-flight executions to settle (up to maxMs).
+ */
+function waitForInflightExecutions(maxMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + maxMs;
+    const check = () => {
+      if (!executionEngine || executionEngine.inflightCount === 0 || Date.now() >= deadline) {
+        return resolve();
+      }
+      setTimeout(check, 100);
+    };
+    check();
+  });
+}
+
 async function stopAllStreams(): Promise<void> {
   logger.info('Stopping all streams and engines...');
-  if (lpStream) await lpStream.stop();
-  if (walletStream) await walletStream.stop();
-  if (survivalEngine) survivalEngine.stop();
-  if (positionManager) positionManager.stop();
-  if (antifragileEngine) antifragileEngine.stop();
-  if (statArbEngine) statArbEngine.stop();
-  if (smartMoneyTracker) smartMoneyTracker.stop();
-  if (toxicFlowBackrunner) toxicFlowBackrunner.stop();
-  if (hybridPowerPlay) hybridPowerPlay.stop();
-  // Persist ML models on shutdown
+
+  // ── Phase 1: Stop accepting new signals ──────────────
+  isShuttingDown = true;
+
+  // ── Phase 2: Wait for in-flight executions (3s grace) ─
+  if (executionEngine && executionEngine.inflightCount > 0) {
+    logger.info(`Waiting for ${executionEngine.inflightCount} in-flight execution(s)...`);
+    await waitForInflightExecutions(3_000);
+  }
+
+  // ── Phase 3: Persist critical state first ─────────────
+  if (journal) {
+    try { journal.close(); logger.info('Journal flushed & closed'); }
+    catch (e) { logger.error('Journal close failed', { error: String(e) }); }
+  }
   if (onlineLearner) {
     try { onlineLearner.save(); } catch { /* ignore */ }
   }
@@ -1474,26 +1502,66 @@ async function stopAllStreams(): Promise<void> {
   if (deployerIntel) {
     try { deployerIntel.save(); } catch { /* ignore */ }
   }
+
+  // ── Phase 4: Stop subsystems (allSettled — one hung service won't block others) ─
+  await Promise.allSettled([
+    survivalEngine ? Promise.resolve(survivalEngine.stop()) : Promise.resolve(),
+    positionManager ? Promise.resolve(positionManager.stop()) : Promise.resolve(),
+    antifragileEngine ? Promise.resolve(antifragileEngine.stop()) : Promise.resolve(),
+    statArbEngine ? Promise.resolve(statArbEngine.stop()) : Promise.resolve(),
+    smartMoneyTracker ? Promise.resolve(smartMoneyTracker.stop()) : Promise.resolve(),
+    toxicFlowBackrunner ? Promise.resolve(toxicFlowBackrunner.stop()) : Promise.resolve(),
+    hybridPowerPlay ? Promise.resolve(hybridPowerPlay.stop()) : Promise.resolve(),
+  ]);
+
+  // ── Phase 5: Close connections last ───────────────────
+  await Promise.allSettled([
+    lpStream ? lpStream.stop() : Promise.resolve(),
+    walletStream ? walletStream.stop() : Promise.resolve(),
+  ]);
+
   logger.info('All streams and engines stopped');
 }
 
 async function shutdown(): Promise<void> {
+  if (isShuttingDown) return; // prevent double-shutdown
   logger.info('Graceful shutdown initiated');
-  await stopAllStreams();
-  logger.info('Shutdown complete');
+
+  const timeout = new Promise<void>((_, reject) =>
+    setTimeout(() => reject(new Error(`Shutdown timeout after ${SHUTDOWN_TIMEOUT_MS / 1000}s`)), SHUTDOWN_TIMEOUT_MS)
+  );
+
+  try {
+    await Promise.race([stopAllStreams(), timeout]);
+    logger.info('Clean shutdown complete');
+  } catch (err) {
+    logger.error('Forced shutdown', { error: err instanceof Error ? err.message : String(err) });
+    // Last-ditch journal flush even on timeout
+    if (journal) {
+      try { journal.close(); } catch (e) { logger.error('Last-ditch journal flush failed', { error: String(e) }); }
+    }
+  }
+
   process.exit(0);
 }
 
-process.on('SIGINT', () => { shutdown(); });
-process.on('SIGTERM', () => { shutdown(); });
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+  process.on(sig, () => {
+    logger.info(`Received ${sig}`);
+    void shutdown();
+  });
+}
 
-process.on('uncaughtException', (err) => {
-  logger.error('UNCAUGHT EXCEPTION — restarting streams', {
+process.on('uncaughtException', async (err) => {
+  logger.error('UNCAUGHT EXCEPTION', {
     error: err instanceof Error ? err.message : String(err),
     stack: err instanceof Error ? err.stack : undefined,
   });
   console.error('UNCAUGHT EXCEPTION:', err);
-  // Let Railway restart the process
+  // Last-ditch journal flush before crash
+  if (journal) {
+    try { journal.close(); } catch { /* best effort */ }
+  }
   process.exit(1);
 });
 
