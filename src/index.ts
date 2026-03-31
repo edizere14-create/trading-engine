@@ -545,9 +545,16 @@ async function boot(): Promise<void> {
         marketSnapshot.state === 'HOT' ? 1 : marketSnapshot.state === 'NORMAL' ? 0.5 : 0,
         survival.sizeMultiplier
       );
-      const prediction = onlineLearner.predict(features);
-      mlWinProb = prediction.winProbability;
-      bus.emit('ml:prediction', { tokenCA: event.tokenCA, prediction });
+      const prediction = onlineLearner.getPrediction(features);
+      if (prediction === null) {
+        logger.warn('[ML] Prediction unavailable — using score-based fallback', {
+          tokenCA: event.tokenCA,
+          fallbackWP: mlWinProb.toFixed(3),
+        });
+      } else {
+        mlWinProb = prediction.winProbability;
+        bus.emit('ml:prediction', { tokenCA: event.tokenCA, prediction });
+      }
     }
 
     // ── HMM Regime multiplier ──

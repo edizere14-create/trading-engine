@@ -60,6 +60,41 @@ const FEATURE_KEYS: (keyof MLFeatureVector)[] = [
 
 const NUM_FEATURES = FEATURE_KEYS.length;
 
+// ── FEATURE BOUNDS (Layer 1: clip at the source) ──────────
+
+interface FeatureBound {
+  min: number;
+  max: number;
+}
+
+const FEATURE_BOUNDS: Record<keyof MLFeatureVector, FeatureBound> = {
+  timingEdge:                { min: -2,  max: 2   },
+  deployerQuality:           { min: 0,   max: 1   },
+  organicFlow:               { min: 0,   max: 1   },
+  manipulationRisk:          { min: 0,   max: 1   },
+  coordinationStrength:      { min: 0,   max: 1   },
+  socialVelocity:            { min: 0,   max: 1   },
+  confidence:                { min: 0,   max: 1   },
+  walletDiversityNorm:       { min: 0,   max: 1   },
+  volumeSlopeNorm:           { min: 0,   max: 1   },
+  exhaustionNorm:            { min: 0,   max: 1   },
+  buyToSellRatioNorm:        { min: 0,   max: 1   },
+  smartMoneyFlowNorm:        { min: 0,   max: 1   },
+  buyClusterFreqNorm:        { min: 0,   max: 1   },
+  regimeScore:               { min: -1,  max: 1   },
+  marketHeat:                { min: 0,   max: 1   },
+  survivalMultiplier:        { min: 0,   max: 1   },
+  timingXcoordination:       { min: -2,  max: 2   },
+  deployerXorganic:          { min: 0,   max: 1   },
+  manipulationXexhaustion:   { min: 0,   max: 1   },
+};
+
+// ── MODEL SAFETY CONSTANTS ────────────────────────────────
+
+const LOGIT_CLIP = 15;          // sigmoid(15)≈0.9999997 — extreme but finite
+const MAX_WEIGHT = 5.0;         // prevent weight explosion during SGD
+const PRED_HISTORY_SIZE = 100;
+
 // ── PREDICTION OUTPUT ─────────────────────────────────────
 
 export interface MLPrediction {
@@ -321,6 +356,7 @@ export class OnlineLearner {
   private driftDetector: DriftDetector;
   private exitOptimizer: ExitOptimizer;
 
+  private predictionHistory: number[] = [];
   private readonly filePath: string;
   private readonly MIN_TRAINING_SAMPLES = 20;
 
@@ -400,14 +436,72 @@ export class OnlineLearner {
     };
   }
 
+  // ── FEATURE CLIPPING (Layer 1) ──────────────────────────
+
+  private clipFeatures(raw: MLFeatureVector): MLFeatureVector {
+    const clipped: MLFeatureVector = { ...raw };
+
+    for (const key of FEATURE_KEYS) {
+      const bounds = FEATURE_BOUNDS[key];
+      const val = raw[key];
+      if (val === undefined || val === null) continue;
+
+      const clippedVal = Math.max(bounds.min, Math.min(bounds.max, val));
+      if (clippedVal !== val) {
+        logger.warn('[OnlineLearner] Feature clipped', {
+          feature: key,
+          original: val.toFixed(4),
+          clipped: clippedVal.toFixed(4),
+        });
+      }
+      clipped[key] = clippedVal;
+    }
+
+    return clipped;
+  }
+
   // ── PREDICTION ──────────────────────────────────────────
 
-  predict(features: MLFeatureVector): MLPrediction {
+  /**
+   * Safe prediction with null return on invalid output.
+   * Callers should treat null as "no signal available".
+   */
+  getPrediction(rawFeatures: MLFeatureVector): MLPrediction | null {
+    const features = this.clipFeatures(rawFeatures);
+    const x = this.featureVectorToArray(features);
+    const logit = this.computeClippedLogit(x);
+    const p = this.sigmoid(logit);
+
+    // Layer 3: output sanity check
+    if (!Number.isFinite(p) || p < 0 || p > 1) {
+      logger.error('[OnlineLearner] Invalid prediction — returning null', { p, logit });
+      return null;
+    }
+
+    // Layer 4: model health monitoring
+    this.recordPrediction(p);
+
+    return this.buildPrediction(features, p);
+  }
+
+  predict(rawFeatures: MLFeatureVector): MLPrediction {
+    const features = this.clipFeatures(rawFeatures);
     const x = this.featureVectorToArray(features);
 
-    // Raw logistic output
-    const logit = this.dot(x) + this.bias;
+    // Raw logistic output with logit clipping (Layer 2)
+    const logit = this.computeClippedLogit(x);
     const rawProb = this.sigmoid(logit);
+
+    // Layer 3: output sanity — fallback to 0.5 if broken
+    const safeProb = (!Number.isFinite(rawProb) || rawProb < 0 || rawProb > 1) ? 0.5 : rawProb;
+
+    // Layer 4: model health monitoring
+    this.recordPrediction(safeProb);
+
+    return this.buildPrediction(features, safeProb);
+  }
+
+  private buildPrediction(features: MLFeatureVector, rawProb: number): MLPrediction {
 
     // Bayesian calibration
     const calibratedWP = this.trainingSamples >= this.MIN_TRAINING_SAMPLES
@@ -447,29 +541,74 @@ export class OnlineLearner {
     };
   }
 
+  // ── MODEL HEALTH MONITORING (Layer 4) ───────────────────
+
+  private recordPrediction(p: number): void {
+    this.predictionHistory.push(p);
+    if (this.predictionHistory.length > PRED_HISTORY_SIZE) {
+      this.predictionHistory.shift();
+    }
+    this.checkModelHealth();
+  }
+
+  private checkModelHealth(): void {
+    if (this.predictionHistory.length < 20) return;
+
+    const mean = this.predictionHistory.reduce((a, b) => a + b, 0) / this.predictionHistory.length;
+    const allExtreme = this.predictionHistory.every(p => p > 0.95 || p < 0.05);
+
+    if (allExtreme) {
+      logger.error('[OnlineLearner] Model degenerate — all predictions extreme, resetting weights');
+      this.resetWeights();
+      return;
+    }
+
+    if (mean > 0.85) {
+      logger.warn('[OnlineLearner] Mean prediction suspiciously high — possible overfit or feature overflow', {
+        mean: mean.toFixed(3),
+        samples: this.predictionHistory.length,
+      });
+    }
+  }
+
+  private resetWeights(): void {
+    for (let i = 0; i < NUM_FEATURES; i++) {
+      this.weights[i] = 0;
+    }
+    this.bias = 0;
+    this.predictionHistory = [];
+    this.learningRate = 0.01; // reset learning rate too
+    logger.warn('[OnlineLearner] Weights reset to zero — model will re-learn from trades');
+  }
+
   // ── ONLINE UPDATE (called after each trade closes) ──────
 
-  update(features: MLFeatureVector, outcome: number, realizedMultiple: number, exitArmIndex?: number): void {
+  update(rawFeatures: MLFeatureVector, outcome: number, realizedMultiple: number, exitArmIndex?: number): void {
+    const features = this.clipFeatures(rawFeatures);
     const x = this.featureVectorToArray(features);
-    const logit = this.dot(x) + this.bias;
+    const logit = this.computeClippedLogit(x);
     const predicted = this.sigmoid(logit);
 
     // Gradient: (predicted - actual) for logistic loss
     const error = predicted - outcome;
 
-    // AdaGrad update
+    // AdaGrad update with weight clipping (Layer 3: prevent weight explosion)
     for (let i = 0; i < NUM_FEATURES; i++) {
       const grad = error * x[i] + this.l2Lambda * this.weights[i];
       this.gradientAccumulator[i] += grad * grad;
       const adaptiveLR = this.learningRate / Math.sqrt(this.gradientAccumulator[i]);
       this.weights[i] -= adaptiveLR * grad;
 
+      // Clip weight after update
+      this.weights[i] = Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, this.weights[i]));
+
       // Track feature importance (exponential moving average of |gradient|)
       this.featureImportance[i] = 0.95 * this.featureImportance[i] + 0.05 * Math.abs(grad);
     }
 
-    // Bias update
+    // Bias update + clip
     this.bias -= this.learningRate * error;
+    this.bias = Math.max(-MAX_WEIGHT, Math.min(MAX_WEIGHT, this.bias));
     this.trainingSamples++;
 
     // Update Bayesian calibrator
@@ -598,9 +737,23 @@ export class OnlineLearner {
     return sum;
   }
 
+  // Layer 2: logit hard ceiling before sigmoid
+  private computeClippedLogit(x: number[]): number {
+    const logit = this.dot(x) + this.bias;
+
+    if (Math.abs(logit) > LOGIT_CLIP) {
+      logger.warn('[OnlineLearner] Logit clipped', {
+        raw: logit.toFixed(2),
+        clipped: (Math.sign(logit) * LOGIT_CLIP).toFixed(2),
+      });
+    }
+
+    return Math.max(-LOGIT_CLIP, Math.min(LOGIT_CLIP, logit));
+  }
+
   private sigmoid(z: number): number {
-    if (z > 20) return 1;
-    if (z < -20) return 0;
+    if (z > LOGIT_CLIP) return 1;
+    if (z < -LOGIT_CLIP) return 0;
     return 1 / (1 + Math.exp(-z));
   }
 }
