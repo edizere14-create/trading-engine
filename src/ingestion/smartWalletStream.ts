@@ -25,6 +25,15 @@ const EVENT_DEDUP_TTL_MS = 120_000;
 const EVENT_FINGERPRINT_TTL_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 60_000;
 
+// ── CONNECTION POOL ─────────────────────────────────────
+const MAX_SUBS_PER_CONNECTION = 400; // conservative buffer under RPC ~512 ceiling
+const SUBSCRIBE_BATCH_SIZE = 50;
+const SUBSCRIBE_BATCH_DELAY_MS = 200;
+const SILENCE_THRESHOLD_MS = 5 * 60_000; // 5 min — whale wallets transact frequently
+const SILENCE_CHECK_INTERVAL_MS = 60_000;
+const COVERAGE_DEGRADED_PCT = 0.80;
+const COVERAGE_CRITICAL_PCT = 0.50;
+
 interface ClusterEntry {
   wallet: string;
   timestamp: number;
@@ -34,6 +43,9 @@ interface ClusterEntry {
 interface SubscriptionRef {
   connection: Connection;
   subId: number;
+  address: string;
+  subscribedAt: number;
+  lastLogAt: number | null;
 }
 
 class ClusterDetector {
@@ -92,14 +104,19 @@ class ClusterDetector {
 }
 
 export class SmartWalletStream {
+  private rpcUrl: string;
+  private backupRpcUrl: string | null;
   private primaryConnection: Connection;
   private backupConnection: Connection | null;
   private activeConnection: Connection;
   private walletRegistry: WalletRegistry;
-  private subscriptions: SubscriptionRef[] = [];
+  private subscriptions: Map<string, SubscriptionRef> = new Map();
+  private connectionPool: Connection[] = [];
+  private connectionSubCounts: Map<Connection, number> = new Map();
   private clusterDetector: ClusterDetector;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private healthInterval: ReturnType<typeof setInterval> | null = null;
+  private silenceInterval: ReturnType<typeof setInterval> | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isStopped = false;
@@ -113,6 +130,20 @@ export class SmartWalletStream {
     this.activeConnection = connection;
     this.walletRegistry = walletRegistry;
     this.clusterDetector = new ClusterDetector();
+
+    // Extract RPC URLs for creating pool connections
+    // @ts-expect-error — Connection._rpcEndpoint is internal but needed for pool
+    this.rpcUrl = connection._rpcEndpoint ?? connection.rpcEndpoint ?? '';
+    // @ts-expect-error — same for backup
+    this.backupRpcUrl = backupConnection ? (backupConnection._rpcEndpoint ?? backupConnection.rpcEndpoint ?? null) : null;
+
+    // Seed pool with existing connections
+    this.connectionPool.push(connection);
+    this.connectionSubCounts.set(connection, 0);
+    if (backupConnection) {
+      this.connectionPool.push(backupConnection);
+      this.connectionSubCounts.set(backupConnection, 0);
+    }
   }
 
   async start(): Promise<void> {
@@ -120,8 +151,16 @@ export class SmartWalletStream {
     this.recentSignatures.clear();
     this.recentEventFingerprints.clear();
     this.inFlightSignatures.clear();
-    await this.subscribe();
+
+    const wallets = this.walletRegistry.getAll();
+    if (wallets.length === 0) {
+      logger.warn('SmartWalletStream: no wallets to monitor');
+      return;
+    }
+
+    await this.subscribeAll(wallets.map(w => w.address));
     this.startHealthCheck();
+    this.startSilenceDetector();
 
     // Periodic cleanup for cluster state + dedupe cache
     this.cleanupInterval = setInterval(() => {
@@ -130,49 +169,206 @@ export class SmartWalletStream {
     }, CLEANUP_INTERVAL_MS);
   }
 
-  private async subscribe(): Promise<void> {
-    await this.clearSubscriptions();
+  // ── CONNECTION POOL ────────────────────────────────────
 
-    const wallets = this.walletRegistry.getAll();
-
-    if (wallets.length === 0) {
-      logger.warn('SmartWalletStream: no wallets to monitor');
-      return;
+  private getAvailableConnection(): Connection {
+    // Find a connection with room under the limit
+    for (const conn of this.connectionPool) {
+      const count = this.connectionSubCounts.get(conn) ?? 0;
+      if (count < MAX_SUBS_PER_CONNECTION) return conn;
     }
 
-    for (const wallet of wallets) {
-      try {
-        const pubkey = new PublicKey(wallet.address);
-        const subId = this.activeConnection.onLogs(
-          pubkey,
-          (logs: Logs, ctx: Context) => {
-            this.lastEventTime = Date.now();
-            this.reconnectAttempts = 0;
-            this.handleLogs(logs, ctx, wallet.address).catch((err) => {
-              logger.warn('Wallet handleLogs error', {
-                wallet: wallet.address,
-                err: err instanceof Error ? err.message : String(err),
-              });
-            });
-          },
-          'confirmed'
-        );
-        this.subscriptions.push({
-          connection: this.activeConnection,
-          subId,
-        });
-      } catch (err) {
-        logger.error('Wallet subscription failed', {
-          wallet: wallet.address,
-          err: err instanceof Error ? err.message : String(err),
-        });
+    // All full — create a new connection
+    const url = this.backupRpcUrl && this.connectionPool.length % 2 === 1
+      ? this.backupRpcUrl
+      : this.rpcUrl;
+
+    const conn = new Connection(url, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 30_000,
+    });
+    this.connectionPool.push(conn);
+    this.connectionSubCounts.set(conn, 0);
+    logger.info('[WalletStream] Added connection to pool', {
+      poolSize: this.connectionPool.length,
+      rpc: url.substring(0, 30) + '...',
+    });
+    return conn;
+  }
+
+  // ── BATCH SUBSCRIPTION ─────────────────────────────────
+
+  private async subscribeAll(walletAddresses: string[]): Promise<void> {
+    logger.info('[WalletStream] Subscribing wallets in batches', {
+      total: walletAddresses.length,
+      batchSize: SUBSCRIBE_BATCH_SIZE,
+      maxSubsPerConnection: MAX_SUBS_PER_CONNECTION,
+    });
+
+    for (let i = 0; i < walletAddresses.length; i += SUBSCRIBE_BATCH_SIZE) {
+      const batch = walletAddresses.slice(i, i + SUBSCRIBE_BATCH_SIZE);
+      await Promise.all(batch.map(addr => this.subscribeWallet(addr)));
+
+      if (i + SUBSCRIBE_BATCH_SIZE < walletAddresses.length) {
+        await new Promise(r => setTimeout(r, SUBSCRIBE_BATCH_DELAY_MS));
       }
     }
 
-    logger.info('SmartWalletStream subscribed', {
-      walletCount: wallets.length,
-      activeSubscriptions: this.subscriptions.length,
+    this.logCoverageReport();
+    logger.info('[WalletStream] Subscription complete', {
+      active: this.subscriptions.size,
+      total: walletAddresses.length,
     });
+  }
+
+  private async subscribeWallet(address: string): Promise<void> {
+    if (this.subscriptions.has(address)) return; // already subscribed
+
+    const conn = this.getAvailableConnection();
+    try {
+      const pubkey = new PublicKey(address);
+      const subId = conn.onLogs(
+        pubkey,
+        (logs: Logs, ctx: Context) => {
+          this.lastEventTime = Date.now();
+          this.reconnectAttempts = 0;
+
+          // Track last log time for silence detection
+          const sub = this.subscriptions.get(address);
+          if (sub) sub.lastLogAt = Date.now();
+
+          this.handleLogs(logs, ctx, address).catch((err) => {
+            logger.warn('Wallet handleLogs error', {
+              wallet: address,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
+        },
+        'confirmed'
+      );
+
+      this.subscriptions.set(address, {
+        connection: conn,
+        subId,
+        address,
+        subscribedAt: Date.now(),
+        lastLogAt: null,
+      });
+      this.connectionSubCounts.set(conn, (this.connectionSubCounts.get(conn) ?? 0) + 1);
+    } catch (err) {
+      logger.error('Wallet subscription failed', {
+        wallet: address,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async unsubscribeWallet(address: string): Promise<void> {
+    const sub = this.subscriptions.get(address);
+    if (!sub) return;
+
+    try {
+      await sub.connection.removeOnLogsListener(sub.subId);
+    } catch (err) {
+      logger.warn('[WalletStream] Failed to remove listener', {
+        wallet: address,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    this.connectionSubCounts.set(
+      sub.connection,
+      Math.max(0, (this.connectionSubCounts.get(sub.connection) ?? 1) - 1)
+    );
+    this.subscriptions.delete(address);
+  }
+
+  private async resubscribeWallet(address: string): Promise<void> {
+    await this.unsubscribeWallet(address);
+    await this.subscribeWallet(address);
+  }
+
+  // ── SILENCE DETECTION ──────────────────────────────────
+
+  private startSilenceDetector(): void {
+    if (this.silenceInterval) clearInterval(this.silenceInterval);
+
+    this.silenceInterval = setInterval(async () => {
+      if (this.isStopped) return;
+
+      const now = Date.now();
+      let resubCount = 0;
+
+      for (const [address, sub] of this.subscriptions) {
+        const silentMs = now - (sub.lastLogAt ?? sub.subscribedAt);
+
+        if (silentMs > SILENCE_THRESHOLD_MS) {
+          logger.warn('[WalletStream] Wallet silent — resubscribing', {
+            wallet: address,
+            silentMinutes: Math.round(silentMs / 60_000),
+          });
+          await this.resubscribeWallet(address);
+          resubCount++;
+
+          // Don't resubscribe too many at once
+          if (resubCount >= SUBSCRIBE_BATCH_SIZE) {
+            logger.warn('[WalletStream] Batch resubscribe limit reached, will continue next cycle');
+            break;
+          }
+        }
+      }
+
+      this.checkCoverageHealth();
+    }, SILENCE_CHECK_INTERVAL_MS);
+  }
+
+  // ── COVERAGE MONITORING ────────────────────────────────
+
+  private logCoverageReport(): void {
+    const total = this.subscriptions.size;
+    const active = [...this.subscriptions.values()].filter(s => s.lastLogAt !== null).length;
+    const silent = [...this.subscriptions.values()].filter(
+      s => s.lastLogAt === null && Date.now() - s.subscribedAt > 60_000
+    ).length;
+
+    logger.info('[WalletStream] Coverage report', {
+      total,
+      seenLogs: active,
+      silentOver60s: silent,
+      poolSize: this.connectionPool.length,
+      connectionDistribution: this.connectionPool.map(
+        (conn, i) => `conn${i}:${this.connectionSubCounts.get(conn) ?? 0}`
+      ).join(', '),
+    });
+  }
+
+  private checkCoverageHealth(): void {
+    const total = this.subscriptions.size;
+    if (total === 0) return;
+
+    const recentlySeen = [...this.subscriptions.values()].filter(
+      s => s.lastLogAt && Date.now() - s.lastLogAt < 10 * 60_000
+    ).length;
+
+    const coveragePct = recentlySeen / total;
+
+    if (coveragePct < COVERAGE_CRITICAL_PCT) {
+      logger.error('[WalletStream] Coverage CRITICAL — wallet stream degraded', {
+        coveragePct: Math.round(coveragePct * 100),
+        recentlySeen,
+        total,
+      });
+      bus.emit('system:halt', {
+        reason: `Wallet stream coverage critical: ${Math.round(coveragePct * 100)}%`,
+        resumeAt: undefined,
+      });
+    } else if (coveragePct < COVERAGE_DEGRADED_PCT) {
+      logger.warn('[WalletStream] Coverage degraded', {
+        coveragePct: Math.round(coveragePct * 100),
+        recentlySeen,
+        total,
+      });
+    }
   }
 
   private startHealthCheck(): void {
@@ -230,7 +426,9 @@ export class SmartWalletStream {
     }
 
     try {
-      await this.subscribe();
+      await this.clearSubscriptions();
+      const wallets = this.walletRegistry.getAll();
+      await this.subscribeAll(wallets.map(w => w.address));
       this.reconnectAttempts = 0;
       this.lastEventTime = Date.now();
       logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
@@ -394,14 +592,18 @@ export class SmartWalletStream {
   }
 
   private async clearSubscriptions(): Promise<void> {
-    for (const sub of this.subscriptions) {
+    for (const [, sub] of this.subscriptions) {
       try {
         await sub.connection.removeOnLogsListener(sub.subId);
       } catch {
         // Subscription may already be dead — ignore
       }
     }
-    this.subscriptions = [];
+    this.subscriptions.clear();
+    // Reset sub counts but keep connections in pool
+    for (const conn of this.connectionPool) {
+      this.connectionSubCounts.set(conn, 0);
+    }
   }
 
   async stop(): Promise<void> {
@@ -415,6 +617,11 @@ export class SmartWalletStream {
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
+    }
+
+    if (this.silenceInterval) {
+      clearInterval(this.silenceInterval);
+      this.silenceInterval = null;
     }
 
     await this.clearSubscriptions();
