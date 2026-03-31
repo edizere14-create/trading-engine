@@ -27,6 +27,7 @@ const envSchema = z.object({
   TELEGRAM_BOT_TOKEN:      z.string().optional(),
   TELEGRAM_CHAT_ID:        z.string().optional(),
   JITO_BLOCK_ENGINE_URL:   z.string().optional(),
+  JITO_TIP_LAMPORTS:       z.coerce.number().int().min(10000).default(100_000), // 0.0001 SOL default tip
   HELIUS_WEBHOOK_URL:      z.string().optional(),
 
   // Private key for execution engine (base58 encoded)

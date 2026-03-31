@@ -770,13 +770,26 @@ async function boot(): Promise<void> {
         return;
       }
 
-      const plan = executionEngine.createExecutionPlan(
-        signal.tokenCA,
-        'BUY',
-        amountSOL,
-        simulation,
-        urgency
-      );
+      // Backrun signals (ToxicFlowBackrunner, HybridPowerPlay Stage 3) use
+      // forced Jito bundles with dynamic tips sized to expected profit.
+      const isBackrunSignal = signal.triggerWallet === 'TOXIC_FLOW_BACKRUNNER'
+        || signal.triggerWallet === 'HYBRID_POWER_PLAY_BACKRUN';
+
+      const plan = isBackrunSignal
+        ? executionEngine.createBackrunPlan(
+            signal.tokenCA,
+            'BUY',
+            amountSOL,
+            amountSOL * (signal.score / 10) * 0.1, // estimated profit from score
+            simulation
+          )
+        : executionEngine.createExecutionPlan(
+            signal.tokenCA,
+            'BUY',
+            amountSOL,
+            simulation,
+            urgency
+          );
       const result = await executionEngine.execute(plan, executionWallet);
       if (!result.success) {
         antifragileEngine?.recordJupiterFailure();

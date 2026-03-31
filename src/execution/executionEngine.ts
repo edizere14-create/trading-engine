@@ -18,10 +18,34 @@ import {
   Keypair,
   ParsedTransactionWithMeta,
   ParsedTransactionMeta,
+  PublicKey,
+  SystemProgram,
+  TransactionMessage,
   VersionedTransaction,
 } from '@solana/web3.js';
 import { logger } from '../core/logger';
 import axios from 'axios';
+
+// ── JITO TIP ACCOUNTS ─────────────────────────────────────
+// Official Jito tip-payment addresses — pick one at random per bundle
+const JITO_TIP_ACCOUNTS: PublicKey[] = [
+  new PublicKey('96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5'),
+  new PublicKey('HFqU5x63VTqvQss8hp11i4bPcsrBBkqLYYy914tNDON4'),
+  new PublicKey('Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY'),
+  new PublicKey('ADaUMid9yfUytqMBgopwjb2DTLSJjgv7UMFTl5NT3Ve6'),
+  new PublicKey('DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXj6'),
+  new PublicKey('ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt'),
+  new PublicKey('DttWaMuVvTiDuNER3YfkJ9MSqrJGEB4q4AHJBgVL43jA'),
+  new PublicKey('3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT'),
+];
+
+// Dynamic tip boundaries
+const JITO_MIN_TIP_LAMPORTS = 10_000;        // 0.00001 SOL floor
+const JITO_DEFAULT_TIP_LAMPORTS = 100_000;   // 0.0001 SOL
+const JITO_MAX_TIP_LAMPORTS = 10_000_000;    // 0.01 SOL cap
+const JITO_TIP_PROFIT_SHARE = 0.05;          // give 5% of expected profit as tip
+const JITO_BUNDLE_STATUS_POLL_MS = 2_000;
+const JITO_BUNDLE_STATUS_TIMEOUT_MS = 30_000;
 
 // ── TYPES ─────────────────────────────────────────────────
 
@@ -33,6 +57,8 @@ export interface ExecutionPlan {
   maxSlippageBps: number;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
   jitoProtection: boolean;
+  forceJitoBundle: boolean;       // backrun trades MUST use Jito
+  jitoTipLamports: number;        // dynamic tip amount
   simulation: SimulationResult | null;
 }
 
@@ -276,6 +302,10 @@ export class ExecutionEngine {
       maxSlippage = Math.max(maxSlippage, 150);
     }
 
+    // Default tip — overridden by dynamic calculation for backruns
+    let jitoTipLamports = JITO_DEFAULT_TIP_LAMPORTS;
+    let forceJitoBundle = false;
+
     return {
       tokenCA,
       side,
@@ -284,6 +314,40 @@ export class ExecutionEngine {
       maxSlippageBps: maxSlippage,
       priority: urgency,
       jitoProtection,
+      forceJitoBundle,
+      jitoTipLamports,
+      simulation,
+    };
+  }
+
+  /**
+   * Create an execution plan specifically for backrun trades.
+   * Forces Jito bundle with a dynamic tip sized to expected profit.
+   */
+  createBackrunPlan(
+    tokenCA: string,
+    side: 'BUY' | 'SELL',
+    amountSOL: number,
+    expectedProfitSOL: number,
+    simulation: SimulationResult | null
+  ): ExecutionPlan {
+    // Dynamic tip: 5% of expected profit, bounded by min/max
+    const tipFromProfit = Math.round(expectedProfitSOL * JITO_TIP_PROFIT_SHARE * 1e9);
+    const jitoTipLamports = Math.max(
+      JITO_MIN_TIP_LAMPORTS,
+      Math.min(JITO_MAX_TIP_LAMPORTS, tipFromProfit)
+    );
+
+    return {
+      tokenCA,
+      side,
+      amountSOL,
+      strategy: 'IMMEDIATE',
+      maxSlippageBps: 200, // wider for fast backrun entry
+      priority: 'HIGH',
+      jitoProtection: true,
+      forceJitoBundle: true,
+      jitoTipLamports,
       simulation,
     };
   }
@@ -379,8 +443,8 @@ export class ExecutionEngine {
 
     let txSignature: string;
 
-    if (plan.jitoProtection && this.jitoEndpoint) {
-      txSignature = await this.sendViaJito(tx);
+    if ((plan.forceJitoBundle || plan.jitoProtection) && this.jitoEndpoint) {
+      txSignature = await this.sendViaJito(tx, wallet, plan.jitoTipLamports);
     } else {
       txSignature = await this.sendWithRetry(tx);
     }
@@ -519,20 +583,143 @@ export class ExecutionEngine {
 
   // ── JITO BUNDLE SUBMISSION ──────────────────────────
 
-  private async sendViaJito(tx: VersionedTransaction): Promise<string> {
+  /**
+   * Build a Jito tip transaction that transfers lamports to a random
+   * Jito tip account. Included as the last tx in the bundle.
+   */
+  private async buildTipTransaction(
+    wallet: Keypair,
+    tipLamports: number
+  ): Promise<VersionedTransaction> {
+    const tipAccount = JITO_TIP_ACCOUNTS[Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length)];
+
+    const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+
+    const message = new TransactionMessage({
+      payerKey: wallet.publicKey,
+      recentBlockhash: blockhash,
+      instructions: [
+        SystemProgram.transfer({
+          fromPubkey: wallet.publicKey,
+          toPubkey: tipAccount,
+          lamports: tipLamports,
+        }),
+      ],
+    }).compileToV0Message();
+
+    const tipTx = new VersionedTransaction(message);
+    tipTx.sign([wallet]);
+
+    logger.debug('Jito tip tx built', {
+      tipAccount: tipAccount.toBase58(),
+      tipLamports,
+      tipSOL: (tipLamports / 1e9).toFixed(6),
+    });
+
+    return tipTx;
+  }
+
+  /**
+   * Submit a bundle of transactions to Jito Block Engine.
+   * The bundle is atomic: all-or-nothing execution.
+   * Includes a tip transaction as the final tx.
+   */
+  private async sendBundleViaJito(
+    transactions: VersionedTransaction[],
+    wallet: Keypair,
+    tipLamports: number
+  ): Promise<{ bundleId: string; txSignature: string }> {
     if (!this.jitoEndpoint) throw new Error('Jito endpoint not configured');
 
-    const serialized = Buffer.from(tx.serialize()).toString('base64');
+    // Build and append tip tx
+    const tipTx = await this.buildTipTransaction(wallet, tipLamports);
+    const allTxs = [...transactions, tipTx];
+
+    const serializedTxs = allTxs.map(tx => Buffer.from(tx.serialize()).toString('base64'));
 
     const resp = await axios.post(this.jitoEndpoint, {
       jsonrpc: '2.0',
       id: 1,
       method: 'sendBundle',
-      params: [[serialized]],
-    }, { timeout: 15000 });
+      params: [serializedTxs],
+    }, { timeout: 15_000 });
 
-    logger.info('Jito bundle submitted', { bundleId: resp.data.result });
-    return resp.data.result;
+    const bundleId = resp.data.result;
+    if (!bundleId) {
+      throw new Error(`Jito sendBundle returned no bundleId: ${JSON.stringify(resp.data)}`);
+    }
+
+    logger.info('Jito bundle submitted', {
+      bundleId,
+      txCount: allTxs.length,
+      tipLamports,
+      tipSOL: (tipLamports / 1e9).toFixed(6),
+    });
+
+    // The first transaction's signature is our trade tx
+    const tradeTxSig = await this.pollBundleStatus(bundleId);
+
+    return { bundleId, txSignature: tradeTxSig };
+  }
+
+  /**
+   * Legacy single-tx Jito submission (backwards compat for non-backrun trades).
+   */
+  private async sendViaJito(tx: VersionedTransaction, wallet: Keypair, tipLamports: number): Promise<string> {
+    const { txSignature } = await this.sendBundleViaJito([tx], wallet, tipLamports);
+    return txSignature;
+  }
+
+  /**
+   * Poll Jito for bundle landing status.
+   * Returns the first transaction signature once the bundle is confirmed.
+   */
+  private async pollBundleStatus(bundleId: string): Promise<string> {
+    if (!this.jitoEndpoint) throw new Error('Jito endpoint not configured');
+
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < JITO_BUNDLE_STATUS_TIMEOUT_MS) {
+      try {
+        const resp = await axios.post(this.jitoEndpoint, {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getBundleStatuses',
+          params: [[bundleId]],
+        }, { timeout: 5_000 });
+
+        const statuses = resp.data?.result?.value;
+        if (statuses && statuses.length > 0) {
+          const status = statuses[0];
+          const confirmationStatus = status.confirmation_status;
+
+          if (confirmationStatus === 'confirmed' || confirmationStatus === 'finalized') {
+            const txSig = status.transactions?.[0] ?? bundleId;
+            logger.info('Jito bundle landed', {
+              bundleId,
+              status: confirmationStatus,
+              slot: status.slot,
+              txSignature: txSig,
+              elapsedMs: Date.now() - startedAt,
+            });
+            return txSig;
+          }
+
+          if (confirmationStatus === 'failed' || status.err) {
+            throw new Error(`Jito bundle failed: ${JSON.stringify(status.err ?? 'unknown')}`);
+          }
+        }
+      } catch (err) {
+        if ((err as Error).message.includes('Jito bundle failed')) throw err;
+        // Network hiccup — keep polling
+      }
+
+      await new Promise(r => setTimeout(r, JITO_BUNDLE_STATUS_POLL_MS));
+    }
+
+    // Timeout — bundle may still land, return bundleId as fallback
+    logger.warn('Jito bundle status poll timed out', { bundleId, timeoutMs: JITO_BUNDLE_STATUS_TIMEOUT_MS });
+    return bundleId;
   }
 
   // ── SEND WITH RETRY ─────────────────────────────────
