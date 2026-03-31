@@ -339,7 +339,15 @@ export class HybridPowerPlay {
     // Calculate natural price before migration turbulence
     if (!lifecycle.naturalPrice && lifecycle.preMigrationPrices.length > 0) {
       const sorted = [...lifecycle.preMigrationPrices].sort((a, b) => a - b);
-      lifecycle.naturalPrice = sorted[Math.floor(sorted.length / 2)];
+      const median = sorted[Math.floor(sorted.length / 2)];
+      if (median && median > 0) {
+        lifecycle.naturalPrice = median;
+      } else {
+        logger.warn('HybridPowerPlay: invalid median price during migration — naturalPrice unset', {
+          tokenCA: lifecycle.tokenCA,
+          pricesSampled: sorted.length,
+        });
+      }
     }
 
     logger.info('HybridPowerPlay: MIGRATION DETECTED — 30s signal suppression', {
@@ -444,9 +452,18 @@ export class HybridPowerPlay {
 
     // Natural price: use pre-migration estimate or pre-attack median
     const naturalPrice = lifecycle.naturalPrice ?? this.estimateNaturalPrice(lifecycle, attackerBuy.timestamp);
-    if (naturalPrice <= 0) return;
+    // Guard: null, undefined, zero, NaN all produce garbage division
+    if (!naturalPrice || !Number.isFinite(naturalPrice) || naturalPrice <= 0) {
+      logger.warn('HybridPowerPlay: Stage 3 skipped — invalid naturalPrice', {
+        tokenCA: lifecycle.tokenCA,
+        naturalPrice,
+      });
+      return;
+    }
 
     const postAttackPrice = latestSell.priceSOL;
+    if (!postAttackPrice || postAttackPrice <= 0) return;
+
     const dipPct = (naturalPrice - postAttackPrice) / naturalPrice;
 
     // Stage 3 gate: dip must be 20-50% of natural price
@@ -483,6 +500,18 @@ export class HybridPowerPlay {
   ): void {
     const recoveryTarget = postAttackPrice + (naturalPrice - postAttackPrice) * REBALANCE_TARGET_PCT;
     const expectedProfitPct = ((recoveryTarget - postAttackPrice) / postAttackPrice) * 100;
+
+    // NaN firewall — catch any upstream arithmetic corruption before it reaches trade:signal
+    if (!Number.isFinite(expectedProfitPct) || !Number.isFinite(recoveryTarget)) {
+      logger.error('[HybridPowerPlay] Non-finite backrun calc — dropping signal', {
+        tokenCA: lifecycle.tokenCA,
+        naturalPrice,
+        postAttackPrice,
+        recoveryTarget,
+        expectedProfitPct,
+      });
+      return;
+    }
 
     if (expectedProfitPct < 1.0) return;
 
