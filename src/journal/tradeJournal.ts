@@ -32,6 +32,7 @@ export class TradeJournal {
   private db!: SqlJsDatabase;
   private dbPath: string;
   private ready: Promise<void>;
+  private closed = false;
 
   constructor(dbPath: string = './data/journal.db') {
     this.dbPath = path.resolve(dbPath);
@@ -219,6 +220,8 @@ export class TradeJournal {
   }
 
   close(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.save();
     this.db.close();
   }

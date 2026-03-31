@@ -1174,6 +1174,7 @@ async function boot(): Promise<void> {
           if (antifragileEngine) {
             antifragileEngine.heartbeat();
           }
+          isShuttingDown = false;
           haltInProgress = false;
           logger.info('Halt recovery: streams restarted successfully');
           void telegram.send('SYSTEM RECOVERED\nStreams restarted after halt cooldown');
@@ -1602,7 +1603,10 @@ async function stopAllStreams(): Promise<void> {
   // ── Phase 3: Persist critical state first ─────────────
   if (journal) {
     try { journal.close(); logger.info('Journal flushed & closed'); }
-    catch (e) { logger.error('Journal close failed', { error: String(e) }); }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : JSON.stringify(e);
+      logger.error('Journal close failed', { error: msg });
+    }
   }
   if (onlineLearner) {
     try { onlineLearner.save(); } catch { /* ignore */ }

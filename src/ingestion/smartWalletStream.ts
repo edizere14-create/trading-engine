@@ -31,8 +31,9 @@ const SUBSCRIBE_BATCH_SIZE = 50;
 const SUBSCRIBE_BATCH_DELAY_MS = 200;
 const SILENCE_THRESHOLD_MS = 5 * 60_000; // 5 min — whale wallets transact frequently
 const SILENCE_CHECK_INTERVAL_MS = 60_000;
-const COVERAGE_DEGRADED_PCT = 0.80;
-const COVERAGE_CRITICAL_PCT = 0.50;
+const COVERAGE_WARMUP_MS = 10 * 60_000; // 10 min warmup before coverage checks fire
+const COVERAGE_DEGRADED_PCT = 0.15;    // warn below 15% (realistic: most wallets don't transact every 10 min)
+const COVERAGE_CRITICAL_PCT = 0.05;    // halt only below 5% (near-total subscription failure)
 
 interface ClusterEntry {
   wallet: string;
@@ -345,6 +346,17 @@ export class SmartWalletStream {
   private checkCoverageHealth(): void {
     const total = this.subscriptions.size;
     if (total === 0) return;
+
+    // Don't check coverage until subscriptions have had time to receive logs
+    const oldestSub = Math.min(...[...this.subscriptions.values()].map(s => s.subscribedAt));
+    const uptimeMs = Date.now() - oldestSub;
+    if (uptimeMs < COVERAGE_WARMUP_MS) {
+      logger.debug('[WalletStream] Coverage check skipped — warming up', {
+        uptimeSeconds: Math.round(uptimeMs / 1000),
+        warmupSeconds: Math.round(COVERAGE_WARMUP_MS / 1000),
+      });
+      return;
+    }
 
     const recentlySeen = [...this.subscriptions.values()].filter(
       s => s.lastLogAt && Date.now() - s.lastLogAt < 10 * 60_000
