@@ -318,27 +318,40 @@ export class PositionManager {
 
   private monitorPositions(): void {
     const now = Date.now();
+    // Snapshot keys — iterate the snapshot, not the live map
+    const positions = [...this.positions.entries()];
+    logger.debug(`[PositionMonitor] Evaluating ${positions.length} positions`);
 
-    for (const [tokenCA, position] of this.positions) {
-      const holdMs = now - position.entryTimestamp.getTime();
+    for (const [tokenCA, position] of positions) {
+      try {
+        // Guard: already closed by a concurrent path (swap:detected, forceClose, etc.)
+        if (!this.positions.has(tokenCA)) continue;
 
-      // Time exit: edge expired — pass last known price so we don't fallback to 0.7x
-      if (holdMs > position.maxHoldMs) {
-        this.closePosition(tokenCA, `TIME_EXIT (held ${Math.round(holdMs / 1000)}s)`, position.lastPriceSOL);
-        continue;
-      }
+        const holdMs = now - position.entryTimestamp.getTime();
 
-      // Safety pull: if price feed is dead for 60s, exit at last known price
-      // Waiting blind is riskier than exiting with stale data
-      const staleSince = now - position.lastCheckedAt.getTime();
-      if (staleSince > 60_000) {
-        this.closePosition(tokenCA, `STALE_EXIT (no price data for ${Math.round(staleSince / 1000)}s)`, position.lastPriceSOL);
-        continue;
-      }
-      if (staleSince > 30_000) {
-        logger.warn('Position price stale', {
+        // Time exit: edge expired — pass last known price so we don't fallback to 0.7x
+        if (holdMs > position.maxHoldMs) {
+          this.closePosition(tokenCA, `TIME_EXIT (held ${Math.round(holdMs / 1000)}s)`, position.lastPriceSOL);
+          continue;
+        }
+
+        // Safety pull: if price feed is dead for 60s, exit at last known price
+        // Waiting blind is riskier than exiting with stale data
+        const staleSince = now - position.lastCheckedAt.getTime();
+        if (staleSince > 60_000) {
+          this.closePosition(tokenCA, `STALE_EXIT (no price data for ${Math.round(staleSince / 1000)}s)`, position.lastPriceSOL);
+          continue;
+        }
+        if (staleSince > 30_000) {
+          logger.warn('Position price stale', {
+            tokenCA,
+            staleSinceMs: staleSince,
+          });
+        }
+      } catch (err) {
+        logger.error('[PositionMonitor] Error evaluating position', {
           tokenCA,
-          staleSinceMs: staleSince,
+          error: err instanceof Error ? err.message : String(err),
         });
       }
     }
