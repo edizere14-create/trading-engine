@@ -53,6 +53,81 @@ const JITO_TIP_PROFIT_SHARE = 0.05;          // give 5% of expected profit as ti
 const JITO_BUNDLE_STATUS_POLL_MS = 2_000;
 const JITO_BUNDLE_STATUS_TIMEOUT_MS = 30_000;
 
+// ── RETRY INFRASTRUCTURE ──────────────────────────────────
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: {
+    attempts?: number;
+    baseDelayMs?: number;
+    maxDelayMs?: number;
+    label?: string;
+    shouldRetry?: (err: unknown) => boolean;
+  } = {}
+): Promise<T> {
+  const {
+    attempts = 3,
+    baseDelayMs = 300,
+    maxDelayMs = 3_000,
+    label = 'operation',
+    shouldRetry = () => true,
+  } = options;
+
+  let lastErr: unknown;
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+
+      if (!shouldRetry(err)) throw err;
+
+      if (i < attempts - 1) {
+        const exp = Math.min(baseDelayMs * 2 ** i, maxDelayMs);
+        const jitter = Math.random() * 0.3 * exp;
+        const delay = Math.round(exp + jitter);
+        logger.warn(`[Retry] ${label} attempt ${i + 1}/${attempts} failed — retrying in ${delay}ms`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        await sleep(delay);
+      }
+    }
+  }
+
+  throw lastErr;
+}
+
+function isRetryableError(err: unknown): boolean {
+  if (!(err instanceof Error)) return true;
+  const msg = err.message.toLowerCase();
+  const terminal = [
+    'insufficient funds',
+    'insufficient lamports',
+    'invalid account',
+    'account not found',
+    'simulation failed',
+  ];
+  return !terminal.some(t => msg.includes(t));
+}
+
+function isRetryableJitoError(err: unknown): boolean {
+  if (!(err instanceof Error)) return true;
+  const msg = err.message.toLowerCase();
+  const terminal = [
+    'insufficient funds',
+    'insufficient lamports',
+    'invalid account',
+    'account not found',
+    'blockhash not found',
+    'simulation failed',
+    'bundle failed',
+  ];
+  return !terminal.some(t => msg.includes(t));
+}
+
 // ── TYPES ─────────────────────────────────────────────────
 
 export interface ExecutionPlan {
@@ -210,16 +285,19 @@ export class ExecutionEngine {
     const amountLamports = Math.round(amountSOL * 1e9);
 
     try {
-      // Get Jupiter quote
-      const quoteResponse = await axios.get<JupiterQuote>(`${JUPITER_API}/quote`, {
-        params: {
-          inputMint,
-          outputMint,
-          amount: amountLamports.toString(),
-          slippageBps: 100, // temporary for simulation
-        },
-        timeout: 5000,
-      });
+      // Get Jupiter quote (with retry on transient failures)
+      const quoteResponse = await withRetry(
+        () => axios.get<JupiterQuote>(`${JUPITER_API}/quote`, {
+          params: {
+            inputMint,
+            outputMint,
+            amount: amountLamports.toString(),
+            slippageBps: 100, // temporary for simulation
+          },
+          timeout: 5000,
+        }),
+        { attempts: 3, baseDelayMs: 300, maxDelayMs: 2_000, label: 'Jupiter simulation quote', shouldRetry: isRetryableError }
+      );
 
       const quote = quoteResponse.data;
       const priceImpact = parseFloat(quote.priceImpactPct);
@@ -436,23 +514,30 @@ export class ExecutionEngine {
     const outputMint = plan.side === 'BUY' ? plan.tokenCA : SOL_MINT;
     const amountLamports = Math.round(plan.amountSOL * 1e9);
 
-    // Get swap transaction from Jupiter
-    const quoteResp = await axios.get(`${JUPITER_API}/quote`, {
-      params: {
-        inputMint,
-        outputMint,
-        amount: amountLamports.toString(),
-        slippageBps: plan.maxSlippageBps,
-      },
-      timeout: 5000,
-    });
+    // Get Jupiter quote (with retry)
+    const quoteResp = await withRetry(
+      () => axios.get(`${JUPITER_API}/quote`, {
+        params: {
+          inputMint,
+          outputMint,
+          amount: amountLamports.toString(),
+          slippageBps: plan.maxSlippageBps,
+        },
+        timeout: 5000,
+      }),
+      { attempts: 3, baseDelayMs: 300, maxDelayMs: 2_000, label: 'Jupiter execution quote', shouldRetry: isRetryableError }
+    );
 
-    const swapResp = await axios.post(`${JUPITER_API}/swap`, {
-      quoteResponse: quoteResp.data,
-      userPublicKey: wallet.publicKey.toBase58(),
-      dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: 'auto',
-    }, { timeout: 10000 });
+    // Get swap transaction (with retry)
+    const swapResp = await withRetry(
+      () => axios.post(`${JUPITER_API}/swap`, {
+        quoteResponse: quoteResp.data,
+        userPublicKey: wallet.publicKey.toBase58(),
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: 'auto',
+      }, { timeout: 10000 }),
+      { attempts: 2, baseDelayMs: 500, maxDelayMs: 2_000, label: 'Jupiter swap tx', shouldRetry: isRetryableError }
+    );
 
     const swapTxBuf = Buffer.from(swapResp.data.swapTransaction, 'base64');
     const tx = VersionedTransaction.deserialize(swapTxBuf);
@@ -654,29 +739,77 @@ export class ExecutionEngine {
 
     const serializedTxs = allTxs.map(tx => bs58Encode(Buffer.from(tx.serialize())));
 
-    const resp = await axios.post(this.jitoEndpoint, {
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'sendBundle',
-      params: [serializedTxs],
-    }, { timeout: 15_000 });
+    // Retry bundle submission with confirmation check to prevent double-execution.
+    // A bundle can land even if the submission HTTP call times out, so before
+    // resubmitting we check if a previous bundleId already confirmed.
+    let lastBundleId: string | null = null;
 
-    const bundleId = resp.data.result;
-    if (!bundleId) {
-      throw new Error(`Jito sendBundle returned no bundleId: ${JSON.stringify(resp.data)}`);
-    }
+    const { bundleId: finalBundleId } = await withRetry(
+      async () => {
+        // Before retrying, check if previous submission already landed
+        if (lastBundleId) {
+          try {
+            const sig = await this.pollBundleStatusOnce(lastBundleId);
+            if (sig) {
+              logger.info('Jito bundle confirmed on pre-retry check', { bundleId: lastBundleId });
+              return { bundleId: lastBundleId, landed: sig };
+            }
+          } catch { /* not confirmed, proceed with retry */ }
+        }
+
+        const resp = await axios.post(this.jitoEndpoint!, {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'sendBundle',
+          params: [serializedTxs],
+        }, { timeout: 15_000 });
+
+        const bundleId = resp.data.result;
+        if (!bundleId) {
+          throw new Error(`Jito sendBundle returned no bundleId: ${JSON.stringify(resp.data)}`);
+        }
+        lastBundleId = bundleId;
+        return { bundleId, landed: null as string | null };
+      },
+      { attempts: 3, baseDelayMs: 500, maxDelayMs: 3_000, label: 'Jito bundle submit', shouldRetry: isRetryableJitoError }
+    );
 
     logger.info('Jito bundle submitted', {
-      bundleId,
+      bundleId: finalBundleId,
       txCount: allTxs.length,
       tipLamports,
       tipSOL: (tipLamports / 1e9).toFixed(6),
     });
 
     // The first transaction's signature is our trade tx
-    const tradeTxSig = await this.pollBundleStatus(bundleId);
+    const tradeTxSig = await this.pollBundleStatus(finalBundleId);
 
-    return { bundleId, txSignature: tradeTxSig };
+    return { bundleId: finalBundleId, txSignature: tradeTxSig };
+  }
+
+  /**
+   * Single-shot bundle status check (no polling loop).
+   * Returns tx signature if confirmed/finalized, null otherwise.
+   */
+  private async pollBundleStatusOnce(bundleId: string): Promise<string | null> {
+    if (!this.jitoEndpoint) return null;
+    try {
+      const resp = await axios.post(this.jitoEndpoint, {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'getBundleStatuses',
+        params: [[bundleId]],
+      }, { timeout: 5_000 });
+
+      const statuses = resp.data?.result?.value;
+      if (statuses?.[0]) {
+        const cs = statuses[0].confirmation_status;
+        if (cs === 'confirmed' || cs === 'finalized') {
+          return statuses[0].transactions?.[0] ?? bundleId;
+        }
+      }
+    } catch { /* ignore */ }
+    return null;
   }
 
   /**
