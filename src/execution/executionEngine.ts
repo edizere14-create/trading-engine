@@ -25,18 +25,24 @@ import {
 } from '@solana/web3.js';
 import { logger } from '../core/logger';
 import axios from 'axios';
+import bs58 from 'bs58';
+
+// Helper: encode bytes to base58 string
+function bs58Encode(buf: Uint8Array): string {
+  return bs58.encode(buf);
+}
 
 // ── JITO TIP ACCOUNTS ─────────────────────────────────────
 // Official Jito tip-payment addresses — pick one at random per bundle
 const JITO_TIP_ACCOUNTS: PublicKey[] = [
-  new PublicKey('96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5'),
-  new PublicKey('HFqU5x63VTqvQss8hp11i4bPcsrBBkqLYYy914tNDON4'),
-  new PublicKey('Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY'),
-  new PublicKey('ADaUMid9yfUytqMBgopwjb2DTLSJjgv7UMFTl5NT3Ve6'),
-  new PublicKey('DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXj6'),
-  new PublicKey('ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt'),
-  new PublicKey('DttWaMuVvTiDuNER3YfkJ9MSqrJGEB4q4AHJBgVL43jA'),
-  new PublicKey('3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT'),
+  new PublicKey('9n3d1K5YD2vECAbRFhFFGYNNjiXtHXJWn9F31t89vsAV'),
+  new PublicKey('aTtUk2DHgLhKZRDjePq6eiHRKC1XXFMBiSUfQ2JNDbN'),
+  new PublicKey('B1mrQSpdeMU9gCvkJ6VsXVVoYjRGkNA7TtjMyqxrhecH'),
+  new PublicKey('9ttgPBBhRYFuQccdR1DSnb7hydsWANoDsV3P9kaGMCEh'),
+  new PublicKey('4xgEmT58RwTNsF5xm2RMYCnR1EVukdK8a1i2qFjnJFu3'),
+  new PublicKey('EoW3SUQap7ZeynXQ2QJ847aerhxbPVr843uMeTfc9dxM'),
+  new PublicKey('E2eSqe33tuhAHKTrwky5uEjaVqnb2T9ns6nHHUrN8588'),
+  new PublicKey('ARTtviJkLLt6cHGQDydfo1Wyk6M4VGZdKZ2ZhdnJL336'),
 ];
 
 // Dynamic tip boundaries
@@ -635,7 +641,7 @@ export class ExecutionEngine {
     const tipTx = await this.buildTipTransaction(wallet, tipLamports);
     const allTxs = [...transactions, tipTx];
 
-    const serializedTxs = allTxs.map(tx => Buffer.from(tx.serialize()).toString('base64'));
+    const serializedTxs = allTxs.map(tx => bs58Encode(Buffer.from(tx.serialize())));
 
     const resp = await axios.post(this.jitoEndpoint, {
       jsonrpc: '2.0',
