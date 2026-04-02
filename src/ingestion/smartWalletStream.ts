@@ -207,8 +207,13 @@ export class SmartWalletStream {
   // ── CONNECTION POOL ────────────────────────────────────
 
   private getAvailableConnection(): Connection {
-    // Find a connection with room under the limit
+    const activeEndpoint = this.getConnectionEndpoint(this.activeConnection);
+
+    // Only allocate new subscriptions on connections for the currently active RPC.
+    // Otherwise failover can succeed while new subscriptions still get queued onto
+    // the old, closing socket from the previous provider.
     for (const conn of this.connectionPool) {
+      if (this.getConnectionEndpoint(conn) !== activeEndpoint) continue;
       const count = this.connectionSubCounts.get(conn) ?? 0;
       if (count < MAX_SUBS_PER_CONNECTION) {
         enableWsReconnect(conn, 3); // Re-enable WS before subscribing (may have been disabled)
@@ -216,10 +221,8 @@ export class SmartWalletStream {
       }
     }
 
-    // All full — create a new connection
-    const url = this.backupRpcUrl && this.connectionPool.length % 2 === 1
-      ? this.backupRpcUrl
-      : this.rpcUrl;
+    // All matching connections are full — create a new connection on the active RPC.
+    const url = activeEndpoint || this.rpcUrl;
 
     const conn = new Connection(url, {
       commitment: 'confirmed',
@@ -233,6 +236,15 @@ export class SmartWalletStream {
       rpc: url.substring(0, 30) + '...',
     });
     return conn;
+  }
+
+  private getConnectionEndpoint(conn: Connection): string {
+    try {
+      // @ts-expect-error — Connection._rpcEndpoint is internal but needed for pool routing
+      return conn._rpcEndpoint ?? conn.rpcEndpoint ?? '';
+    } catch {
+      return '';
+    }
   }
 
   // ── BATCH SUBSCRIPTION ─────────────────────────────────

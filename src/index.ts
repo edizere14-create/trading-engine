@@ -1716,7 +1716,7 @@ process.on('uncaughtException', async (err) => {
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
   // logsUnsubscribe on dead sockets is benign — don't crash/shutdown for it
-  if (msg.includes('logsUnsubscribe') || msg.includes('readyState')) {
+  if (msg.includes('logsSubscribe') || msg.includes('logsUnsubscribe') || msg.includes('readyState')) {
     logger.warn('Suppressed benign unhandled rejection', { error: msg });
     return;
   }

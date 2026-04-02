@@ -43,6 +43,33 @@ const _originalConsoleError = console.error;
 
 let wsErrorSuppressionInstalled = false;
 
+function getSuppressedWsErrorKey(args: any[]): string | null {
+  if (args.length < 1 || typeof args[0] !== 'string') return null;
+
+  const message = String(args[0]);
+  const joined = args
+    .map((arg) => {
+      if (typeof arg === 'string') return arg;
+      if (arg instanceof Error) return arg.message;
+      try {
+        return JSON.stringify(arg);
+      } catch {
+        return String(arg);
+      }
+    })
+    .join(' ');
+
+  if (message.startsWith('ws error:')) return 'ws error';
+  if (message.includes('Server responded with')) return 'server responded';
+  if (message.startsWith('logsUnsubscribe error')) return 'logsUnsubscribe error';
+  if (message.startsWith('Received error calling `logsSubscribe`')) return 'logsSubscribe error';
+  if (message.startsWith('Received error calling `logsUnsubscribe`')) return 'logsUnsubscribe error';
+  if (joined.includes('logsSubscribe') && joined.includes('readyState')) return 'logsSubscribe readyState';
+  if (joined.includes('logsUnsubscribe') && joined.includes('readyState')) return 'logsUnsubscribe readyState';
+
+  return null;
+}
+
 /**
  * Install a global console.error filter that suppresses repeated
  * "ws error:" messages from @solana/web3.js _wsOnError.
@@ -53,22 +80,17 @@ export function installWsErrorSuppression(): void {
   wsErrorSuppressionInstalled = true;
 
   console.error = (...args: any[]) => {
-    // Check if this is the @solana/web3.js ws error pattern
-    if (
-      args.length >= 1 &&
-      typeof args[0] === 'string' &&
-      (args[0].startsWith('ws error:') || args[0].includes('Server responded with') || args[0].startsWith('logsUnsubscribe error'))
-    ) {
-      const errorMsg = String(args[0]);
+    const errorKey = getSuppressedWsErrorKey(args);
+    if (errorKey) {
       const now = Date.now();
-      const entry = wsErrorCounts.get(errorMsg);
+      const entry = wsErrorCounts.get(errorKey);
 
       if (entry) {
         entry.count++;
         // Only log periodically
         if (now - entry.lastLoggedAt >= WS_ERROR_LOG_INTERVAL_MS) {
           logger.warn(`WS errors suppressed`, {
-            error: errorMsg,
+            error: errorKey,
             count: entry.count,
             windowSeconds: Math.round((now - entry.lastLoggedAt) / 1000),
           });
@@ -77,8 +99,8 @@ export function installWsErrorSuppression(): void {
         }
       } else {
         // First occurrence — log it once then suppress
-        wsErrorCounts.set(errorMsg, { count: 0, lastLoggedAt: now });
-        logger.warn(`WS error (will suppress repeats for 30s)`, { error: errorMsg });
+        wsErrorCounts.set(errorKey, { count: 0, lastLoggedAt: now });
+        logger.warn(`WS error (will suppress repeats for 30s)`, { error: errorKey });
       }
       return; // suppress the console.error
     }
