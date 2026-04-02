@@ -2,7 +2,7 @@ import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { NewPoolEvent } from '../core/types';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, resetWsReconnectCount } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, isWsOpen, resetWsReconnectCount } from './wsControl';
 
 export const POOL_PROGRAMS = {
   RAYDIUM_AMM_V4: new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'),
@@ -293,7 +293,9 @@ export class LPCreationStream {
 
       for (const subId of subIds) {
         try {
-          await conn.removeOnLogsListener(subId);
+          if (isWsOpen(conn)) {
+            await conn.removeOnLogsListener(subId);
+          }
         } catch {
           // Socket may be CLOSING/CLOSED — safe to ignore
         }

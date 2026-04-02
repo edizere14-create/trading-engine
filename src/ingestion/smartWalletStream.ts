@@ -3,7 +3,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent, ClusterAlert } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, resetWsReconnectCount } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, isWsOpen, resetWsReconnectCount } from './wsControl';
 
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -671,7 +671,9 @@ export class SmartWalletStream {
 
       for (const [, sub] of subs) {
         try {
-          await sub.connection.removeOnLogsListener(sub.subId);
+          if (isWsOpen(sub.connection)) {
+            await sub.connection.removeOnLogsListener(sub.subId);
+          }
         } catch {
           // Socket may be CLOSING/CLOSED — safe to ignore
         }

@@ -15,6 +15,18 @@ function getInternalWs(conn: Connection): any | null {
   }
 }
 
+/** Check whether a Connection's underlying WebSocket is in the OPEN state. */
+export function isWsOpen(conn: Connection): boolean {
+  const ws = getInternalWs(conn);
+  if (!ws) return false;
+  try {
+    const socket = ws._ws ?? ws.socket;
+    return socket?.readyState === 1; // WebSocket.OPEN
+  } catch {
+    return false;
+  }
+}
+
 // ── SUPPRESS @solana/web3.js WS ERROR SPAM ──────────────────
 
 /**
@@ -45,7 +57,7 @@ export function installWsErrorSuppression(): void {
     if (
       args.length >= 1 &&
       typeof args[0] === 'string' &&
-      (args[0].startsWith('ws error:') || args[0].includes('Server responded with'))
+      (args[0].startsWith('ws error:') || args[0].includes('Server responded with') || args[0].startsWith('logsUnsubscribe error'))
     ) {
       const errorMsg = String(args[0]);
       const now = Date.now();
