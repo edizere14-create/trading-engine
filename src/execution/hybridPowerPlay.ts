@@ -587,8 +587,17 @@ export class HybridPowerPlay {
 
   private removeMigrationSubscription(): void {
     if (this.migrationSubId !== null) {
-      this.connection.removeOnLogsListener(this.migrationSubId).catch(() => {});
+      const subId = this.migrationSubId;
       this.migrationSubId = null;
+      try {
+        // @ts-expect-error — _rpcWebSocket is private
+        const ws = this.connection._rpcWebSocket?._ws;
+        if (ws?.readyState === 1) {
+          this.connection.removeOnLogsListener(subId).catch(() => {});
+        }
+      } catch {
+        // Socket not open — skip unsubscribe
+      }
     }
   }
 }

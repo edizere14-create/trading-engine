@@ -1714,8 +1714,14 @@ process.on('uncaughtException', async (err) => {
 });
 
 process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  // logsUnsubscribe on dead sockets is benign — don't crash/shutdown for it
+  if (msg.includes('logsUnsubscribe') || msg.includes('readyState')) {
+    logger.warn('Suppressed benign unhandled rejection', { error: msg });
+    return;
+  }
   logger.error('UNHANDLED REJECTION', {
-    error: reason instanceof Error ? reason.message : String(reason),
+    error: msg,
     stack: reason instanceof Error ? reason.stack : undefined,
   });
   console.error('UNHANDLED REJECTION:', reason);

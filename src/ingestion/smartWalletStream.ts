@@ -307,7 +307,9 @@ export class SmartWalletStream {
     if (!sub) return;
 
     try {
-      await sub.connection.removeOnLogsListener(sub.subId);
+      if (isWsOpen(sub.connection)) {
+        await sub.connection.removeOnLogsListener(sub.subId);
+      }
     } catch {
       // Socket may be closing/closed — safe to ignore
     }
