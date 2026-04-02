@@ -78,16 +78,33 @@ let lastPriceUpdate = 0;
 const SOL_PRICE_STALENESS_MS = 30_000;
 const SOL_PRICE_HALT_MS = 60_000;
 
-async function fetchSOLPrice(): Promise<number> {
-  // Primary: Jupiter Price API v2 (public, no auth required for single token)
+async function fetchSOLPriceFromCoinGecko(): Promise<number> {
   const res = await axios.get(
-    'https://api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112',
-    { timeout: 5_000, headers: { 'Accept': 'application/json' } }
+    'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+    { timeout: 5_000 }
   );
-  const price = res.data?.data?.So11111111111111111111111111111111111111112?.price;
-  const parsed = typeof price === 'number' ? price : parseFloat(price);
-  if (parsed > 0) return parsed;
-  throw new Error('Invalid price from Jupiter');
+  const price = res.data?.solana?.usd;
+  if (typeof price === 'number' && price > 0) return price;
+  throw new Error('CoinGecko returned invalid price');
+}
+
+async function fetchSOLPriceFromDexScreener(): Promise<number> {
+  const res = await axios.get(
+    'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112',
+    { timeout: 5_000 }
+  );
+  const pair = res.data?.pairs?.[0];
+  const price = parseFloat(pair?.priceUsd);
+  if (price > 0) return price;
+  throw new Error('DexScreener returned invalid price');
+}
+
+async function fetchSOLPrice(): Promise<number> {
+  try {
+    return await fetchSOLPriceFromDexScreener();
+  } catch {
+    return fetchSOLPriceFromCoinGecko();
+  }
 }
 
 async function fetchSOLPriceWithRetry(attempts = 5): Promise<number> {
@@ -95,14 +112,10 @@ async function fetchSOLPriceWithRetry(attempts = 5): Promise<number> {
     try {
       return await fetchSOLPrice();
     } catch (err) {
-      logger.warn('[Price] Jupiter fetch failed', { attempt: i + 1, error: err instanceof Error ? err.message : String(err) });
-    }
-    // CoinGecko fallback on attempts 2+
-    if (i >= 1) {
-      try {
-        const res = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { timeout: 5_000 });
-        if (res.data?.solana?.usd > 0) return res.data.solana.usd;
-      } catch { /* continue retry loop */ }
+      logger.warn('[Price] SOL price fetch failed', {
+        attempt: i + 1,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
     if (i < attempts - 1) await new Promise(r => setTimeout(r, 1_000 * (i + 1)));
   }
@@ -142,27 +155,10 @@ function startPriceRefreshLoop(): void {
       async () => {
         const price = await fetchSOLPrice();
         if (price > 0) return price;
-        throw new Error('Jupiter returned invalid price');
+        throw new Error('Price source returned invalid price');
       },
-      async () => {
-        const res = await axios.get(
-          'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
-          { timeout: 5_000 }
-        );
-        if (res.data?.solana?.usd > 0) return res.data.solana.usd as number;
-        throw new Error('CoinGecko returned invalid price');
-      },
-      async () => {
-        // DexScreener free API — no auth needed
-        const res = await axios.get(
-          'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112',
-          { timeout: 5_000 }
-        );
-        const pair = res.data?.pairs?.[0];
-        const price = parseFloat(pair?.priceUsd);
-        if (price > 0) return price;
-        throw new Error('DexScreener returned invalid price');
-      },
+      async () => fetchSOLPriceFromCoinGecko(),
+      async () => fetchSOLPriceFromDexScreener(),
     ];
 
     // Try from last successful source first, then cycle through others
