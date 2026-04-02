@@ -12,11 +12,11 @@ export const POOL_PROGRAMS = {
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-const HEALTH_CHECK_INTERVAL_MS = 15_000; // Check every 15s
+const HEALTH_CHECK_INTERVAL_MS = 30_000; // Check every 30s
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_COOLDOWN_MS = 30_000; // Suppress health-check reconnects for 30s after a reconnect
+const RECONNECT_COOLDOWN_MS = 120_000; // Suppress health-check reconnects for 120s after a reconnect
 
 export class LPCreationStream {
   private primaryConnection: Connection;
@@ -83,12 +83,15 @@ export class LPCreationStream {
     if (this.healthInterval) clearInterval(this.healthInterval);
 
     this.healthInterval = setInterval(async () => {
-      if (this.isStopped) return;
+      if (this.isStopped || this.isReconnecting) return;
+
+      // Skip ALL health checks during cooldown after a recent reconnect
+      if (Date.now() < this.reconnectCooldownUntil) return;
 
       const silentMs = Date.now() - this.lastEventTime;
 
-      // If no events for 60s, subscriptions are likely dead
-      if (silentMs > 60_000) {
+      // If no events for 90s, subscriptions are likely dead
+      if (silentMs > 90_000) {
         logger.warn('LP stream silent — reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
@@ -96,9 +99,6 @@ export class LPCreationStream {
         await this.reconnect();
         return;
       }
-
-      // Skip health checks during cooldown after a recent reconnect
-      if (Date.now() < this.reconnectCooldownUntil) return;
 
       // Also verify connection is healthy via a lightweight RPC call
       try {
@@ -117,6 +117,7 @@ export class LPCreationStream {
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       logger.error('LP stream max reconnect attempts reached — triggering HALT');
       bus.emit('system:halt', { reason: 'LP stream WebSocket unrecoverable', resumeAt: undefined });
+      this.isReconnecting = false;
       return;
     }
 
@@ -143,6 +144,16 @@ export class LPCreationStream {
       await this.subscribe();
       // Do NOT reset reconnectAttempts here — only reset when real events arrive
       // in the onLogs callback. This keeps exponential backoff intact.
+
+      // Verify the connection actually works before declaring success
+      try {
+        await this.activeConnection.getSlot();
+      } catch {
+        logger.warn('LP stream reconnected but RPC still unreachable — will retry next cycle');
+        this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+        return;
+      }
+
       this.lastEventTime = Date.now(); // Reset timer after reconnection
       this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
       logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });

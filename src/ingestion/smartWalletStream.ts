@@ -17,11 +17,11 @@ const SWAP_PROGRAMS = new Set([
   'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',   // PumpSwap AMM
 ]);
 
-const HEALTH_CHECK_INTERVAL_MS = 15_000;
+const HEALTH_CHECK_INTERVAL_MS = 30_000;
 const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
-const RECONNECT_COOLDOWN_MS = 30_000;
+const RECONNECT_COOLDOWN_MS = 120_000;
 const EVENT_DEDUP_TTL_MS = 120_000;
 const EVENT_FINGERPRINT_TTL_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 60_000;
@@ -390,12 +390,15 @@ export class SmartWalletStream {
     if (this.healthInterval) clearInterval(this.healthInterval);
 
     this.healthInterval = setInterval(async () => {
-      if (this.isStopped) return;
+      if (this.isStopped || this.isReconnecting) return;
+
+      // Skip ALL health checks during cooldown after a recent reconnect
+      if (Date.now() < this.reconnectCooldownUntil) return;
 
       const silentMs = Date.now() - this.lastEventTime;
 
-      // If no events for 60s, subscriptions are likely dead
-      if (silentMs > 60_000) {
+      // If no events for 90s, subscriptions are likely dead
+      if (silentMs > 90_000) {
         logger.warn('Wallet stream silent \u2014 reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
@@ -403,9 +406,6 @@ export class SmartWalletStream {
         await this.reconnect();
         return;
       }
-
-      // Skip health checks during cooldown after a recent reconnect
-      if (Date.now() < this.reconnectCooldownUntil) return;
 
       // Verify connection is healthy
       try {
@@ -424,6 +424,7 @@ export class SmartWalletStream {
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       logger.error('Wallet stream max reconnect attempts reached \u2014 triggering HALT');
       bus.emit('system:halt', { reason: 'Wallet stream WebSocket unrecoverable', resumeAt: undefined });
+      this.isReconnecting = false;
       return;
     }
 
@@ -449,6 +450,16 @@ export class SmartWalletStream {
       await this.clearSubscriptions();
       const wallets = this.walletRegistry.getAll();
       await this.subscribeAll(wallets.map(w => w.address));
+
+      // Verify the connection actually works before declaring success
+      try {
+        await this.activeConnection.getSlot();
+      } catch {
+        logger.warn('Wallet stream reconnected but RPC still unreachable — will retry next cycle');
+        this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+        return;
+      }
+
       this.lastEventTime = Date.now();
       this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
       logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
