@@ -124,6 +124,7 @@ export class SmartWalletStream {
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
+  private isClearing = false;
   private reconnectCooldownUntil = 0;
   private isStopped = false;
   private recentSignatures: Map<string, number> = new Map();
@@ -284,11 +285,8 @@ export class SmartWalletStream {
 
     try {
       await sub.connection.removeOnLogsListener(sub.subId);
-    } catch (err) {
-      logger.warn('[WalletStream] Failed to remove listener', {
-        wallet: address,
-        err: err instanceof Error ? err.message : String(err),
-      });
+    } catch {
+      // Socket may be closing/closed — safe to ignore
     }
 
     this.connectionSubCounts.set(
@@ -640,18 +638,29 @@ export class SmartWalletStream {
   }
 
   private async clearSubscriptions(): Promise<void> {
-    for (const [, sub] of this.subscriptions) {
-      try {
-        await sub.connection.removeOnLogsListener(sub.subId);
-      } catch {
-        // Subscription may already be dead — ignore
+    if (this.isClearing) return;
+    this.isClearing = true;
+
+    try {
+      // Snapshot and detach before async cleanup so concurrent reconnects don't share references
+      const subs = new Map(this.subscriptions);
+      this.subscriptions.clear();
+
+      for (const [, sub] of subs) {
+        try {
+          await sub.connection.removeOnLogsListener(sub.subId);
+        } catch {
+          // Socket may be CLOSING/CLOSED — safe to ignore
+        }
       }
-    }
-    this.subscriptions.clear();
-    // Reset sub counts and disable WS retry on all pool connections
-    for (const conn of this.connectionPool) {
-      this.connectionSubCounts.set(conn, 0);
-      disableWsReconnect(conn);
+
+      // Reset sub counts and disable WS retry on all pool connections
+      for (const conn of this.connectionPool) {
+        this.connectionSubCounts.set(conn, 0);
+        disableWsReconnect(conn);
+      }
+    } finally {
+      this.isClearing = false;
     }
   }
 

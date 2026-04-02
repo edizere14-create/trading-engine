@@ -29,6 +29,7 @@ export class LPCreationStream {
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
+  private isClearing = false;
   private reconnectCooldownUntil = 0;
   private isStopped = false;
 
@@ -252,21 +253,32 @@ export class LPCreationStream {
   }
 
   private async clearSubscriptions(): Promise<void> {
-    // Unsubscribe on the connection that owns the subscriptions, not necessarily activeConnection
-    const conn = this.subscriptionConnection ?? this.activeConnection;
-    for (const subId of this.subscriptions) {
-      try {
-        await conn.removeOnLogsListener(subId);
-      } catch {
-        // Subscription may already be dead — ignore
+    if (this.isClearing) return;
+    this.isClearing = true;
+
+    try {
+      // Snapshot and detach before async cleanup
+      const conn = this.subscriptionConnection ?? this.activeConnection;
+      const subIds = [...this.subscriptions];
+      this.subscriptions = [];
+      const oldSubConn = this.subscriptionConnection;
+      this.subscriptionConnection = null;
+
+      for (const subId of subIds) {
+        try {
+          await conn.removeOnLogsListener(subId);
+        } catch {
+          // Socket may be CLOSING/CLOSED — safe to ignore
+        }
       }
+
+      // Stop the old connection's WS retry if it's not the active one
+      if (oldSubConn && oldSubConn !== this.activeConnection) {
+        disableWsReconnect(oldSubConn);
+      }
+    } finally {
+      this.isClearing = false;
     }
-    this.subscriptions = [];
-    // Stop the old connection's WS retry if it's not the active one
-    if (this.subscriptionConnection && this.subscriptionConnection !== this.activeConnection) {
-      disableWsReconnect(this.subscriptionConnection);
-    }
-    this.subscriptionConnection = null;
   }
 
   async stop(): Promise<void> {
