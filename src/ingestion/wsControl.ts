@@ -27,6 +27,27 @@ export function isWsOpen(conn: Connection): boolean {
   }
 }
 
+export function getConnectionEndpoint(conn: Connection): string {
+  try {
+    // @ts-expect-error — Connection._rpcEndpoint is internal but needed for routing
+    return conn._rpcEndpoint ?? conn.rpcEndpoint ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function supportsLogsSubscribe(conn: Connection): boolean {
+  const endpoint = getConnectionEndpoint(conn).toLowerCase();
+  if (!endpoint) return true;
+
+  // Current Alchemy Solana endpoint in this deployment responds with
+  // JSON-RPC -32601 for logsSubscribe, so it is not a usable backup for
+  // WebSocket log streams.
+  if (endpoint.includes('alchemy.com')) return false;
+
+  return true;
+}
+
 // ── SUPPRESS @solana/web3.js WS ERROR SPAM ──────────────────
 
 /**
@@ -63,9 +84,12 @@ function getSuppressedWsErrorKey(args: any[]): string | null {
   if (message.includes('Server responded with')) return 'server responded';
   if (message.startsWith('logsUnsubscribe error')) return 'logsUnsubscribe error';
   if (message.startsWith('Received error calling `logsSubscribe`')) return 'logsSubscribe error';
+  if (message.startsWith('Received JSON-RPC error calling `logsSubscribe`')) return 'logsSubscribe rpc error';
   if (message.startsWith('Received error calling `logsUnsubscribe`')) return 'logsUnsubscribe error';
+  if (message.startsWith('Received JSON-RPC error calling `logsUnsubscribe`')) return 'logsUnsubscribe rpc error';
   if (joined.includes('logsSubscribe') && joined.includes('readyState')) return 'logsSubscribe readyState';
   if (joined.includes('logsUnsubscribe') && joined.includes('readyState')) return 'logsUnsubscribe readyState';
+  if (joined.includes('logsSubscribe') && joined.includes("Method 'logsSubscribe' not found")) return 'logsSubscribe not found';
 
   return null;
 }

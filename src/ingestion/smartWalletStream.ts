@@ -3,7 +3,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent, ClusterAlert } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, isWsOpen, resetWsReconnectCount } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -152,6 +152,11 @@ export class SmartWalletStream {
       this.connectionSubCounts.set(backupConnection, 0);
       // Disable WS retry on backup until needed (prevents idle 429 loops)
       disableWsReconnect(backupConnection);
+      if (!supportsLogsSubscribe(backupConnection)) {
+        logger.warn('[WalletStream] Backup RPC excluded from WS failover — logsSubscribe unsupported', {
+          endpoint: getConnectionEndpoint(backupConnection),
+        });
+      }
     }
   }
 
@@ -191,6 +196,14 @@ export class SmartWalletStream {
   private async pickUsableConnection(): Promise<Connection | null> {
     const candidates = [this.primaryConnection, this.backupConnection].filter(Boolean) as Connection[];
     for (const conn of candidates) {
+      if (!supportsLogsSubscribe(conn)) {
+        const label = conn === this.primaryConnection ? 'primary' : 'backup';
+        logger.warn(`[WalletStream] ${label} RPC skipped — logsSubscribe unsupported`, {
+          endpoint: getConnectionEndpoint(conn),
+        });
+        disableWsReconnect(conn);
+        continue;
+      }
       try {
         await conn.getSlot();
         return conn;
@@ -213,6 +226,7 @@ export class SmartWalletStream {
     // Otherwise failover can succeed while new subscriptions still get queued onto
     // the old, closing socket from the previous provider.
     for (const conn of this.connectionPool) {
+      if (!supportsLogsSubscribe(conn)) continue;
       if (this.getConnectionEndpoint(conn) !== activeEndpoint) continue;
       const count = this.connectionSubCounts.get(conn) ?? 0;
       if (count < MAX_SUBS_PER_CONNECTION) {
@@ -484,10 +498,16 @@ export class SmartWalletStream {
 
     // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
-      logger.info('Wallet stream failing over to backup RPC');
-      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
-      this.activeConnection = this.backupConnection;
-      enableWsReconnect(this.activeConnection, 3);
+      if (supportsLogsSubscribe(this.backupConnection)) {
+        logger.info('Wallet stream failing over to backup RPC');
+        disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
+        this.activeConnection = this.backupConnection;
+        enableWsReconnect(this.activeConnection, 3);
+      } else {
+        logger.warn('Wallet stream backup RPC skipped during failover — logsSubscribe unsupported', {
+          endpoint: getConnectionEndpoint(this.backupConnection),
+        });
+      }
     } else if (this.reconnectAttempts > 1) {
       logger.info('Wallet stream returning to primary RPC');
       disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop

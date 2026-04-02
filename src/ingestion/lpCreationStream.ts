@@ -2,7 +2,7 @@ import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { NewPoolEvent } from '../core/types';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, isWsOpen, resetWsReconnectCount } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 export const POOL_PROGRAMS = {
   RAYDIUM_AMM_V4: new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'),
@@ -65,6 +65,14 @@ export class LPCreationStream {
   private async pickUsableConnection(): Promise<Connection | null> {
     const candidates = [this.primaryConnection, this.backupConnection].filter(Boolean) as Connection[];
     for (const conn of candidates) {
+      if (!supportsLogsSubscribe(conn)) {
+        const label = conn === this.primaryConnection ? 'primary' : 'backup';
+        logger.warn(`LP stream ${label} RPC skipped — logsSubscribe unsupported`, {
+          endpoint: getConnectionEndpoint(conn),
+        });
+        disableWsReconnect(conn);
+        continue;
+      }
       try {
         await conn.getSlot();
         return conn;
@@ -167,10 +175,16 @@ export class LPCreationStream {
 
     // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
-      logger.info('LP stream failing over to backup RPC');
-      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
-      this.activeConnection = this.backupConnection;
-      enableWsReconnect(this.activeConnection, 3);
+      if (supportsLogsSubscribe(this.backupConnection)) {
+        logger.info('LP stream failing over to backup RPC');
+        disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
+        this.activeConnection = this.backupConnection;
+        enableWsReconnect(this.activeConnection, 3);
+      } else {
+        logger.warn('LP stream backup RPC skipped during failover — logsSubscribe unsupported', {
+          endpoint: getConnectionEndpoint(this.backupConnection),
+        });
+      }
     } else if (this.reconnectAttempts > 1) {
       logger.info('LP stream returning to primary RPC');
       disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
