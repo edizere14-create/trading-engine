@@ -12,19 +12,23 @@ export const POOL_PROGRAMS = {
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
-const HEALTH_CHECK_INTERVAL_MS = 5_000; // Check every 5s
-const RECONNECT_BASE_DELAY_MS = 500;
-const RECONNECT_MAX_DELAY_MS = 30_000;
+const HEALTH_CHECK_INTERVAL_MS = 15_000; // Check every 15s
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_COOLDOWN_MS = 30_000; // Suppress health-check reconnects for 30s after a reconnect
 
 export class LPCreationStream {
   private primaryConnection: Connection;
   private backupConnection: Connection | null;
   private activeConnection: Connection;
   private subscriptions: number[] = [];
+  private subscriptionConnection: Connection | null = null; // track which connection owns subscriptions
   private healthInterval: ReturnType<typeof setInterval> | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
+  private isReconnecting = false;
+  private reconnectCooldownUntil = 0;
   private isStopped = false;
 
   constructor(connection: Connection, backupConnection?: Connection) {
@@ -40,10 +44,12 @@ export class LPCreationStream {
   }
 
   private async subscribe(): Promise<void> {
-    // Clear any existing subscriptions
+    // Clear any existing subscriptions on the OLD connection before subscribing on the new one
     await this.clearSubscriptions();
 
-    for (const [name, programId] of Object.entries(POOL_PROGRAMS)) {
+    const entries = Object.entries(POOL_PROGRAMS);
+    for (let i = 0; i < entries.length; i++) {
+      const [name, programId] = entries[i];
       try {
         const subId = this.activeConnection.onLogs(
           programId,
@@ -61,6 +67,8 @@ export class LPCreationStream {
         );
         this.subscriptions.push(subId);
         logger.info('LP stream subscribed', { program: name, programId: programId.toBase58() });
+        // Stagger subscriptions slightly to avoid burst
+        if (i < entries.length - 1) await new Promise((r) => setTimeout(r, 200));
       } catch (err) {
         logger.error('LP subscription failed', {
           program: name,
@@ -68,6 +76,7 @@ export class LPCreationStream {
         });
       }
     }
+    this.subscriptionConnection = this.activeConnection;
   }
 
   private startHealthCheck(): void {
@@ -88,6 +97,9 @@ export class LPCreationStream {
         return;
       }
 
+      // Skip health checks during cooldown after a recent reconnect
+      if (Date.now() < this.reconnectCooldownUntil) return;
+
       // Also verify connection is healthy via a lightweight RPC call
       try {
         await this.activeConnection.getSlot();
@@ -99,7 +111,8 @@ export class LPCreationStream {
   }
 
   private async reconnect(): Promise<void> {
-    if (this.isStopped) return;
+    if (this.isStopped || this.isReconnecting) return;
+    this.isReconnecting = true;
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       logger.error('LP stream max reconnect attempts reached — triggering HALT');
@@ -116,24 +129,30 @@ export class LPCreationStream {
     logger.info('LP stream reconnecting', { attempt: this.reconnectAttempts, delayMs: delay });
     await new Promise((r) => setTimeout(r, delay));
 
-    // Failover to backup on odd attempts, back to primary on even
+    // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       logger.info('LP stream failing over to backup RPC');
       this.activeConnection = this.backupConnection;
-    } else {
+    } else if (this.reconnectAttempts > 1) {
+      logger.info('LP stream returning to primary RPC');
       this.activeConnection = this.primaryConnection;
     }
+    // On attempt 1 with no backup, stays on primary
 
     try {
       await this.subscribe();
-      this.reconnectAttempts = 0;
+      // Do NOT reset reconnectAttempts here — only reset when real events arrive
+      // in the onLogs callback. This keeps exponential backoff intact.
       this.lastEventTime = Date.now(); // Reset timer after reconnection
+      this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
       logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {
       logger.error('LP stream reconnect failed', {
         attempt: this.reconnectAttempts,
         err: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      this.isReconnecting = false;
     }
   }
 
@@ -210,14 +229,17 @@ export class LPCreationStream {
   }
 
   private async clearSubscriptions(): Promise<void> {
+    // Unsubscribe on the connection that owns the subscriptions, not necessarily activeConnection
+    const conn = this.subscriptionConnection ?? this.activeConnection;
     for (const subId of this.subscriptions) {
       try {
-        await this.activeConnection.removeOnLogsListener(subId);
+        await conn.removeOnLogsListener(subId);
       } catch {
         // Subscription may already be dead — ignore
       }
     }
     this.subscriptions = [];
+    this.subscriptionConnection = null;
   }
 
   async stop(): Promise<void> {
