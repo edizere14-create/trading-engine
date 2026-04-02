@@ -17,10 +17,11 @@ const SWAP_PROGRAMS = new Set([
   'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA',   // PumpSwap AMM
 ]);
 
-const HEALTH_CHECK_INTERVAL_MS = 5_000;
-const RECONNECT_BASE_DELAY_MS = 500;
-const RECONNECT_MAX_DELAY_MS = 30_000;
+const HEALTH_CHECK_INTERVAL_MS = 15_000;
+const RECONNECT_BASE_DELAY_MS = 2_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
+const RECONNECT_COOLDOWN_MS = 30_000;
 const EVENT_DEDUP_TTL_MS = 120_000;
 const EVENT_FINGERPRINT_TTL_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 60_000;
@@ -121,6 +122,8 @@ export class SmartWalletStream {
   private silenceInterval: ReturnType<typeof setInterval> | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
+  private isReconnecting = false;
+  private reconnectCooldownUntil = 0;
   private isStopped = false;
   private recentSignatures: Map<string, number> = new Map();
   private recentEventFingerprints: Map<string, number> = new Map();
@@ -401,6 +404,9 @@ export class SmartWalletStream {
         return;
       }
 
+      // Skip health checks during cooldown after a recent reconnect
+      if (Date.now() < this.reconnectCooldownUntil) return;
+
       // Verify connection is healthy
       try {
         await this.activeConnection.getSlot();
@@ -412,7 +418,8 @@ export class SmartWalletStream {
   }
 
   private async reconnect(): Promise<void> {
-    if (this.isStopped) return;
+    if (this.isStopped || this.isReconnecting) return;
+    this.isReconnecting = true;
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
       logger.error('Wallet stream max reconnect attempts reached \u2014 triggering HALT');
@@ -429,11 +436,12 @@ export class SmartWalletStream {
     logger.info('Wallet stream reconnecting', { attempt: this.reconnectAttempts, delayMs: delay });
     await new Promise((r) => setTimeout(r, delay));
 
-    // Failover to backup on odd attempts, back to primary on even
+    // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       logger.info('Wallet stream failing over to backup RPC');
       this.activeConnection = this.backupConnection;
-    } else {
+    } else if (this.reconnectAttempts > 1) {
+      logger.info('Wallet stream returning to primary RPC');
       this.activeConnection = this.primaryConnection;
     }
 
@@ -441,14 +449,16 @@ export class SmartWalletStream {
       await this.clearSubscriptions();
       const wallets = this.walletRegistry.getAll();
       await this.subscribeAll(wallets.map(w => w.address));
-      this.reconnectAttempts = 0;
       this.lastEventTime = Date.now();
+      this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
       logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {
       logger.error('Wallet stream reconnect failed', {
         attempt: this.reconnectAttempts,
         err: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      this.isReconnecting = false;
     }
   }
 

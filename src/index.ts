@@ -1194,8 +1194,9 @@ async function boot(): Promise<void> {
         try {
           logger.info('Halt recovery: restarting streams...');
           lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
-          walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
           await lpStream.start();
+          await new Promise((r) => setTimeout(r, 2_000));
+          walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
           await walletStream.start();
           if (antifragileEngine) {
             antifragileEngine.heartbeat();
@@ -1521,9 +1522,11 @@ async function boot(): Promise<void> {
   });
 
   // 7. Start ingestion streams (with backup connection for failover)
+  // Stagger startup to avoid simultaneous WS connections triggering 429s
   lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
-  walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
   await lpStream.start();
+  await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before wallet stream
+  walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
   await walletStream.start();
 
   // 8. Final status banner
