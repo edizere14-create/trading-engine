@@ -3,6 +3,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent, ClusterAlert } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
+import { disableWsReconnect, enableWsReconnect, resetWsReconnectCount } from './wsControl';
 
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -148,6 +149,8 @@ export class SmartWalletStream {
     if (backupConnection) {
       this.connectionPool.push(backupConnection);
       this.connectionSubCounts.set(backupConnection, 0);
+      // Disable WS retry on backup until needed (prevents idle 429 loops)
+      disableWsReconnect(backupConnection);
     }
   }
 
@@ -156,6 +159,9 @@ export class SmartWalletStream {
     this.recentSignatures.clear();
     this.recentEventFingerprints.clear();
     this.inFlightSignatures.clear();
+
+    // Limit WS auto-reconnects on the active connection (default is Infinity)
+    enableWsReconnect(this.activeConnection, 3);
 
     const wallets = this.walletRegistry.getAll();
     if (wallets.length === 0) {
@@ -180,7 +186,10 @@ export class SmartWalletStream {
     // Find a connection with room under the limit
     for (const conn of this.connectionPool) {
       const count = this.connectionSubCounts.get(conn) ?? 0;
-      if (count < MAX_SUBS_PER_CONNECTION) return conn;
+      if (count < MAX_SUBS_PER_CONNECTION) {
+        enableWsReconnect(conn, 3); // Re-enable WS before subscribing (may have been disabled)
+        return conn;
+      }
     }
 
     // All full — create a new connection
@@ -192,6 +201,7 @@ export class SmartWalletStream {
       commitment: 'confirmed',
       confirmTransactionInitialTimeout: 30_000,
     });
+    enableWsReconnect(conn, 3);
     this.connectionPool.push(conn);
     this.connectionSubCounts.set(conn, 0);
     logger.info('[WalletStream] Added connection to pool', {
@@ -440,10 +450,14 @@ export class SmartWalletStream {
     // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       logger.info('Wallet stream failing over to backup RPC');
+      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.backupConnection;
+      enableWsReconnect(this.activeConnection, 3);
     } else if (this.reconnectAttempts > 1) {
       logger.info('Wallet stream returning to primary RPC');
+      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
+      enableWsReconnect(this.activeConnection, 3);
     }
 
     try {
@@ -462,6 +476,7 @@ export class SmartWalletStream {
 
       this.lastEventTime = Date.now();
       this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+      resetWsReconnectCount(this.activeConnection);
       logger.info('Wallet stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {
       logger.error('Wallet stream reconnect failed', {
@@ -633,9 +648,10 @@ export class SmartWalletStream {
       }
     }
     this.subscriptions.clear();
-    // Reset sub counts but keep connections in pool
+    // Reset sub counts and disable WS retry on all pool connections
     for (const conn of this.connectionPool) {
       this.connectionSubCounts.set(conn, 0);
+      disableWsReconnect(conn);
     }
   }
 

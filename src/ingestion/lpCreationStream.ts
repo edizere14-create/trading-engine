@@ -2,6 +2,7 @@ import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { NewPoolEvent } from '../core/types';
 import { logger } from '../core/logger';
+import { disableWsReconnect, enableWsReconnect, resetWsReconnectCount } from './wsControl';
 
 export const POOL_PROGRAMS = {
   RAYDIUM_AMM_V4: new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'),
@@ -39,6 +40,12 @@ export class LPCreationStream {
 
   async start(): Promise<void> {
     this.isStopped = false;
+    // Limit WS auto-reconnects on the active connection (default is Infinity)
+    enableWsReconnect(this.activeConnection, 3);
+    // Disable WS retry on the backup to prevent idle 429 loops
+    if (this.backupConnection && this.backupConnection !== this.activeConnection) {
+      disableWsReconnect(this.backupConnection);
+    }
     await this.subscribe();
     this.startHealthCheck();
   }
@@ -133,10 +140,14 @@ export class LPCreationStream {
     // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       logger.info('LP stream failing over to backup RPC');
+      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.backupConnection;
+      enableWsReconnect(this.activeConnection, 3);
     } else if (this.reconnectAttempts > 1) {
       logger.info('LP stream returning to primary RPC');
+      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
+      enableWsReconnect(this.activeConnection, 3);
     }
     // On attempt 1 with no backup, stays on primary
 
@@ -156,6 +167,7 @@ export class LPCreationStream {
 
       this.lastEventTime = Date.now(); // Reset timer after reconnection
       this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+      resetWsReconnectCount(this.activeConnection);
       logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });
     } catch (err) {
       logger.error('LP stream reconnect failed', {
@@ -250,6 +262,10 @@ export class LPCreationStream {
       }
     }
     this.subscriptions = [];
+    // Stop the old connection's WS retry if it's not the active one
+    if (this.subscriptionConnection && this.subscriptionConnection !== this.activeConnection) {
+      disableWsReconnect(this.subscriptionConnection);
+    }
     this.subscriptionConnection = null;
   }
 
@@ -260,6 +276,8 @@ export class LPCreationStream {
       this.healthInterval = null;
     }
     await this.clearSubscriptions();
+    disableWsReconnect(this.primaryConnection);
+    if (this.backupConnection) disableWsReconnect(this.backupConnection);
     logger.info('LP stream stopped');
   }
 }
