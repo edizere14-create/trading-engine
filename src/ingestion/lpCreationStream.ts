@@ -41,14 +41,41 @@ export class LPCreationStream {
 
   async start(): Promise<void> {
     this.isStopped = false;
+
+    // Verify primary RPC is reachable before subscribing
+    // If it's 429'd, failover to backup immediately instead of waiting for health check
+    const usable = await this.pickUsableConnection();
+    if (usable) {
+      this.activeConnection = usable;
+    }
+
     // Limit WS auto-reconnects on the active connection (default is Infinity)
     enableWsReconnect(this.activeConnection, 3);
-    // Disable WS retry on the backup to prevent idle 429 loops
-    if (this.backupConnection && this.backupConnection !== this.activeConnection) {
-      disableWsReconnect(this.backupConnection);
-    }
+    // Disable WS retry on the inactive connection
+    const inactive = this.activeConnection === this.primaryConnection
+      ? this.backupConnection
+      : this.primaryConnection;
+    if (inactive) disableWsReconnect(inactive);
+
     await this.subscribe();
     this.startHealthCheck();
+  }
+
+  /** Try primary, then backup. Returns the first connection where getSlot() succeeds, or null. */
+  private async pickUsableConnection(): Promise<Connection | null> {
+    const candidates = [this.primaryConnection, this.backupConnection].filter(Boolean) as Connection[];
+    for (const conn of candidates) {
+      try {
+        await conn.getSlot();
+        return conn;
+      } catch {
+        const label = conn === this.primaryConnection ? 'primary' : 'backup';
+        logger.warn(`LP stream ${label} RPC unreachable at startup — trying next`);
+        disableWsReconnect(conn);
+      }
+    }
+    logger.warn('LP stream all RPCs unreachable at startup — using primary as fallback');
+    return null;
   }
 
   private async subscribe(): Promise<void> {

@@ -161,6 +161,12 @@ export class SmartWalletStream {
     this.recentEventFingerprints.clear();
     this.inFlightSignatures.clear();
 
+    // Verify RPC is reachable before subscribing
+    const usable = await this.pickUsableConnection();
+    if (usable) {
+      this.activeConnection = usable;
+    }
+
     // Limit WS auto-reconnects on the active connection (default is Infinity)
     enableWsReconnect(this.activeConnection, 3);
 
@@ -179,6 +185,23 @@ export class SmartWalletStream {
       this.clusterDetector.cleanup();
       this.cleanupSignatureCache();
     }, CLEANUP_INTERVAL_MS);
+  }
+
+  /** Try active, then other. Returns the first connection where getSlot() succeeds, or null. */
+  private async pickUsableConnection(): Promise<Connection | null> {
+    const candidates = [this.primaryConnection, this.backupConnection].filter(Boolean) as Connection[];
+    for (const conn of candidates) {
+      try {
+        await conn.getSlot();
+        return conn;
+      } catch {
+        const label = conn === this.primaryConnection ? 'primary' : 'backup';
+        logger.warn(`[WalletStream] ${label} RPC unreachable at startup — trying next`);
+        disableWsReconnect(conn);
+      }
+    }
+    logger.warn('[WalletStream] All RPCs unreachable at startup — using primary as fallback');
+    return null;
   }
 
   // ── CONNECTION POOL ────────────────────────────────────

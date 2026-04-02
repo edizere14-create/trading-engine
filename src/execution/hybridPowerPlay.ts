@@ -21,6 +21,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent } from '../core/types';
 import { PositionManager } from '../position/positionManager';
 import { logger } from '../core/logger';
+import { enableWsReconnect } from '../ingestion/wsControl';
 
 // ── PUMPFUN / PUMPSWAP CONSTANTS ──────────────────────────
 
@@ -106,6 +107,8 @@ export class HybridPowerPlay {
 
   async start(): Promise<void> {
     this.active = true;
+    // Limit WS auto-reconnects (default is Infinity)
+    enableWsReconnect(this.connection, 3);
 
     // Track which tokens already have DEX pools (post-migration)
     bus.on('pool:created', (event) => {
