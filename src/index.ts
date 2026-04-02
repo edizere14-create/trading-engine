@@ -20,6 +20,10 @@ import { DEFAULT_WEIGHTS } from './signals/signalVector';
 
 import { LPCreationStream } from './ingestion/lpCreationStream';
 import { SmartWalletStream } from './ingestion/smartWalletStream';
+import { installWsErrorSuppression } from './ingestion/wsControl';
+
+// Suppress @solana/web3.js WS error spam before any Connection objects are created
+installWsErrorSuppression();
 
 import { TradeJournal } from './journal/tradeJournal';
 import { FactorEngine } from './factors/factorEngine';
