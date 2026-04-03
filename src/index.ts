@@ -77,6 +77,11 @@ let currentSOLPrice: number | null = null;
 let lastPriceUpdate = 0;
 const SOL_PRICE_STALENESS_MS = 30_000;
 const SOL_PRICE_HALT_MS = 60_000;
+const STABLE_QUOTES = new Set(['USDC', 'USDT']);
+
+function isPlausibleSolPrice(price: number): boolean {
+  return Number.isFinite(price) && price >= 10 && price <= 1000;
+}
 
 async function fetchSOLPriceFromCoinGecko(): Promise<number> {
   const res = await axios.get(
@@ -84,7 +89,7 @@ async function fetchSOLPriceFromCoinGecko(): Promise<number> {
     { timeout: 5_000 }
   );
   const price = res.data?.solana?.usd;
-  if (typeof price === 'number' && price > 0) return price;
+  if (typeof price === 'number' && isPlausibleSolPrice(price)) return price;
   throw new Error('CoinGecko returned invalid price');
 }
 
@@ -93,9 +98,15 @@ async function fetchSOLPriceFromDexScreener(): Promise<number> {
     'https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112',
     { timeout: 5_000 }
   );
-  const pair = res.data?.pairs?.[0];
+  const pairs = Array.isArray(res.data?.pairs) ? res.data.pairs : [];
+  const pair = pairs
+    .filter((entry: any) => entry?.chainId === 'solana')
+    .filter((entry: any) => entry?.baseToken?.address === 'So11111111111111111111111111111111111111112')
+    .filter((entry: any) => STABLE_QUOTES.has(String(entry?.quoteToken?.symbol ?? '').toUpperCase()))
+    .sort((a: any, b: any) => Number(b?.liquidity?.usd ?? 0) - Number(a?.liquidity?.usd ?? 0))[0];
+
   const price = parseFloat(pair?.priceUsd);
-  if (price > 0) return price;
+  if (isPlausibleSolPrice(price)) return price;
   throw new Error('DexScreener returned invalid price');
 }
 
