@@ -1,16 +1,15 @@
 import { Connection, PublicKey } from '@solana/web3.js';
+import { MintLayout } from '@solana/spl-token';
 import { TokenSafetyResult } from '../core/types';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
 
 // Cache results to avoid duplicate RPC calls
 const CACHE_TTL_MS = 300_000; // 5 minutes
+const SAFETY_TIMEOUT_MS = 3_000;
+const SAFETY_MAX_ATTEMPTS = 2;
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const TOKEN_ACCOUNT_SIZE = 165;
-
-function readU32LE(data: Buffer, offset: number): number {
-  return data.readUInt32LE(offset);
-}
 
 function readU64LE(data: Buffer, offset: number): bigint {
   return data.readBigUInt64LE(offset);
@@ -21,9 +20,10 @@ export class TokenSafetyChecker {
   private cache: Map<string, { result: TokenSafetyResult; cachedAt: number }> = new Map();
 
   constructor(connection: Connection, backupConnection?: Connection) {
-    this.connections = backupConnection && backupConnection !== connection
-      ? [backupConnection, connection]
+    const ordered = backupConnection && backupConnection !== connection
+      ? [connection, backupConnection]
       : [connection];
+    this.connections = ordered.slice(0, SAFETY_MAX_ATTEMPTS);
 
     // Cleanup stale cache every 5 min
     setInterval(() => this.cleanupCache(), CACHE_TTL_MS);
@@ -42,10 +42,14 @@ export class TokenSafetyChecker {
 
     let lastError: unknown;
 
-    for (let attempt = 0; attempt < this.connections.length; attempt++) {
+    for (let attempt = 0; attempt < Math.min(this.connections.length, SAFETY_MAX_ATTEMPTS); attempt++) {
       const connection = this.connections[attempt];
       try {
-        const result = await this.performChecks(connection, tokenCA);
+        const result = await this.withTimeout(
+          this.performChecks(connection, tokenCA),
+          SAFETY_TIMEOUT_MS,
+          `Safety check timed out after ${SAFETY_TIMEOUT_MS}ms`
+        );
         this.cache.set(tokenCA, { result, cachedAt: Date.now() });
         bus.emit('safety:checked', result);
 
@@ -183,14 +187,16 @@ export class TokenSafetyChecker {
     }
 
     const data = accountInfo.data;
-    if (!Buffer.isBuffer(data) || data.length < 82) {
+    if (!Buffer.isBuffer(data) || data.length < MintLayout.span) {
       return { mintAuthRevoked: true, freezeAuthRevoked: true, totalSupply: 0n };
     }
 
+    const mintData = MintLayout.decode(data);
+
     return {
-      mintAuthRevoked: readU32LE(data, 0) === 0,
-      freezeAuthRevoked: readU32LE(data, 46) === 0,
-      totalSupply: readU64LE(data, 36),
+      mintAuthRevoked: mintData.mintAuthorityOption === 0,
+      freezeAuthRevoked: mintData.freezeAuthorityOption === 0,
+      totalSupply: BigInt(mintData.supply.toString()),
     };
   }
 
@@ -227,6 +233,21 @@ export class TokenSafetyChecker {
       if (now - entry.cachedAt > CACHE_TTL_MS) {
         this.cache.delete(key);
       }
+    }
+  }
+
+  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 }

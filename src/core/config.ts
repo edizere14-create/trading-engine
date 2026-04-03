@@ -19,6 +19,7 @@ const envSchema = z.object({
   BIRDEYE_API_KEY:         z.string().optional(),
   DUNE_API_KEY:            z.string().optional(),
   RUGCHECK_API_KEY:        z.string().optional(),
+  SAFETY_RPC_URL:          z.string().url('SAFETY_RPC_URL must be a valid URL').optional(),
   TWITTER_BEARER_TOKEN:    z.string().optional(),
   NITTER_INSTANCE:         z.string().optional(),
   TELEGRAM_API_ID:         z.string().optional(),
@@ -91,6 +92,7 @@ export interface AppConfig extends EnvConfig {
   AUTONOMOUS_ONLY: 'true' | 'false';
   connection: Connection;
   backupConnection: Connection;
+  safetyConnection: Connection;
   isPaperMode: boolean;
   isAutonomousOnly: boolean;
 }
@@ -116,11 +118,13 @@ export const config = {
     const env = parsed.data;
     const connection = createConnection(env.PRIMARY_RPC);
     const backupConnection = createConnection(env.BACKUP_RPC);
+    const safetyConnection = createConnection(env.SAFETY_RPC_URL ?? env.BACKUP_RPC);
 
     return {
       ...env,
       connection,
       backupConnection,
+      safetyConnection,
       isPaperMode: env.PAPER_MODE === 'true',
       isAutonomousOnly: env.AUTONOMOUS_ONLY === 'true',
     };

@@ -341,7 +341,7 @@ async function boot(): Promise<void> {
   const replayEngine = new ReplaySimulator(journal, riskEngine);
 
   // 5c. Trade infrastructure
-  const tokenSafety = new TokenSafetyChecker(cfg.connection, cfg.backupConnection);
+  const tokenSafety = new TokenSafetyChecker(cfg.safetyConnection, cfg.connection);
 
   // SOL price — fetch real price before any sizing decisions
   currentSOLPrice = await fetchSOLPriceWithRetry();
