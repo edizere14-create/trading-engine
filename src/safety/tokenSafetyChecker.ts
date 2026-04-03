@@ -7,11 +7,13 @@ import { logger } from '../core/logger';
 const CACHE_TTL_MS = 300_000; // 5 minutes
 
 export class TokenSafetyChecker {
-  private connection: Connection;
+  private connections: Connection[];
   private cache: Map<string, { result: TokenSafetyResult; cachedAt: number }> = new Map();
 
-  constructor(connection: Connection) {
-    this.connection = connection;
+  constructor(connection: Connection, backupConnection?: Connection) {
+    this.connections = backupConnection && backupConnection !== connection
+      ? [backupConnection, connection]
+      : [connection];
 
     // Cleanup stale cache every 5 min
     setInterval(() => this.cleanupCache(), CACHE_TTL_MS);
@@ -28,13 +30,12 @@ export class TokenSafetyChecker {
       return cached.result;
     }
 
-    // Retry up to 3 times before failing closed
-    const MAX_ATTEMPTS = 3;
     let lastError: unknown;
 
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    for (let attempt = 0; attempt < this.connections.length; attempt++) {
+      const connection = this.connections[attempt];
       try {
-        const result = await this.performChecks(tokenCA);
+        const result = await this.performChecks(connection, tokenCA);
         this.cache.set(tokenCA, { result, cachedAt: Date.now() });
         bus.emit('safety:checked', result);
 
@@ -58,7 +59,7 @@ export class TokenSafetyChecker {
         return result;
       } catch (err) {
         lastError = err;
-        if (attempt < MAX_ATTEMPTS - 1) {
+        if (attempt < this.connections.length - 1) {
           const delay = 300 * (attempt + 1);
           logger.warn('[Safety] Check attempt failed — retrying', {
             tokenCA,
@@ -98,7 +99,7 @@ export class TokenSafetyChecker {
     return failedResult;
   }
 
-  private async performChecks(tokenCA: string): Promise<TokenSafetyResult> {
+  private async performChecks(connection: Connection, tokenCA: string): Promise<TokenSafetyResult> {
     const reasons: string[] = [];
     let rugScore = 0;
     let topHolderPct = 0;
@@ -108,7 +109,7 @@ export class TokenSafetyChecker {
     const isHoneypot = false;
 
     // 1. Check mint authority — revoked is safe
-    const mintInfo = await this.getMintInfo(tokenCA);
+    const mintInfo = await this.getMintInfo(connection, tokenCA);
     mintAuthRevoked = mintInfo.mintAuthRevoked;
     freezeAuthRevoked = mintInfo.freezeAuthRevoked;
 
@@ -122,7 +123,7 @@ export class TokenSafetyChecker {
     }
 
     // 2. Check top holder concentration
-    topHolderPct = await this.getTopHolderConcentration(tokenCA);
+    topHolderPct = await this.getTopHolderConcentration(connection, tokenCA);
     if (topHolderPct > 0.50) {
       reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
       rugScore += 3;
@@ -159,12 +160,12 @@ export class TokenSafetyChecker {
     return cached.result;
   }
 
-  private async getMintInfo(tokenCA: string): Promise<{
+  private async getMintInfo(connection: Connection, tokenCA: string): Promise<{
     mintAuthRevoked: boolean;
     freezeAuthRevoked: boolean;
   }> {
     const mintPubkey = new PublicKey(tokenCA);
-    const accountInfo = await this.connection.getParsedAccountInfo(mintPubkey);
+    const accountInfo = await connection.getParsedAccountInfo(mintPubkey);
 
     if (!accountInfo.value) {
       return { mintAuthRevoked: true, freezeAuthRevoked: true };
@@ -182,14 +183,14 @@ export class TokenSafetyChecker {
     };
   }
 
-  private async getTopHolderConcentration(tokenCA: string): Promise<number> {
+  private async getTopHolderConcentration(connection: Connection, tokenCA: string): Promise<number> {
     const mintPubkey = new PublicKey(tokenCA);
-    const largestAccounts = await this.connection.getTokenLargestAccounts(mintPubkey);
+    const largestAccounts = await connection.getTokenLargestAccounts(mintPubkey);
 
     if (!largestAccounts.value || largestAccounts.value.length === 0) return 0;
 
     // Get total supply
-    const supply = await this.connection.getTokenSupply(mintPubkey);
+    const supply = await connection.getTokenSupply(mintPubkey);
     const totalSupply = Number(supply.value.amount);
     if (totalSupply === 0) return 0;
 
