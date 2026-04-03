@@ -454,18 +454,6 @@ export class SmartWalletStream {
       // Skip ALL health checks during cooldown after a recent reconnect
       if (Date.now() < this.reconnectCooldownUntil) return;
 
-      const silentMs = Date.now() - this.lastEventTime;
-
-      // If no events for 90s, subscriptions are likely dead
-      if (silentMs > 90_000) {
-        logger.warn('Wallet stream silent \u2014 reconnecting', {
-          silentSeconds: Math.round(silentMs / 1000),
-          attempt: this.reconnectAttempts + 1,
-        });
-        await this.reconnect();
-        return;
-      }
-
       // Verify connection is healthy
       try {
         await this.activeConnection.getSlot();

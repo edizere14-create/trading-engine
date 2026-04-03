@@ -18,6 +18,7 @@ const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_COOLDOWN_MS = 120_000; // Suppress health-check reconnects for 120s after a reconnect
+const LP_SILENCE_THRESHOLD_MS = 30 * 60_000; // New LP events are bursty; 90s causes false positives
 
 export class LPCreationStream {
   private primaryConnection: Connection;
@@ -133,8 +134,8 @@ export class LPCreationStream {
 
       const silentMs = Date.now() - this.lastEventTime;
 
-      // If no events for 90s, subscriptions are likely dead
-      if (silentMs > 90_000) {
+      // LP creation is naturally bursty; only treat very long silence as suspicious.
+      if (silentMs > LP_SILENCE_THRESHOLD_MS) {
         logger.warn('LP stream silent — reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
