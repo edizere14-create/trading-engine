@@ -49,6 +49,10 @@ export class LPCreationStream {
     if (usable) {
       this.activeConnection = usable;
     }
+    logger.info('LP stream using RPC', {
+      endpoint: getConnectionEndpoint(this.activeConnection),
+      role: this.activeConnection === this.primaryConnection ? 'primary' : 'backup',
+    });
 
     // Limit WS auto-reconnects on the active connection (default is Infinity)
     enableWsReconnect(this.activeConnection, 3);
@@ -181,6 +185,10 @@ export class LPCreationStream {
         disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
         this.activeConnection = this.backupConnection;
         enableWsReconnect(this.activeConnection, 3);
+        logger.info('LP stream using RPC', {
+          endpoint: getConnectionEndpoint(this.activeConnection),
+          role: 'backup',
+        });
       } else {
         logger.warn('LP stream backup RPC skipped during failover — logsSubscribe unsupported', {
           endpoint: getConnectionEndpoint(this.backupConnection),
@@ -191,6 +199,10 @@ export class LPCreationStream {
       disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
       enableWsReconnect(this.activeConnection, 3);
+      logger.info('LP stream using RPC', {
+        endpoint: getConnectionEndpoint(this.activeConnection),
+        role: 'primary',
+      });
     }
     // On attempt 1 with no backup, stays on primary
 

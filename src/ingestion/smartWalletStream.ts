@@ -171,6 +171,10 @@ export class SmartWalletStream {
     if (usable) {
       this.activeConnection = usable;
     }
+    logger.info('[WalletStream] Using RPC', {
+      endpoint: getConnectionEndpoint(this.activeConnection),
+      role: this.activeConnection === this.primaryConnection ? 'primary' : 'backup',
+    });
 
     // Limit WS auto-reconnects on the active connection (default is Infinity)
     enableWsReconnect(this.activeConnection, 3);
@@ -491,6 +495,10 @@ export class SmartWalletStream {
         disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
         this.activeConnection = this.backupConnection;
         enableWsReconnect(this.activeConnection, 3);
+        logger.info('[WalletStream] Using RPC', {
+          endpoint: getConnectionEndpoint(this.activeConnection),
+          role: 'backup',
+        });
       } else {
         logger.warn('Wallet stream backup RPC skipped during failover — logsSubscribe unsupported', {
           endpoint: getConnectionEndpoint(this.backupConnection),
@@ -501,6 +509,10 @@ export class SmartWalletStream {
       disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
       enableWsReconnect(this.activeConnection, 3);
+      logger.info('[WalletStream] Using RPC', {
+        endpoint: getConnectionEndpoint(this.activeConnection),
+        role: 'primary',
+      });
     }
 
     try {
