@@ -5,6 +5,16 @@ import { logger } from '../core/logger';
 
 // Cache results to avoid duplicate RPC calls
 const CACHE_TTL_MS = 300_000; // 5 minutes
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const TOKEN_ACCOUNT_SIZE = 165;
+
+function readU32LE(data: Buffer, offset: number): number {
+  return data.readUInt32LE(offset);
+}
+
+function readU64LE(data: Buffer, offset: number): bigint {
+  return data.readBigUInt64LE(offset);
+}
 
 export class TokenSafetyChecker {
   private connections: Connection[];
@@ -123,7 +133,7 @@ export class TokenSafetyChecker {
     }
 
     // 2. Check top holder concentration
-    topHolderPct = await this.getTopHolderConcentration(connection, tokenCA);
+    topHolderPct = await this.getTopHolderConcentration(connection, tokenCA, mintInfo.totalSupply);
     if (topHolderPct > 0.50) {
       reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
       rugScore += 3;
@@ -163,42 +173,52 @@ export class TokenSafetyChecker {
   private async getMintInfo(connection: Connection, tokenCA: string): Promise<{
     mintAuthRevoked: boolean;
     freezeAuthRevoked: boolean;
+    totalSupply: bigint;
   }> {
     const mintPubkey = new PublicKey(tokenCA);
-    const accountInfo = await connection.getParsedAccountInfo(mintPubkey);
+    const accountInfo = await connection.getAccountInfo(mintPubkey);
 
-    if (!accountInfo.value) {
-      return { mintAuthRevoked: true, freezeAuthRevoked: true };
+    if (!accountInfo) {
+      return { mintAuthRevoked: true, freezeAuthRevoked: true, totalSupply: 0n };
     }
 
-    const data = accountInfo.value.data;
-    if (!('parsed' in data)) {
-      return { mintAuthRevoked: true, freezeAuthRevoked: true };
+    const data = accountInfo.data;
+    if (!Buffer.isBuffer(data) || data.length < 82) {
+      return { mintAuthRevoked: true, freezeAuthRevoked: true, totalSupply: 0n };
     }
 
-    const info = data.parsed?.info;
     return {
-      mintAuthRevoked: info?.mintAuthority === null || info?.mintAuthority === undefined,
-      freezeAuthRevoked: info?.freezeAuthority === null || info?.freezeAuthority === undefined,
+      mintAuthRevoked: readU32LE(data, 0) === 0,
+      freezeAuthRevoked: readU32LE(data, 46) === 0,
+      totalSupply: readU64LE(data, 36),
     };
   }
 
-  private async getTopHolderConcentration(connection: Connection, tokenCA: string): Promise<number> {
+  private async getTopHolderConcentration(connection: Connection, tokenCA: string, totalSupply: bigint): Promise<number> {
     const mintPubkey = new PublicKey(tokenCA);
-    const largestAccounts = await connection.getTokenLargestAccounts(mintPubkey);
+    if (totalSupply === 0n) return 0;
 
-    if (!largestAccounts.value || largestAccounts.value.length === 0) return 0;
+    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+      filters: [
+        { dataSize: TOKEN_ACCOUNT_SIZE },
+        { memcmp: { offset: 0, bytes: mintPubkey.toBase58() } },
+      ],
+    });
 
-    // Get total supply
-    const supply = await connection.getTokenSupply(mintPubkey);
-    const totalSupply = Number(supply.value.amount);
-    if (totalSupply === 0) return 0;
+    if (tokenAccounts.length === 0) return 0;
 
-    // Sum top 5 holders
-    const top5 = largestAccounts.value.slice(0, 5);
-    const top5Total = top5.reduce((sum, acct) => sum + Number(acct.amount), 0);
+    const top5Total = tokenAccounts
+      .map(({ account }) => {
+        const data = account.data;
+        if (!Buffer.isBuffer(data) || data.length < 72) return 0n;
+        return readU64LE(data, 64);
+      })
+      .filter((amount) => amount > 0n)
+      .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
+      .slice(0, 5)
+      .reduce((sum, amount) => sum + amount, 0n);
 
-    return top5Total / totalSupply;
+    return Number(top5Total) / Number(totalSupply);
   }
 
   private cleanupCache(): void {
