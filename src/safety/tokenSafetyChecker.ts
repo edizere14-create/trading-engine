@@ -117,6 +117,7 @@ export class TokenSafetyChecker {
     const reasons: string[] = [];
     let rugScore = 0;
     let topHolderPct = 0;
+    let topHolderCheckUnavailable = false;
     const lpLocked = false;
     let mintAuthRevoked = false;
     let freezeAuthRevoked = false;
@@ -137,18 +138,30 @@ export class TokenSafetyChecker {
     }
 
     // 2. Check top holder concentration
-    topHolderPct = await this.getTopHolderConcentration(connection, tokenCA, mintInfo.totalSupply);
-    if (topHolderPct > 0.50) {
-      reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
-      rugScore += 3;
-    } else if (topHolderPct > 0.30) {
-      reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — high`);
-      rugScore += 2;
-    } else if (topHolderPct > 0.20) {
-      rugScore += 1;
+    try {
+      topHolderPct = await this.getTopHolderConcentration(connection, tokenCA, mintInfo.totalSupply);
+      if (topHolderPct > 0.50) {
+        reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — extreme`);
+        rugScore += 3;
+      } else if (topHolderPct > 0.30) {
+        reasons.push(`TOP_HOLDER_CONCENTRATION ${(topHolderPct * 100).toFixed(0)}% — high`);
+        rugScore += 2;
+      } else if (topHolderPct > 0.20) {
+        rugScore += 1;
+      }
+    } catch (err) {
+      topHolderCheckUnavailable = true;
+      logger.warn('[Safety] Top-holder concentration unavailable — continuing with partial safety check', {
+        tokenCA,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
 
     const isSafe = rugScore <= 5 && !isHoneypot;
+
+    if (topHolderCheckUnavailable) {
+      reasons.push('TOP_HOLDER_CHECK_UNAVAILABLE — provider plan/rate limit prevented concentration scan');
+    }
 
     return {
       tokenCA,
