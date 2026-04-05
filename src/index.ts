@@ -32,6 +32,7 @@ import { MicrostructureFeatureExtractor } from './microstructure/featureExtracto
 import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
 import { TradeRecord } from './core/types';
+import { DataSync } from './core/dataSync';
 import * as fs from 'fs';
 
 // ── Trade infrastructure ──────────────────────────────────
@@ -225,10 +226,15 @@ function loadExecutionWallet(secret?: string): Keypair | null {
   return Keypair.fromSecretKey(decoded);
 }
 
+const dataSync = new DataSync();
+
 async function boot(): Promise<void> {
   logger.info('═══════════════════════════════════════════');
   logger.info('  TRADING ENGINE v4.1 — BOOTING');
   logger.info('═══════════════════════════════════════════');
+
+  // 0. Restore persisted data from cloud before anything reads from disk
+  await dataSync.restore();
 
   // 1. Config validation — fail fast
   const cfg = config.load();
@@ -1608,6 +1614,9 @@ async function boot(): Promise<void> {
   }, 300_000);
   opsInterval.unref();
   logger.info('Operations snapshot interval started (300s)');
+
+  // ── Start cloud data sync ──────────────────────────────
+  dataSync.start();
 }
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -1674,6 +1683,9 @@ async function stopAllStreams(): Promise<void> {
     lpStream ? lpStream.stop() : Promise.resolve(),
     walletStream ? walletStream.stop() : Promise.resolve(),
   ]);
+
+  // ── Phase 6: Sync data to cloud ───────────────────────
+  await dataSync.shutdown();
 
   logger.info('All streams and engines stopped');
 }
