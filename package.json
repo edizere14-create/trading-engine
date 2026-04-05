@@ -7,7 +7,7 @@
     "test": "tests"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cd dashboard && next build",
     "start": "node dist/src/server.js",
     "start:engine": "node dist/src/index.js",
     "test": "jest --forceExit --detectOpenHandles",
