@@ -1736,16 +1736,6 @@ process.on('unhandledRejection', (reason) => {
   void shutdown();
 });
 
-// ── Minimal health-check HTTP server for Render ────────────────────────────
-import { createServer } from 'http';
-const PORT = parseInt(process.env.PORT || '10000', 10);
-createServer((_req, res) => {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
-}).listen(PORT, () => {
-  logger.info(`Health server listening on port ${PORT}`);
-});
-
 boot().catch((err) => {
   logger.error('BOOT FAILED', { error: err instanceof Error ? err.message : String(err) });
   console.error('BOOT FAILED:', err);
