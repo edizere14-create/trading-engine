@@ -31,7 +31,7 @@ import { EquityCurveController } from './equity/equityCurveController';
 import { MicrostructureFeatureExtractor } from './microstructure/featureExtractor';
 import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
-import { TradeRecord } from './core/types';
+import { TradeRecord, ExitMode } from './core/types';
 import { DataSync } from './core/dataSync';
 import * as fs from 'fs';
 
@@ -77,6 +77,21 @@ let isShuttingDown = false;
 
 // tokenCA → poolAddress mapping (populated from pool:created events)
 const tokenPoolMap: Map<string, string> = new Map();
+
+// tokenCA → signal context at entry time (for journal/paper trade records)
+interface TradeEntryContext {
+  signal: { timingEdge: number; deployerQuality: number; organicFlow: number; manipulationRisk: number; coordinationStrength: number; socialVelocity: number; totalScore: number; confidence: number };
+  poolAddress: string;
+  deployerAddress: string;
+  deployerTier: string;
+  predictedWP: number;
+  predictedEV: number;
+  entryMarketState: string;
+  entryRegime: string;
+  executionMode: string;
+  source: string;
+}
+const tradeEntryCache: Map<string, TradeEntryContext> = new Map();
 
 // ── SOL Price State ──────────────────────────────────────
 let currentSOLPrice: number | null = null;
@@ -1011,6 +1026,31 @@ async function boot(): Promise<void> {
     // Open the trade
     const opened = positionManager!.openTrade(signal, survival);
     if (opened) {
+      // Cache signal context for journal/paper trade records on close
+      const marketSnapshot = marketEngine.getSnapshot();
+      const regimeSnap = regimeDetector?.getLatestSnapshot();
+      tradeEntryCache.set(signal.tokenCA, {
+        signal: {
+          timingEdge: signal.score ?? 0,
+          deployerQuality: 0,
+          organicFlow: 0,
+          manipulationRisk: 0,
+          coordinationStrength: 0,
+          socialVelocity: 0,
+          totalScore: signal.score ?? 0,
+          confidence: signal.confidence ?? 0,
+        },
+        poolAddress: tokenPoolMap.get(signal.tokenCA) ?? '',
+        deployerAddress: '',
+        deployerTier: signal.walletTier ?? 'B',
+        predictedWP: signal.score ? signal.score / 10 : 0,
+        predictedEV: 0,
+        entryMarketState: marketSnapshot?.state ?? 'NORMAL',
+        entryRegime: regimeSnap?.currentRegime ?? 'NORMAL',
+        executionMode: 'SAFE',
+        source: signal.source ?? 'UNKNOWN',
+      });
+
       // Record heartbeat for antifragile dead-man's switch
       if (antifragileEngine) {
         antifragileEngine.heartbeat();
@@ -1372,51 +1412,72 @@ async function boot(): Promise<void> {
 
     // ── Persist to journal.db so dashboard can display ──
     const holdMs = Date.now() - position.entryTimestamp.getTime();
+    const ctx = tradeEntryCache.get(position.tokenCA);
+    const poolAddr = tokenPoolMap.get(position.tokenCA) ?? ctx?.poolAddress ?? '';
+    const exitPriceSOL = position.lastPriceSOL > 0
+      ? position.lastPriceSOL
+      : position.entryPriceSOL * (position.realizedMultiple ?? 1);
+
+    // Map positionManager exitReason → ExitMode
+    const exitReason = position.exitReason ?? 'UNKNOWN';
+    const exitModeMap: Record<string, ExitMode> = {
+      'STOP_LOSS': 'STOP_LOSS',
+      'RAPID_DUMP_EXIT': 'RAPID_DUMP_EXIT',
+      'EARLY_STOP': 'EARLY_STOP',
+      'TRAILING_STOP': 'TRAILING_STOP',
+      'ALL_TIERS_HIT': 'ALL_TIERS_HIT',
+      'TIME_EXIT': 'TIME_EXIT',
+      'STALE_EXIT': 'STALE_EXIT',
+      'EMERGENCY': 'EMERGENCY',
+    };
+    const exitModeKey = Object.keys(exitModeMap).find(k => exitReason.startsWith(k));
+    const resolvedExitMode: ExitMode = exitModeKey ? exitModeMap[exitModeKey] : 'UNKNOWN';
+
     const journalEntry: JournalEntry = {
       id: position.id,
       mode: position.mode,
       tokenCA: position.tokenCA,
       ticker: position.tokenCA.slice(0, 6) + '...',
       chain: 'SOLANA',
-      poolAddress: '',
+      poolAddress: poolAddr,
       entryTimestamp: position.entryTimestamp,
       entryPriceSOL: position.entryPriceSOL,
       entryPriceUSD: position.entryPriceSOL * (currentSOLPrice ?? 0),
       entryLiquiditySOL: 0,
       entryVolumeSOL: 0,
       entryHolderCount: 0,
-      entrySmartWalletCount: 0,
+      entrySmartWalletCount: position.sourceWallets.length,
       entryBuyPressure: 0,
       entrySlippage1K: 0,
-      entryMarketState: 'NORMAL',
-      entryRegime: 'NORMAL',
+      entryMarketState: ctx?.entryMarketState ?? 'NORMAL',
+      entryRegime: ctx?.entryRegime ?? 'NORMAL',
       entryEMALayer: '',
-      signalTimingEdge: 0,
-      signalDeployerQuality: 0,
-      signalOrganicFlow: 0,
-      signalManipulationRisk: 0,
-      signalCoordinationStrength: 0,
-      signalSocialVelocity: 0,
-      signalTotalScore: 0,
-      signalConfidence: 0,
-      predictedWP: 0,
-      predictedEV: 0,
+      signalTimingEdge: ctx?.signal.timingEdge ?? 0,
+      signalDeployerQuality: ctx?.signal.deployerQuality ?? 0,
+      signalOrganicFlow: ctx?.signal.organicFlow ?? 0,
+      signalManipulationRisk: ctx?.signal.manipulationRisk ?? 0,
+      signalCoordinationStrength: ctx?.signal.coordinationStrength ?? 0,
+      signalSocialVelocity: ctx?.signal.socialVelocity ?? 0,
+      signalTotalScore: ctx?.signal.totalScore ?? 0,
+      signalConfidence: ctx?.signal.confidence ?? 0,
+      predictedWP: ctx?.predictedWP ?? 0,
+      predictedEV: ctx?.predictedEV ?? 0,
       predictedMultiple: 0,
       sizeR: 0,
       sizeUSD: position.sizeUSD,
-      stopPriceSOL: 0,
+      stopPriceSOL: position.entryPriceSOL * (1 - position.stopLossPct),
       maxHoldMs: position.maxHoldMs,
-      executionMode: 'SAFE',
-      deployerAddress: '',
-      deployerTier: 'B',
+      executionMode: ctx?.executionMode ?? 'SAFE',
+      deployerAddress: ctx?.deployerAddress ?? '',
+      deployerTier: ctx?.deployerTier ?? 'B',
       rugScore: 0,
       sniperBlock0Pct: 0,
       topHolderPct: 0,
       lpLockDuration: 0,
       exitTimestamp: new Date(),
-      exitPriceSOL: position.entryPriceSOL * (position.realizedMultiple ?? 1),
-      exitMode: position.exitReason ?? 'UNKNOWN',
-      exitReason: position.exitReason ?? 'UNKNOWN',
+      exitPriceSOL,
+      exitMode: resolvedExitMode,
+      exitReason,
       holdDurationMs: holdMs,
       realizedMultiple: position.realizedMultiple,
       realizedPnLUSD: pnlUSD,
@@ -1424,8 +1485,8 @@ async function boot(): Promise<void> {
       outcome: position.outcome,
       peakMultiple: position.peakPriceSOL && position.entryPriceSOL > 0
         ? position.peakPriceSOL / position.entryPriceSOL : undefined,
-      edgesFired: ['AUTONOMOUS'],
-      primaryEdge: 'AUTONOMOUS',
+      edgesFired: [ctx?.source ?? 'AUTONOMOUS'],
+      primaryEdge: ctx?.source ?? 'AUTONOMOUS',
     };
     journal?.insert(journalEntry);
 
@@ -1436,21 +1497,21 @@ async function boot(): Promise<void> {
         mode: 'PAPER',
         tokenCA: position.tokenCA,
         ticker: position.tokenCA.slice(0, 6) + '...',
-        poolAddress: '',
+        poolAddress: poolAddr,
         entryPriceLamports: BigInt(Math.round(position.entryPriceSOL * 1e9)),
         entryTimestamp: position.entryTimestamp,
         exitTimestamp: new Date(),
-        exitPriceLamports: BigInt(Math.round(position.entryPriceSOL * (position.realizedMultiple ?? 1) * 1e9)),
-        exitMode: 'TIME_EXIT',
+        exitPriceLamports: BigInt(Math.round(exitPriceSOL * 1e9)),
+        exitMode: resolvedExitMode,
         outcome: position.outcome ?? 'LOSS',
         realizedMultiple: position.realizedMultiple ?? 0,
         realizedPnLUSD: pnlUSD,
-        predictedWP: 0,
-        predictedEV: 0,
+        predictedWP: ctx?.predictedWP ?? 0,
+        predictedEV: ctx?.predictedEV ?? 0,
         sizeR: 0,
         sizeUSD: position.sizeUSD,
-        stopPriceLamports: BigInt(0),
-        signal: {
+        stopPriceLamports: BigInt(Math.round(position.entryPriceSOL * (1 - position.stopLossPct) * 1e9)),
+        signal: ctx?.signal ?? {
           timingEdge: 0,
           deployerQuality: 0,
           organicFlow: 0,
@@ -1461,12 +1522,12 @@ async function boot(): Promise<void> {
           confidence: 0,
         },
         rugRisk: 'LOW',
-        edgesFired: ['AUTONOMOUS'],
-        marketState: 'NORMAL',
-        regime: 'NORMAL',
-        deployerTier: 'B',
+        edgesFired: ['AUTONOMOUS' as const],
+        marketState: (ctx?.entryMarketState as any) ?? 'NORMAL',
+        regime: (ctx?.entryRegime as any) ?? 'NORMAL',
+        deployerTier: (ctx?.deployerTier as any) ?? 'B',
         maxHoldMs: position.maxHoldMs,
-        executionMode: 'SAFE',
+        executionMode: (ctx?.executionMode as any) ?? 'SAFE',
       };
       paperGate.addTrade(tradeRecord);
 
@@ -1477,6 +1538,9 @@ async function boot(): Promise<void> {
         ev: gateStatus.actualEV.toFixed(3),
       });
     }
+
+    // Clean up entry context cache
+    tradeEntryCache.delete(position.tokenCA);
 
     // Log running stats
     const stats = positionManager!.getStats();
