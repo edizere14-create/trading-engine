@@ -328,14 +328,12 @@ export class SmartWalletStream {
       }
 
       if (successCount === 0) {
-        logger.error('[WalletStream] 0% subscription coverage after all retries — halting', {
+        logger.error('[WalletStream] 0% subscription coverage after all retries — continuing anyway', {
           retries: ZERO_COVERAGE_MAX_RETRIES,
           total,
         });
-        bus.emit('system:halt', {
-          reason: `Wallet stream 0% subscription coverage after ${ZERO_COVERAGE_MAX_RETRIES} retries`,
-          resumeAt: undefined,
-        });
+        // Don't halt — subscriptions may still be active even if our tracking missed them.
+        // The RPC health check will detect actual connection failures.
         return;
       }
     }
@@ -499,14 +497,12 @@ export class SmartWalletStream {
     const coveragePct = recentlySeen / total;
 
     if (coveragePct < COVERAGE_CRITICAL_PCT) {
-      logger.error('[WalletStream] Coverage CRITICAL — wallet stream degraded', {
+      // Low coverage is normal for small wallet sets — smart wallets trade infrequently.
+      // Only warn, never halt. RPC health is checked separately in startHealthCheck().
+      logger.warn('[WalletStream] Coverage low — smart wallets may be inactive', {
         coveragePct: Math.round(coveragePct * 100),
         recentlySeen,
         total,
-      });
-      bus.emit('system:halt', {
-        reason: `Wallet stream coverage critical: ${Math.round(coveragePct * 100)}%`,
-        resumeAt: undefined,
       });
     } else if (coveragePct < COVERAGE_DEGRADED_PCT) {
       logger.warn('[WalletStream] Coverage degraded', {
