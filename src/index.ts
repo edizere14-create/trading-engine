@@ -54,6 +54,7 @@ import { SmartMoneyTracker } from './intelligence/smartMoneyTracker';
 import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
 import { HybridPowerPlay } from './execution/hybridPowerPlay';
 import { PoolPriceStream } from './ingestion/poolPriceStream';
+import { PositionPricePoller } from './ingestion/positionPricePoller';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -72,6 +73,7 @@ let smartMoneyTracker: SmartMoneyTracker | null = null;
 let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
 let poolPriceStream: PoolPriceStream | null = null;
+let positionPricePoller: PositionPricePoller | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
 
@@ -474,6 +476,11 @@ async function boot(): Promise<void> {
   // 5k2. Pool Price Stream — reserve-based position price tracking
   poolPriceStream = new PoolPriceStream(cfg.connection, simulator);
   logger.info('Pool price stream initialized');
+
+  // 5k3. Position Price Poller — Jupiter API fallback for tokens without AMM pools
+  positionPricePoller = new PositionPricePoller(positionManager!);
+  positionPricePoller.start();
+  logger.info('Position price poller started');
 
   // 5l. Statistical Arbitrage Engine — cross-DEX spread capture
   statArbEngine = new StatArbEngine(cfg.connection);
@@ -1796,6 +1803,8 @@ async function stopAllStreams(): Promise<void> {
     walletStream ? walletStream.stop() : Promise.resolve(),
     poolPriceStream ? poolPriceStream.stop() : Promise.resolve(),
   ]);
+
+  if (positionPricePoller) positionPricePoller.stop();
 
   // ── Phase 6: Sync data to cloud ───────────────────────
   await dataSync.shutdown();

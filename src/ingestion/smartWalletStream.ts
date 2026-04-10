@@ -731,7 +731,13 @@ export class SmartWalletStream {
 
     if (amountSOL === 0 || amountTokens === 0n) return null;
 
-    const priceSOL = amountSOL / Number(amountTokens);
+    // Price per whole token in SOL (adjusted for decimals).
+    // This matches the convention used by poolPriceStream.getSpotPrice() and Jupiter API.
+    const decimals = walletPostTokens.find(b => b.mint === tokenMint)?.uiTokenAmount.decimals
+      ?? walletPreTokens.find(b => b.mint === tokenMint)?.uiTokenAmount.decimals
+      ?? 6;
+    const wholeTokens = Number(amountTokens) / (10 ** decimals);
+    const priceSOL = wholeTokens > 0 ? amountSOL / wholeTokens : 0;
 
     return {
       tokenCA: tokenMint,
