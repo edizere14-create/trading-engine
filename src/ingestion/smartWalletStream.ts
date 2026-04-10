@@ -29,8 +29,9 @@ const CLEANUP_INTERVAL_MS = 60_000;
 
 // ── CONNECTION POOL ─────────────────────────────────────
 const MAX_SUBS_PER_CONNECTION = 400; // conservative buffer under RPC ~512 ceiling
-const SUBSCRIBE_BATCH_SIZE = 50;
-const SUBSCRIBE_BATCH_DELAY_MS = 200;
+const SUBSCRIBE_BATCH_SIZE = 10;
+const SUBSCRIBE_BATCH_DELAY_MS = 2_000;
+const ZERO_COVERAGE_MAX_RETRIES = 3;
 const SILENCE_THRESHOLD_MS = 30 * 60_000; // 30 min — most wallets don't transact every few minutes
 const SILENCE_CHECK_INTERVAL_MS = 60_000;
 const SILENCE_RESUB_MAX_PER_CYCLE = 10; // limit churn per cycle
@@ -268,30 +269,95 @@ export class SmartWalletStream {
   // ── BATCH SUBSCRIPTION ─────────────────────────────────
 
   private async subscribeAll(walletAddresses: string[]): Promise<void> {
+    const total = walletAddresses.length;
     logger.info('[WalletStream] Subscribing wallets in batches', {
-      total: walletAddresses.length,
+      total,
       batchSize: SUBSCRIBE_BATCH_SIZE,
       maxSubsPerConnection: MAX_SUBS_PER_CONNECTION,
     });
 
+    let successCount = 0;
+
     for (let i = 0; i < walletAddresses.length; i += SUBSCRIBE_BATCH_SIZE) {
       const batch = walletAddresses.slice(i, i + SUBSCRIBE_BATCH_SIZE);
-      await Promise.all(batch.map(addr => this.subscribeWallet(addr)));
+      const results = await Promise.all(batch.map(addr => this.subscribeWallet(addr)));
+      successCount += results.filter(Boolean).length;
+
+      logger.info('[WalletStream] Batch subscribed', {
+        batchIndex: Math.floor(i / SUBSCRIBE_BATCH_SIZE) + 1,
+        totalBatches: Math.ceil(walletAddresses.length / SUBSCRIBE_BATCH_SIZE),
+        successCount,
+        total,
+      });
 
       if (i + SUBSCRIBE_BATCH_SIZE < walletAddresses.length) {
         await new Promise(r => setTimeout(r, SUBSCRIBE_BATCH_DELAY_MS));
       }
     }
 
+    const coveragePct = total > 0 ? successCount / total : 0;
+
+    if (coveragePct === 0) {
+      // 0% coverage — retry up to ZERO_COVERAGE_MAX_RETRIES times before halting
+      for (let attempt = 1; attempt <= ZERO_COVERAGE_MAX_RETRIES; attempt++) {
+        logger.warn('[WalletStream] 0% subscription coverage — retrying', {
+          attempt,
+          maxRetries: ZERO_COVERAGE_MAX_RETRIES,
+        });
+        await new Promise(r => setTimeout(r, SUBSCRIBE_BATCH_DELAY_MS));
+
+        const failedAddrs = walletAddresses.filter(a => !this.subscriptions.has(a));
+        for (let i = 0; i < failedAddrs.length; i += SUBSCRIBE_BATCH_SIZE) {
+          const batch = failedAddrs.slice(i, i + SUBSCRIBE_BATCH_SIZE);
+          const results = await Promise.all(batch.map(addr => this.subscribeWallet(addr)));
+          successCount += results.filter(Boolean).length;
+
+          if (i + SUBSCRIBE_BATCH_SIZE < failedAddrs.length) {
+            await new Promise(r => setTimeout(r, SUBSCRIBE_BATCH_DELAY_MS));
+          }
+        }
+
+        if (successCount > 0) {
+          logger.info('[WalletStream] Recovered from 0% coverage on retry', {
+            attempt,
+            successCount,
+            total,
+          });
+          break;
+        }
+      }
+
+      if (successCount === 0) {
+        logger.error('[WalletStream] 0% subscription coverage after all retries — halting', {
+          retries: ZERO_COVERAGE_MAX_RETRIES,
+          total,
+        });
+        bus.emit('system:halt', {
+          reason: `Wallet stream 0% subscription coverage after ${ZERO_COVERAGE_MAX_RETRIES} retries`,
+          resumeAt: undefined,
+        });
+        return;
+      }
+    }
+
+    if (coveragePct > 0 && coveragePct < 0.5) {
+      logger.warn('[WalletStream] Subscription coverage below 50%', {
+        coveragePct: Math.round(coveragePct * 100),
+        successCount,
+        total,
+      });
+    }
+
     this.logCoverageReport();
     logger.info('[WalletStream] Subscription complete', {
       active: this.subscriptions.size,
-      total: walletAddresses.length,
+      total,
+      coveragePct: Math.round((successCount / total) * 100),
     });
   }
 
-  private async subscribeWallet(address: string): Promise<void> {
-    if (this.subscriptions.has(address)) return; // already subscribed
+  private async subscribeWallet(address: string): Promise<boolean> {
+    if (this.subscriptions.has(address)) return true; // already subscribed
 
     const conn = this.getAvailableConnection();
     try {
@@ -324,11 +390,13 @@ export class SmartWalletStream {
         lastLogAt: null,
       });
       this.connectionSubCounts.set(conn, (this.connectionSubCounts.get(conn) ?? 0) + 1);
+      return true;
     } catch (err) {
       logger.error('Wallet subscription failed', {
         wallet: address,
         err: err instanceof Error ? err.message : String(err),
       });
+      return false;
     }
   }
 

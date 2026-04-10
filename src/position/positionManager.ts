@@ -93,9 +93,12 @@ export class PositionManager {
       return false;
     }
 
-    // Gate: already have position in this token
+    // Gate: already have position in this token — reject duplicate
     if (this.positions.has(signal.tokenCA)) {
-      logger.debug('Trade skipped: already positioned', { tokenCA: signal.tokenCA });
+      logger.warn('Trade REJECTED: duplicate position on same token', {
+        tokenCA: signal.tokenCA,
+        existingPositionId: this.positions.get(signal.tokenCA)!.id,
+      });
       return false;
     }
 
