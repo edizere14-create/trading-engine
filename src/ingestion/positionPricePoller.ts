@@ -9,7 +9,7 @@
  * STALE_EXIT after 60s.
  *
  * This poller fetches current prices for ALL open positions every N
- * seconds via Jupiter Price API, ensuring no position starves for
+ * seconds via DexScreener API, ensuring no position starves for
  * price data regardless of AMM pool availability.
  */
 
@@ -18,10 +18,9 @@ import { logger } from '../core/logger';
 import { PositionManager } from '../position/positionManager';
 
 const POLL_INTERVAL_MS = 5_000;       // poll every 5 seconds
-const JUPITER_PRICE_URL = 'https://api.jup.ag/price/v2';
-const JUPITER_TIMEOUT_MS = 4_000;     // 4s timeout (must finish within poll interval)
-const MAX_BATCH_SIZE = 100;           // Jupiter supports up to 100 IDs per request
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const DEXSCREENER_TIMEOUT_MS = 4_000;
+// DexScreener supports up to 30 token addresses per batch request
+const MAX_BATCH_SIZE = 30;
 
 export class PositionPricePoller {
   private positionManager: PositionManager;
@@ -101,33 +100,37 @@ export class PositionPricePoller {
   }
 
   /**
-   * Fetch current prices via Jupiter Price API.
-   * Returns Map of tokenCA → priceSOL.
+   * Fetch current prices via DexScreener API.
+   * Returns Map of tokenCA → priceSOL (priceNative).
+   * Endpoint: GET /tokens/v1/solana/:tokenAddresses (comma-separated, max 30)
    */
   private async fetchPrices(tokenCAs: string[]): Promise<Map<string, number>> {
     const result = new Map<string, number>();
 
-    // Batch into chunks of MAX_BATCH_SIZE
     for (let i = 0; i < tokenCAs.length; i += MAX_BATCH_SIZE) {
       const batch = tokenCAs.slice(i, i + MAX_BATCH_SIZE);
-      const ids = batch.join(',');
+      const addresses = batch.join(',');
 
-      const resp = await axios.get(JUPITER_PRICE_URL, {
-        params: { ids, vsToken: SOL_MINT },
-        timeout: JUPITER_TIMEOUT_MS,
-      });
+      const resp = await axios.get(
+        `https://api.dexscreener.com/tokens/v1/solana/${addresses}`,
+        { timeout: DEXSCREENER_TIMEOUT_MS }
+      );
 
-      const data = resp.data?.data;
-      if (!data) continue;
+      const pairs = resp.data;
+      if (!Array.isArray(pairs)) continue;
 
-      for (const tokenCA of batch) {
-        const entry = data[tokenCA];
-        if (entry?.price) {
-          // Jupiter returns price as string, vsToken=SOL gives price in SOL
-          const priceSOL = parseFloat(entry.price);
-          if (isFinite(priceSOL) && priceSOL > 0) {
-            result.set(tokenCA, priceSOL);
-          }
+      // DexScreener returns array of pair objects; pick the best (highest liquidity) per token
+      for (const pair of pairs) {
+        const tokenAddr = pair.baseToken?.address;
+        if (!tokenAddr || !batch.includes(tokenAddr)) continue;
+
+        const priceNative = parseFloat(pair.priceNative);
+        if (!isFinite(priceNative) || priceNative <= 0) continue;
+
+        // Keep the pair with highest liquidity for this token
+        const existing = result.get(tokenAddr);
+        if (!existing || priceNative > existing) {
+          result.set(tokenAddr, priceNative);
         }
       }
     }
