@@ -63,11 +63,12 @@ export class SurvivalEngine {
     this.dailyPnLUSD += pnlUSD;
     this.weeklyPnLUSD += pnlUSD;
 
-    if (pnlUSD < 0) {
+    if (pnlUSD < -0.01) {
       this.consecutiveLosses++;
-    } else if (pnlUSD > 0) {
+    } else if (pnlUSD > 0.01) {
       this.consecutiveLosses = 0;
     }
+    // Breakeven (|pnlUSD| <= 0.01): don't change consecutive loss counter
 
     this.reevaluateState();
 

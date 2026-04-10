@@ -244,6 +244,16 @@ export class LPCreationStream {
     try {
       const event = await this.parsePoolCreation(logs.signature, ctx.slot, programName);
       if (event) {
+        if (event.tokenCA.endsWith('pump')) {
+          logger.info('REJECTED: pump.fun token filtered', {
+            tokenCA: event.tokenCA,
+            signature: logs.signature,
+            program: programName,
+            slot: ctx.slot,
+          });
+          return;
+        }
+
         bus.emit('pool:created', event);
         logger.info('New pool detected', {
           tokenCA: event.tokenCA,

@@ -7,6 +7,11 @@ import {
 } from '../core/types';
 import { logger } from '../core/logger';
 
+const STOP_LOSS_PCT = Number(process.env.STOP_LOSS_PCT ?? '15');
+const STOP_LOSS_PCT_DECIMAL = Number.isFinite(STOP_LOSS_PCT)
+  ? Math.max(0, STOP_LOSS_PCT) / 100
+  : 0.15;
+
 const NO_TRADE: Omit<RiskDecision, 'reason'> = {
   tradeAllowed: false,
   sizeR: 0,
@@ -31,7 +36,9 @@ export class RiskEngine {
     marketState: MarketStateSnapshot,
     survival: SurvivalSnapshot,
     predictedWP: number,
-    predictedMultiple: number
+    predictedMultiple: number,
+    reserveSOL?: number,
+    solPriceUSD = 1
   ): RiskDecision {
     // Gate 1: Survival HALT
     if (survival.state === 'HALT') {
@@ -54,8 +61,8 @@ export class RiskEngine {
     }
 
     // Gate 3: EV check
-    const ev = (predictedWP * predictedMultiple) - ((1 - predictedWP) * 0.3);
-    if (ev < 0.30) {
+    const ev = (predictedWP * predictedMultiple) - ((1 - predictedWP) * STOP_LOSS_PCT_DECIMAL);
+    if (ev < STOP_LOSS_PCT_DECIMAL) {
       const decision: RiskDecision = { ...NO_TRADE, reason: `EV_TOO_LOW: ${ev.toFixed(2)}R` };
       logger.info('RISK_GATE: EV_TOO_LOW', { ev: ev.toFixed(4), predictedWP, predictedMultiple });
       return decision;
@@ -73,10 +80,35 @@ export class RiskEngine {
     const survivalMult = survival.sizeMultiplier;
     const sizeMultiplier = regimeMult * betaMult * survivalMult;
 
-    // Full size if EV >= 0.45R, half size if EV >= 0.30R
-    const sizeR = ev >= 0.45
+    // Full size if EV >= 0.45R, half size if EV >= stop-loss R
+    const rawSizeR = ev >= 0.45
       ? baseR * sizeMultiplier
       : baseR * sizeMultiplier * 0.5;
+
+    let sizeR = rawSizeR;
+
+    // Liquidity-adjusted cap: never size above 1% of pool SOL reserves.
+    if (
+      Number.isFinite(reserveSOL) &&
+      Number.isFinite(solPriceUSD) &&
+      (reserveSOL ?? 0) > 0 &&
+      solPriceUSD > 0
+    ) {
+      const maxSizeSOL = (reserveSOL as number) * 0.01;
+      const maxSizeUSD = maxSizeSOL * solPriceUSD;
+
+      if (sizeR > maxSizeUSD) {
+        sizeR = maxSizeUSD;
+        logger.warn('RISK_CAP: LIQUIDITY_1PCT', {
+          reserveSOL,
+          solPriceUSD,
+          maxSizeSOL: maxSizeSOL.toFixed(6),
+          maxSizeUSD: maxSizeUSD.toFixed(2),
+          requestedSizeUSD: rawSizeR.toFixed(2),
+          cappedSizeUSD: sizeR.toFixed(2),
+        });
+      }
+    }
 
     // Execution mode
     const executionMode: ExecutionMode =
@@ -108,6 +140,11 @@ export class RiskEngine {
       regimeMult,
       betaMult,
       survivalMult,
+      stopLossPct: STOP_LOSS_PCT,
+      stopLossDecimal: STOP_LOSS_PCT_DECIMAL,
+      reserveSOL,
+      solPriceUSD,
+      rawSizeR: rawSizeR.toFixed(2),
       sizeR: sizeR.toFixed(2),
       executionMode,
       maxHoldMs,

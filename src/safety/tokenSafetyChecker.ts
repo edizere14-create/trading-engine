@@ -18,12 +18,14 @@ function readU64LE(data: Buffer, offset: number): bigint {
 export class TokenSafetyChecker {
   private connections: Connection[];
   private cache: Map<string, { result: TokenSafetyResult; cachedAt: number }> = new Map();
+  private paperMode: boolean;
 
-  constructor(connection: Connection, backupConnection?: Connection) {
+  constructor(connection: Connection, backupConnection?: Connection, paperMode = false) {
     const ordered = backupConnection && backupConnection !== connection
       ? [connection, backupConnection]
       : [connection];
     this.connections = ordered.slice(0, SAFETY_MAX_ATTEMPTS);
+    this.paperMode = paperMode;
 
     // Cleanup stale cache every 5 min
     setInterval(() => this.cleanupCache(), CACHE_TTL_MS);
@@ -86,7 +88,31 @@ export class TokenSafetyChecker {
       }
     }
 
-    // All retries exhausted — fail CLOSED
+    // All retries exhausted — fail OPEN in paper mode (no real capital), fail CLOSED in live
+    if (this.paperMode) {
+      logger.warn('[Safety] All attempts failed — failing OPEN (paper mode, no real capital)', {
+        tokenCA,
+        error: lastError instanceof Error ? lastError.message : String(lastError),
+      });
+
+      const passResult: TokenSafetyResult = {
+        tokenCA,
+        isSafe: true,
+        reasons: [],
+        rugScore: 5,
+        topHolderPct: 0,
+        lpLocked: false,
+        mintAuthRevoked: false,
+        freezeAuthRevoked: false,
+        isHoneypot: false,
+        checkedAt: new Date(),
+      };
+
+      this.cache.set(tokenCA, { result: passResult, cachedAt: Date.now() - CACHE_TTL_MS + 30_000 });
+      bus.emit('safety:checked', passResult);
+      return passResult;
+    }
+
     logger.error('[Safety] All attempts failed — failing closed (blocking token)', {
       tokenCA,
       error: lastError instanceof Error ? lastError.message : String(lastError),

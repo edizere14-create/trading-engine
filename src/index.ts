@@ -369,7 +369,7 @@ async function boot(): Promise<void> {
   const replayEngine = new ReplaySimulator(journal, riskEngine);
 
   // 5c. Trade infrastructure
-  const tokenSafety = new TokenSafetyChecker(cfg.safetyConnection, cfg.connection);
+  const tokenSafety = new TokenSafetyChecker(cfg.safetyConnection, cfg.connection, cfg.isPaperMode);
 
   // SOL price — fetch real price before any sizing decisions
   currentSOLPrice = await fetchSOLPriceWithRetry();
@@ -571,9 +571,11 @@ async function boot(): Promise<void> {
 
     // ── On-Chain Simulation ──
     let simulatedEntryPriceSOL = 0.001;
+    let reserveSOLForRisk = event.initialLiquiditySOL;
     if (simulator) {
       const simResult = await simulator.simulatePool(event.poolAddress, event.tokenCA);
       if (simResult.reserveSOL > 0 && simResult.reserveToken > 0) {
+        reserveSOLForRisk = simResult.reserveSOL;
         simulatedEntryPriceSOL = simResult.reserveSOL / simResult.reserveToken;
       }
       const sandwichRisk = simulator.estimateSandwichRisk(
@@ -659,7 +661,9 @@ async function boot(): Promise<void> {
       marketSnapshot,
       survival,
       mlWinProb,
-      estimatePayoffMultiple(signal.totalScore)
+      estimatePayoffMultiple(signal.totalScore),
+      reserveSOLForRisk,
+      getSolPrice()
     );
 
     // ── Portfolio-level sizing ──

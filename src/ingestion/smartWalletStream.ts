@@ -163,9 +163,8 @@ export class SmartWalletStream {
 
   async start(): Promise<void> {
     this.isStopped = false;
-    this.recentSignatures.clear();
-    this.recentEventFingerprints.clear();
-    this.inFlightSignatures.clear();
+    // Don't clear dedup maps on restart/reconnect — keeps filtering duplicates
+    // that may be re-delivered after reconnection to the same RPC.
 
     // Verify RPC is reachable before subscribing
     const usable = await this.pickUsableConnection();
