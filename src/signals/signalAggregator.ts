@@ -38,15 +38,36 @@ export class SignalAggregator {
     clusterAlert: ClusterAlert | null,
     sources: DataSourceStatus[]
   ): SignalVector | null {
-    // Hard reject: pump.fun tokens with < 50 SOL liquidity are not viable
-    if (event.tokenCA.endsWith('pump') && event.initialLiquiditySOL < 50) {
-      bus.emit('data:blind', {
-        source: 'signalAggregator',
-        message: `Pump.fun token ${event.tokenCA} rejected — initialLiquiditySOL ${event.initialLiquiditySOL} < 50`,
-      });
-      logger.warn('PUMP_LOW_LIQ — skipping pump.fun token below 50 SOL', {
+    // ── HARD PRE-FILTERS (before any scoring) ─────────────
+
+    // 1. Absolute minimum liquidity gate
+    if (event.initialLiquiditySOL < 100) {
+      logger.warn('PRE-FILTER REJECTED: liquidity below 100 SOL', {
         tokenCA: event.tokenCA,
         initialLiquiditySOL: event.initialLiquiditySOL,
+        reason: 'MIN_LIQUIDITY',
+      });
+      return null;
+    }
+
+    // 2. Pump.fun tokens need at least 100 SOL liquidity
+    if (event.tokenCA.endsWith('pump') && event.initialLiquiditySOL < 100) {
+      logger.warn('PRE-FILTER REJECTED: pump.fun token below 100 SOL liquidity', {
+        tokenCA: event.tokenCA,
+        initialLiquiditySOL: event.initialLiquiditySOL,
+        reason: 'PUMP_LOW_LIQ',
+      });
+      return null;
+    }
+
+    // 3. Unknown deployers need at least 50 SOL liquidity
+    const preFilterDeployerTier = this.deployerRegistry.getTier(event.deployer);
+    if (preFilterDeployerTier === 'UNKNOWN' && event.initialLiquiditySOL < 50) {
+      logger.warn('PRE-FILTER REJECTED: unknown deployer with sub-50 SOL liquidity', {
+        tokenCA: event.tokenCA,
+        deployer: event.deployer,
+        initialLiquiditySOL: event.initialLiquiditySOL,
+        reason: 'UNKNOWN_DEPLOYER_LOW_LIQ',
       });
       return null;
     }

@@ -53,6 +53,7 @@ import { StatArbEngine } from './execution/statArbEngine';
 import { SmartMoneyTracker } from './intelligence/smartMoneyTracker';
 import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
 import { HybridPowerPlay } from './execution/hybridPowerPlay';
+import { PoolPriceStream } from './ingestion/poolPriceStream';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -70,8 +71,12 @@ let statArbEngine: StatArbEngine | null = null;
 let smartMoneyTracker: SmartMoneyTracker | null = null;
 let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
+let poolPriceStream: PoolPriceStream | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
+
+// tokenCA → poolAddress mapping (populated from pool:created events)
+const tokenPoolMap: Map<string, string> = new Map();
 
 // ── SOL Price State ──────────────────────────────────────
 let currentSOLPrice: number | null = null;
@@ -451,6 +456,10 @@ async function boot(): Promise<void> {
   simulator = new OnChainSimulator(cfg.connection);
   logger.info('On-chain simulator initialized');
 
+  // 5k2. Pool Price Stream — reserve-based position price tracking
+  poolPriceStream = new PoolPriceStream(cfg.connection, simulator);
+  logger.info('Pool price stream initialized');
+
   // 5l. Statistical Arbitrage Engine — cross-DEX spread capture
   statArbEngine = new StatArbEngine(cfg.connection);
   statArbEngine.start();
@@ -476,6 +485,11 @@ async function boot(): Promise<void> {
   bus.on('pool:created', async (event) => {
    try {
     antifragileEngine?.heartbeat();
+
+    // Always store tokenCA → poolAddress for reserve-based price tracking,
+    // even if the pool is filtered out for trading. Positions opened via
+    // smart wallet signals still need price feeds from the pool.
+    tokenPoolMap.set(event.tokenCA, event.poolAddress);
 
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
@@ -722,9 +736,19 @@ async function boot(): Promise<void> {
     // Feed into microstructure extractor (always — full data)
     microExtractor.addSwap(event);
 
-    // Keep autonomous positions marked-to-market from live swap prints.
+    // Mark-to-market from swap prints — always feed prices for open positions.
+    // Pool price stream provides reserve-based pricing; swap prints supplement
+    // with trade-execution prices. Both sources prevent STALE_EXIT.
     if (positionManager!.hasPosition(event.tokenCA)) {
       positionManager!.updatePrice(event.tokenCA, event.priceSOL);
+    }
+
+    // If position is open but pool price stream not yet tracking, try to subscribe
+    if (poolPriceStream && positionManager!.hasPosition(event.tokenCA) && !poolPriceStream.isTracking(event.tokenCA)) {
+      const poolAddr = tokenPoolMap.get(event.tokenCA);
+      if (poolAddr) {
+        poolPriceStream.subscribe(poolAddr, event.tokenCA);
+      }
     }
 
     if (!event.isSmartWallet || event.action !== 'BUY' || event.amountSOL < SMART_WALLET_MIN_SWAP_SOL) {
@@ -778,6 +802,13 @@ async function boot(): Promise<void> {
     });
 
     bus.emit('trade:signal', signal);
+  });
+
+  // ── POOL PRICE STREAM → POSITION PRICE UPDATE ──
+  bus.on('pool:price', (event: { tokenCA: string; poolAddress: string; priceSOL: number; reserveSOL: number }) => {
+    if (positionManager!.hasPosition(event.tokenCA)) {
+      positionManager!.updatePrice(event.tokenCA, event.priceSOL);
+    }
   });
 
   // ── SIGNAL → SAFETY CHECK → SIMULATION → OPEN TRADE ──
@@ -1277,9 +1308,26 @@ async function boot(): Promise<void> {
     if (hybridPowerPlay) {
       hybridPowerPlay.trackToken(position.tokenCA, position.sourceWallets);
     }
+
+    // Subscribe to pool swap events for reserve-based price tracking
+    if (poolPriceStream) {
+      const poolAddr = tokenPoolMap.get(position.tokenCA);
+      if (poolAddr) {
+        poolPriceStream.subscribe(poolAddr, position.tokenCA);
+      } else {
+        logger.warn('[PoolPriceStream] No pool address for token — using swap-print pricing', {
+          tokenCA: position.tokenCA,
+        });
+      }
+    }
   });
 
   bus.on('position:closed', (position) => {
+    // Unsubscribe from pool price stream
+    if (poolPriceStream) {
+      poolPriceStream.unsubscribe(position.tokenCA);
+    }
+
     // Record PnL in survival engine
     const pnlUSD = (position.realizedPnLSOL ?? 0) * (currentSOLPrice ?? 0);
     survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
@@ -1682,6 +1730,7 @@ async function stopAllStreams(): Promise<void> {
   await Promise.allSettled([
     lpStream ? lpStream.stop() : Promise.resolve(),
     walletStream ? walletStream.stop() : Promise.resolve(),
+    poolPriceStream ? poolPriceStream.stop() : Promise.resolve(),
   ]);
 
   // ── Phase 6: Sync data to cloud ───────────────────────

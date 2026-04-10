@@ -59,6 +59,7 @@ export interface EngineEvents {
   'social:signal':         { tokenCA: string; source: string; sentiment: number; kolMentions: number; hypeCycle: string; socialScore: number };
   'social:kolAlert':       { tokenCA: string; kolHandle: string; followers: number; sentiment: number };
   'simulation:complete':   SimulationResult;
+  'pool:price':            { tokenCA: string; poolAddress: string; priceSOL: number; reserveSOL: number; ammType: string; timestamp: Date };
 }
 
 type EventKey = keyof EngineEvents;

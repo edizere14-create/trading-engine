@@ -23,6 +23,7 @@ interface PositionConfig {
 export class PositionManager {
   private readonly MAX_CLOSED_POSITIONS = 500;
   private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
+  private openTokenCAs: Set<string> = new Set();
   private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
   private config: PositionConfig;
@@ -94,10 +95,10 @@ export class PositionManager {
     }
 
     // Gate: already have position in this token — reject duplicate
-    if (this.positions.has(signal.tokenCA)) {
-      logger.warn('Trade REJECTED: duplicate position on same token', {
+    if (this.openTokenCAs.has(signal.tokenCA)) {
+      logger.warn('DUPLICATE REJECTED', {
         tokenCA: signal.tokenCA,
-        existingPositionId: this.positions.get(signal.tokenCA)!.id,
+        existingPositionId: this.positions.get(signal.tokenCA)?.id,
       });
       return false;
     }
@@ -141,6 +142,7 @@ export class PositionManager {
     };
 
     this.positions.set(signal.tokenCA, position);
+    this.openTokenCAs.add(signal.tokenCA);
     this.tradesToday++;
 
     bus.emit('position:opened', position);
@@ -180,6 +182,15 @@ export class PositionManager {
 
     const multiple = currentPriceSOL / position.entryPriceSOL;
     const holdMs = Date.now() - position.entryTimestamp.getTime();
+
+    logger.debug('Price update received', {
+      tokenCA,
+      currentPriceSOL: currentPriceSOL.toFixed(12),
+      entryPriceSOL: position.entryPriceSOL.toFixed(12),
+      multiple: multiple.toFixed(3),
+      peakMultiple: (position.peakPriceSOL / position.entryPriceSOL).toFixed(3),
+      holdMs,
+    });
 
     // Rapid dump protection: if price drops >15% within first 60 seconds, exit immediately
     // This catches bundled launches that dump on block 1-2 buyers
@@ -297,6 +308,7 @@ export class PositionManager {
     }
 
     this.positions.delete(tokenCA);
+    this.openTokenCAs.delete(tokenCA);
     this.closedPositions.push(position);
 
     // Cap in-memory buffer — full history lives in SQLite journal
