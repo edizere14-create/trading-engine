@@ -614,6 +614,15 @@ async function boot(): Promise<void> {
 
     if (!signal) return; // data:blind was emitted
 
+    if (signal.totalScore < 5) {
+      logger.info('Pool BLOCKED — low autonomous score', {
+        tokenCA: event.tokenCA,
+        totalScore: signal.totalScore.toFixed(2),
+        minScore: 5,
+      });
+      return;
+    }
+
     // Get survival snapshot for risk decision
     const survival = survivalEngine!.getSnapshot();
     const marketSnapshot = marketEngine.getSnapshot();
@@ -816,6 +825,17 @@ async function boot(): Promise<void> {
       confidence: 0.6,
     };
 
+    if (signal.score < 5) {
+      logger.info('Signal BLOCKED — low single-wallet score', {
+        tokenCA: signal.tokenCA,
+        wallet: signal.triggerWallet,
+        tier: signal.walletTier,
+        score: signal.score.toFixed(2),
+        minScore: 5,
+      });
+      return;
+    }
+
     logger.info('Smart wallet trade signal generated', {
       tokenCA: signal.tokenCA,
       wallet: signal.triggerWallet,
@@ -867,6 +887,23 @@ async function boot(): Promise<void> {
       convictionSOL: signal.convictionSOL,
     });
 
+    if (signal.source === 'SINGLE_WALLET' && signal.score < 5) {
+      logger.info('Trade BLOCKED — low single-wallet score', {
+        tokenCA: signal.tokenCA,
+        score: signal.score.toFixed(2),
+        minScore: 5,
+      });
+      return;
+    }
+
+    if (!tokenPoolMap.has(signal.tokenCA)) {
+      logger.info('Trade BLOCKED — no pool context', {
+        tokenCA: signal.tokenCA,
+        source: signal.source,
+      });
+      return;
+    }
+
     // Token safety check (async — uses RPC)
     const safety = await tokenSafety.check(signal.tokenCA);
     if (!safety.isSafe) {
@@ -886,13 +923,12 @@ async function boot(): Promise<void> {
       const regime = regimeDetector?.getLatestSnapshot().currentRegime ?? 'NEUTRAL';
       const narrative = portfolioOptimizer.classifyNarrative(signal.tokenCA, '');
 
-      // Cold-start: boost win probability floor during paper calibration
-      // Without historical data, ML returns ~0.5 → Kelly = 0% → no trades ever execute
-      // Use minimum 0.55 so paper trades can flow and the model can learn
+      // Cold-start: only apply a small optimism floor to high-quality setups.
       const mlSamples = onlineLearner?.getModelStats().trainingSamples ?? 0;
-      const coldStartWinProb = mlSamples < 20
-        ? Math.max(signal.score / 10, 0.55)
-        : signal.score / 10;
+      const scoreWinProb = signal.score / 10;
+      const coldStartWinProb = mlSamples < 20 && signal.score >= 6
+        ? Math.max(scoreWinProb, 0.5)
+        : scoreWinProb;
 
       const sizing = portfolioOptimizer.calculateOptimalSize(
         cfg.INITIAL_CAPITAL_USD,
