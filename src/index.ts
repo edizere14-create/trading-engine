@@ -614,11 +614,11 @@ async function boot(): Promise<void> {
 
     if (!signal) return; // data:blind was emitted
 
-    if (signal.totalScore < 5) {
+    if (signal.totalScore < 4) {
       logger.info('Pool BLOCKED — low autonomous score', {
         tokenCA: event.tokenCA,
         totalScore: signal.totalScore.toFixed(2),
-        minScore: 5,
+        minScore: 4,
       });
       return;
     }
@@ -825,13 +825,13 @@ async function boot(): Promise<void> {
       confidence: 0.6,
     };
 
-    if (signal.score < 5) {
+    if (signal.score < 4) {
       logger.info('Signal BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         wallet: signal.triggerWallet,
         tier: signal.walletTier,
         score: signal.score.toFixed(2),
-        minScore: 5,
+        minScore: 4,
       });
       return;
     }
