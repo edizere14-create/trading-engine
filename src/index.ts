@@ -887,11 +887,11 @@ async function boot(): Promise<void> {
       convictionSOL: signal.convictionSOL,
     });
 
-    if (signal.source === 'SINGLE_WALLET' && signal.score < 5) {
+    if (signal.source === 'SINGLE_WALLET' && signal.score < 4) {
       logger.info('Trade BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         score: signal.score.toFixed(2),
-        minScore: 5,
+        minScore: 4,
       });
       return;
     }
