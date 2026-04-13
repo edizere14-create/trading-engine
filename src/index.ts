@@ -95,6 +95,42 @@ interface TradeEntryContext {
 }
 const tradeEntryCache: Map<string, TradeEntryContext> = new Map();
 
+type GateMetricKey =
+  | 'swapSignalsSeen'
+  | 'signalsGenerated'
+  | 'signalsBlockedLowScore'
+  | 'tradeSignalsReceived'
+  | 'tradeBlockedLowScore'
+  | 'tradeBlockedNoPool'
+  | 'tradeProceedNoPool'
+  | 'tradeBlockedSafety'
+  | 'tradeBlockedPortfolio'
+  | 'tradeProbeFallbackUsed'
+  | 'tradeOpened';
+
+const gateMetrics: Record<GateMetricKey, number> = {
+  swapSignalsSeen: 0,
+  signalsGenerated: 0,
+  signalsBlockedLowScore: 0,
+  tradeSignalsReceived: 0,
+  tradeBlockedLowScore: 0,
+  tradeBlockedNoPool: 0,
+  tradeProceedNoPool: 0,
+  tradeBlockedSafety: 0,
+  tradeBlockedPortfolio: 0,
+  tradeProbeFallbackUsed: 0,
+  tradeOpened: 0,
+};
+
+let gateMetricsWindowStartMs = Date.now();
+
+function bumpGateMetric(key: GateMetricKey): void {
+  gateMetrics[key] += 1;
+}
+
+const PAPER_PROBE_ON_OPT_REJECT = String(process.env.PAPER_PROBE_ON_OPT_REJECT ?? 'true').toLowerCase() === 'true';
+const PAPER_PROBE_MIN_SIZE_USD = Math.max(Number(process.env.PAPER_PROBE_MIN_SIZE_USD ?? 1), 1);
+
 // ── SOL Price State ──────────────────────────────────────
 let currentSOLPrice: number | null = null;
 let lastPriceUpdate = 0;
@@ -790,6 +826,8 @@ async function boot(): Promise<void> {
       return;
     }
 
+    bumpGateMetric('swapSignalsSeen');
+
     const walletStats = walletRegistry.getWalletStats(event.wallet);
     if (!walletStats) {
       return;
@@ -826,6 +864,7 @@ async function boot(): Promise<void> {
     };
 
     if (signal.score < 4) {
+      bumpGateMetric('signalsBlockedLowScore');
       logger.info('Signal BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         wallet: signal.triggerWallet,
@@ -846,6 +885,8 @@ async function boot(): Promise<void> {
       clusterSize: signal.clusterSize,
       confidence: signal.confidence.toFixed(2),
     });
+
+    bumpGateMetric('signalsGenerated');
 
     bus.emit('trade:signal', signal);
   });
@@ -887,7 +928,10 @@ async function boot(): Promise<void> {
       convictionSOL: signal.convictionSOL,
     });
 
+    bumpGateMetric('tradeSignalsReceived');
+
     if (signal.source === 'SINGLE_WALLET' && signal.score < 4) {
+      bumpGateMetric('tradeBlockedLowScore');
       logger.info('Trade BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         score: signal.score.toFixed(2),
@@ -898,6 +942,7 @@ async function boot(): Promise<void> {
 
     const poolAddress = tokenPoolMap.get(signal.tokenCA) ?? '';
     if (!poolAddress && signal.source !== 'SINGLE_WALLET') {
+      bumpGateMetric('tradeBlockedNoPool');
       logger.info('Trade BLOCKED — no pool context', {
         tokenCA: signal.tokenCA,
         source: signal.source,
@@ -905,6 +950,7 @@ async function boot(): Promise<void> {
       return;
     }
     if (!poolAddress && signal.source === 'SINGLE_WALLET') {
+      bumpGateMetric('tradeProceedNoPool');
       logger.info('Trade proceeding without pool context', {
         tokenCA: signal.tokenCA,
         source: signal.source,
@@ -915,6 +961,7 @@ async function boot(): Promise<void> {
     // Token safety check (async — uses RPC)
     const safety = await tokenSafety.check(signal.tokenCA);
     if (!safety.isSafe) {
+      bumpGateMetric('tradeBlockedSafety');
       logger.warn('Trade BLOCKED by safety', {
         tokenCA: signal.tokenCA,
         rugScore: safety.rugScore,
@@ -950,12 +997,24 @@ async function boot(): Promise<void> {
       );
 
       if (sizing.recommendedSizeUSD < 1) {
-        logger.warn('Trade BLOCKED — portfolio optimizer rejected', {
-          tokenCA: signal.tokenCA,
-          reason: sizing.reason,
-          coldStart: mlSamples < 20,
-        });
-        return;
+        if (cfg.isPaperMode && PAPER_PROBE_ON_OPT_REJECT) {
+          signal.overrideSizeUSD = PAPER_PROBE_MIN_SIZE_USD;
+          bumpGateMetric('tradeProbeFallbackUsed');
+          logger.warn('Trade PROBE — portfolio optimizer rejected, using paper fallback size', {
+            tokenCA: signal.tokenCA,
+            reason: sizing.reason,
+            probeSizeUSD: PAPER_PROBE_MIN_SIZE_USD,
+            coldStart: mlSamples < 20,
+          });
+        } else {
+          bumpGateMetric('tradeBlockedPortfolio');
+          logger.warn('Trade BLOCKED — portfolio optimizer rejected', {
+            tokenCA: signal.tokenCA,
+            reason: sizing.reason,
+            coldStart: mlSamples < 20,
+          });
+          return;
+        }
       }
     }
 
@@ -1081,6 +1140,7 @@ async function boot(): Promise<void> {
     // Open the trade
     const opened = positionManager!.openTrade(signal, survival);
     if (opened) {
+      bumpGateMetric('tradeOpened');
       // Cache signal context for journal/paper trade records on close
       const marketSnapshot = marketEngine.getSnapshot();
       const regimeSnap = regimeDetector?.getLatestSnapshot();
@@ -1781,6 +1841,37 @@ async function boot(): Promise<void> {
   }, 300_000);
   opsInterval.unref();
   logger.info('Operations snapshot interval started (300s)');
+
+  const gateInterval = setInterval(() => {
+    const windowMinutes = Math.max(1, Math.round((Date.now() - gateMetricsWindowStartMs) / 60000));
+    logger.info('Gate funnel snapshot', {
+      windowMinutes,
+      ...gateMetrics,
+    });
+
+    if (gateMetrics.tradeSignalsReceived >= 5 && gateMetrics.tradeOpened === 0) {
+      logger.warn('Gate saturation warning', {
+        windowMinutes,
+        tradeSignalsReceived: gateMetrics.tradeSignalsReceived,
+        tradeOpened: gateMetrics.tradeOpened,
+        dominantBlockers: {
+          tradeBlockedPortfolio: gateMetrics.tradeBlockedPortfolio,
+          tradeBlockedLowScore: gateMetrics.tradeBlockedLowScore,
+          tradeBlockedNoPool: gateMetrics.tradeBlockedNoPool,
+        },
+      });
+    }
+
+    for (const key of Object.keys(gateMetrics) as GateMetricKey[]) {
+      gateMetrics[key] = 0;
+    }
+    gateMetricsWindowStartMs = Date.now();
+  }, 600_000);
+  gateInterval.unref();
+  logger.info('Gate funnel interval started (600s)', {
+    paperProbeOnOptReject: PAPER_PROBE_ON_OPT_REJECT,
+    paperProbeMinSizeUSD: PAPER_PROBE_MIN_SIZE_USD,
+  });
 
   // ── Start cloud data sync ──────────────────────────────
   dataSync.start();
