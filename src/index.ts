@@ -896,12 +896,20 @@ async function boot(): Promise<void> {
       return;
     }
 
-    if (!tokenPoolMap.has(signal.tokenCA)) {
+    const poolAddress = tokenPoolMap.get(signal.tokenCA) ?? '';
+    if (!poolAddress && signal.source !== 'SINGLE_WALLET') {
       logger.info('Trade BLOCKED — no pool context', {
         tokenCA: signal.tokenCA,
         source: signal.source,
       });
       return;
+    }
+    if (!poolAddress && signal.source === 'SINGLE_WALLET') {
+      logger.info('Trade proceeding without pool context', {
+        tokenCA: signal.tokenCA,
+        source: signal.source,
+        reason: 'fallback-pricing-enabled',
+      });
     }
 
     // Token safety check (async — uses RPC)
@@ -1087,7 +1095,7 @@ async function boot(): Promise<void> {
           totalScore: signal.score ?? 0,
           confidence: signal.confidence ?? 0,
         },
-        poolAddress: tokenPoolMap.get(signal.tokenCA) ?? '',
+        poolAddress,
         deployerAddress: '',
         deployerTier: signal.walletTier ?? 'B',
         predictedWP: signal.score ? signal.score / 10 : 0,
