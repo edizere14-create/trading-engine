@@ -4,6 +4,8 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
+const LOG_DIR = process.env.LOG_DIR ?? './logs';
+
 interface LogEntry {
   timestamp: string;
   level: string;
@@ -22,7 +24,7 @@ interface LogEntry {
 }
 
 export async function GET() {
-  const logPath = path.resolve(process.cwd(), 'logs', 'engine.log');
+  const logPath = path.resolve(process.cwd(), LOG_DIR, 'engine.log');
   const autonomousOnly = (process.env.AUTONOMOUS_ONLY ?? 'true').toLowerCase() === 'true';
   const heartbeatMessages = ['Health snapshot', 'Execution quality snapshot'];
 

@@ -5,6 +5,8 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
+const DATA_DIR = process.env.DATA_DIR ?? './data';
+
 interface FactorStat {
   factor: string;
   winRate: number;
@@ -23,7 +25,7 @@ const FACTORS = [
 ];
 
 export async function GET() {
-  const dbPath = path.resolve(process.cwd(), 'data', 'journal.db');
+  const dbPath = path.resolve(process.cwd(), DATA_DIR, 'journal.db');
 
   try {
     const SQL = await initSqlJs();

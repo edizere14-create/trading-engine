@@ -357,13 +357,13 @@ async function boot(): Promise<void> {
 
   // 3. Load calibration + performance
   const paperGate = await PaperTradeGate.load(cfg.PAPER_TRADES_FILE);
-  const perfEngine = await PerformanceEngine.load('./data/edgeStats.json');
+  const perfEngine = await PerformanceEngine.load(cfg.EDGE_STATS_FILE);
   const gateStatus = paperGate.getStatus();
 
   // 4. Paper gate check — throws if live mode attempted before validation
   if (!cfg.isPaperMode) {
     // Also check Python-side auto-graduation proof
-    const gradPath = './data/graduation.json';
+    const gradPath = cfg.GRADUATION_FILE;
     let pyGraduated = false;
     try {
       if (fs.existsSync(gradPath)) {
@@ -380,7 +380,7 @@ async function boot(): Promise<void> {
 
   // Check graduation status for logging
   try {
-    const gradPath = './data/graduation.json';
+    const gradPath = cfg.GRADUATION_FILE;
     if (fs.existsSync(gradPath)) {
       const grad = JSON.parse(fs.readFileSync(gradPath, 'utf-8'));
       if (grad.verdict === 'ACTIVE') {
@@ -424,7 +424,7 @@ async function boot(): Promise<void> {
   const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS, cfg.MIN_CONSENSUS);
 
   // 5b. Intelligence infrastructure
-  journal = new TradeJournal('./data/journal.db');
+  journal = new TradeJournal(cfg.JOURNAL_FILE);
   await journal.waitReady();
   const factorEngine = new FactorEngine(journal);
   const equityCtrl = new EquityCurveController(cfg.INITIAL_CAPITAL_USD, journal);

@@ -15,18 +15,19 @@ import { logger } from './logger';
 
 const SYNC_INTERVAL_MS = 30_000; // 30 seconds
 
-// Files to persist (relative to project root)
-const TRACKED_FILES = [
-  'data/paperTrades.json',
-  'data/journal.db',
-  'data/deployer_intelligence.json',
-  'data/deployers.json',
-  'data/wallets.json',
-  'data/ml_model.json',
-  'data/hmm_regime.json',
-  'data/sentinel_events.json',
-  'logs/engine.log',
-];
+function getTrackedFiles(dataDirName: string, logDirName: string): string[] {
+  return [
+    `${dataDirName}/paperTrades.json`,
+    `${dataDirName}/journal.db`,
+    `${dataDirName}/deployer_intelligence.json`,
+    `${dataDirName}/deployers.json`,
+    `${dataDirName}/wallets.json`,
+    `${dataDirName}/ml_model.json`,
+    `${dataDirName}/hmm_regime.json`,
+    `${dataDirName}/sentinel_events.json`,
+    `${logDirName}/engine.log`,
+  ];
+}
 
 interface FileState {
   localPath: string;
@@ -48,7 +49,10 @@ export class DataSync {
     this.bucket = process.env.SUPABASE_BUCKET || 'trading-data';
     this.rootDir = process.cwd();
 
-    for (const rel of TRACKED_FILES) {
+    const dataDirName = (process.env.DATA_DIR || './data').replace(/^\.\//, '').replace(/\\/g, '/').replace(/^\/+/, '');
+    const logDirName = (process.env.LOG_DIR || './logs').replace(/^\.\//, '').replace(/\\/g, '/').replace(/^\/+/, '');
+
+    for (const rel of getTrackedFiles(dataDirName, logDirName)) {
       this.files.push({
         localPath: path.resolve(this.rootDir, rel),
         remotePath: rel.replace(/\\/g, '/'),

@@ -4,6 +4,9 @@ import path from 'path';
 
 export const dynamic = 'force-dynamic';
 
+const DATA_DIR = process.env.DATA_DIR ?? './data';
+const LOG_DIR = process.env.LOG_DIR ?? './logs';
+
 interface StatusData {
   mode: string;
   wallets: number;
@@ -23,7 +26,7 @@ interface StatusData {
 
 export async function GET() {
   const ROOT = process.cwd();
-  const logPath = path.join(ROOT, 'logs', 'engine.log');
+  const logPath = path.join(ROOT, LOG_DIR, 'engine.log');
 
   const status: StatusData = {
     mode: 'PAPER',
@@ -44,18 +47,18 @@ export async function GET() {
 
   // Read wallet/deployer counts directly from data files
   try {
-    const wallets = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'wallets.json'), 'utf-8'));
+    const wallets = JSON.parse(fs.readFileSync(path.join(ROOT, DATA_DIR, 'wallets.json'), 'utf-8'));
     status.wallets = Array.isArray(wallets) ? wallets.length : 0;
   } catch { /* file missing */ }
 
   try {
-    const data = JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'deployers.json'), 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(path.join(ROOT, DATA_DIR, 'deployers.json'), 'utf-8'));
     status.deployers = Array.isArray(data.deployers) ? data.deployers.length : 0;
   } catch { /* file missing */ }
 
   // Read paper trade count directly from paperTrades.json (most reliable source)
   try {
-    const ptPath = path.join(ROOT, 'data', 'paperTrades.json');
+    const ptPath = path.join(ROOT, DATA_DIR, 'paperTrades.json');
     const pt = JSON.parse(fs.readFileSync(ptPath, 'utf-8'));
     if (Array.isArray(pt)) {
       const completed = pt.filter((t: { outcome?: string }) => t.outcome !== undefined);

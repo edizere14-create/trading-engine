@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { Connection } from '@solana/web3.js';
 import { z } from 'zod';
+import path from 'path';
+import fs from 'fs';
 
 const envSchema = z.object({
   // Required
@@ -59,10 +61,15 @@ const envSchema = z.object({
   MAX_NARRATIVE_EXPOSURE:  z.coerce.number().min(0.1).max(1.0).default(0.40),
 
   // File paths
+  DATA_DIR:                z.string().default('./data'),
+  LOG_DIR:                 z.string().default('./logs'),
   WEIGHTS_FILE:            z.string().default('./data/weights.json'),
   PAPER_TRADES_FILE:       z.string().default('./data/paperTrades.json'),
   DEPLOYERS_FILE:          z.string().default('./data/deployers.json'),
   WALLETS_FILE:            z.string().default('./data/wallets.json'),
+  EDGE_STATS_FILE:         z.string().default('./data/edgeStats.json'),
+  JOURNAL_FILE:            z.string().default('./data/journal.db'),
+  GRADUATION_FILE:         z.string().default('./data/graduation.json'),
 
   // Liquidity
   MIN_LIQUIDITY_SOL:       z.coerce.number().min(0).default(50),
@@ -116,12 +123,51 @@ export const config = {
     }
 
     const env = parsed.data;
+
+    const rootDir = process.cwd();
+    const resolvePath = (p: string): string => (path.isAbsolute(p) ? p : path.resolve(rootDir, p));
+    const dataDir = resolvePath(env.DATA_DIR);
+    const logDir = resolvePath(env.LOG_DIR);
+
+    const withDataDefault = (value: string, fallbackFile: string): string => {
+      if (value.startsWith('./data/') || value.startsWith('data/')) {
+        return path.resolve(dataDir, fallbackFile);
+      }
+      return resolvePath(value);
+    };
+
+    const resolvedWeights = withDataDefault(env.WEIGHTS_FILE, 'weights.json');
+    const resolvedPaperTrades = withDataDefault(env.PAPER_TRADES_FILE, 'paperTrades.json');
+    const resolvedDeployers = withDataDefault(env.DEPLOYERS_FILE, 'deployers.json');
+    const resolvedWallets = withDataDefault(env.WALLETS_FILE, 'wallets.json');
+    const resolvedMlModel = withDataDefault(env.ML_MODEL_FILE, 'ml_model.json');
+    const resolvedHmm = withDataDefault(env.ML_HMM_FILE, 'hmm_regime.json');
+    const resolvedDeployerIntel = withDataDefault(env.DEPLOYER_INTEL_FILE, 'deployer_intelligence.json');
+
+    const edgeStatsFile = withDataDefault(env.EDGE_STATS_FILE, 'edgeStats.json');
+    const journalFile = withDataDefault(env.JOURNAL_FILE, 'journal.db');
+    const graduationFile = withDataDefault(env.GRADUATION_FILE, 'graduation.json');
+
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.mkdirSync(logDir, { recursive: true });
     const connection = createConnection(env.PRIMARY_RPC);
     const backupConnection = createConnection(env.BACKUP_RPC);
     const safetyConnection = createConnection(env.SAFETY_RPC_URL ?? env.BACKUP_RPC);
 
     return {
       ...env,
+      DATA_DIR: dataDir,
+      LOG_DIR: logDir,
+      WEIGHTS_FILE: resolvedWeights,
+      PAPER_TRADES_FILE: resolvedPaperTrades,
+      DEPLOYERS_FILE: resolvedDeployers,
+      WALLETS_FILE: resolvedWallets,
+      ML_MODEL_FILE: resolvedMlModel,
+      ML_HMM_FILE: resolvedHmm,
+      DEPLOYER_INTEL_FILE: resolvedDeployerIntel,
+      EDGE_STATS_FILE: edgeStatsFile,
+      JOURNAL_FILE: journalFile,
+      GRADUATION_FILE: graduationFile,
       connection,
       backupConnection,
       safetyConnection,
