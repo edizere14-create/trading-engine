@@ -134,8 +134,9 @@ const PAPER_PROBE_MIN_SIZE_USD = Math.max(Number(process.env.PAPER_PROBE_MIN_SIZ
 // ── SOL Price State ──────────────────────────────────────
 let currentSOLPrice: number | null = null;
 let lastPriceUpdate = 0;
-const SOL_PRICE_STALENESS_MS = 30_000;
-const SOL_PRICE_HALT_MS = 60_000;
+const SOL_PRICE_STALENESS_MS = Math.max(Number(process.env.SOL_PRICE_STALENESS_MS ?? 120_000), 30_000);
+const SOL_PRICE_HALT_MS = Math.max(Number(process.env.SOL_PRICE_HALT_MS ?? 600_000), SOL_PRICE_STALENESS_MS + 30_000);
+const IS_PAPER_MODE = String(process.env.PAPER_MODE ?? 'true').toLowerCase() === 'true';
 const STABLE_QUOTES = new Set(['USDC', 'USDT']);
 
 function isPlausibleSolPrice(price: number): boolean {
@@ -169,11 +170,29 @@ async function fetchSOLPriceFromDexScreener(): Promise<number> {
   throw new Error('DexScreener returned invalid price');
 }
 
+async function fetchSOLPriceFromJupiter(): Promise<number> {
+  const res = await axios.get(
+    'https://price.jup.ag/v4/price?ids=So11111111111111111111111111111111111111112',
+    { timeout: 5_000 }
+  );
+
+  const priceUnknown = (res.data as { data?: Record<string, { price?: number }> })
+    ?.data?.So11111111111111111111111111111111111111112?.price;
+  const price = typeof priceUnknown === 'number' ? priceUnknown : Number(priceUnknown);
+
+  if (isPlausibleSolPrice(price)) return price;
+  throw new Error('Jupiter returned invalid price');
+}
+
 async function fetchSOLPrice(): Promise<number> {
   try {
     return await fetchSOLPriceFromDexScreener();
   } catch {
-    return fetchSOLPriceFromCoinGecko();
+    try {
+      return await fetchSOLPriceFromJupiter();
+    } catch {
+      return fetchSOLPriceFromCoinGecko();
+    }
   }
 }
 
@@ -198,6 +217,13 @@ function getSolPrice(): number {
   const ageMs = Date.now() - lastPriceUpdate;
 
   if (ageMs > SOL_PRICE_HALT_MS) {
+    if (IS_PAPER_MODE) {
+      logger.warn('[Price] SOL price stale in paper mode — reusing last good quote', {
+        ageSeconds: Math.round(ageMs / 1000),
+      });
+      return currentSOLPrice;
+    }
+
     bus.emit('system:halt', { reason: `SOL price stale ${Math.round(ageMs / 1000)}s`, resumeAt: undefined });
     throw new Error(`SOL price stale ${Math.round(ageMs / 1000)}s — halting`);
   }
@@ -229,6 +255,7 @@ function startPriceRefreshLoop(): void {
       },
       async () => fetchSOLPriceFromCoinGecko(),
       async () => fetchSOLPriceFromDexScreener(),
+      async () => fetchSOLPriceFromJupiter(),
     ];
 
     // Try from last successful source first, then cycle through others
