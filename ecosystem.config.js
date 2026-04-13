@@ -24,8 +24,8 @@ module.exports = {
     },
     {
       name: 'dashboard',
-      script: 'node_modules/next/dist/bin/next',
-      args: 'start dashboard --port 3000',
+      script: 'npm',
+      args: 'run start:dashboard:prod',
       cwd: 'C:\\trading-engine',
       env: {
         NODE_ENV: 'production',
