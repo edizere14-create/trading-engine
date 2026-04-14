@@ -466,7 +466,7 @@ function formatSourceMix(status: Status): string {
   const cache = status.cacheKeepaliveRatePct;
 
   if (dex == null && jup == null && cache == null) {
-    return 'DEX -- | JUP -- | CACHE --';
+    return 'NO SNAPSHOT YET';
   }
 
   const d = Number.isFinite(Number(dex)) ? Number(dex).toFixed(1) : '0.0';

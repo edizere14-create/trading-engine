@@ -76,7 +76,10 @@ export class PositionPricePoller {
 
   private async poll(): Promise<void> {
     const positions = this.positionManager.getOpenPositions();
-    if (positions.length === 0) return;
+    if (positions.length === 0) {
+      this.flushMetricsIfDue();
+      return;
+    }
 
     const tokenCAs = positions.map(p => p.tokenCA);
 
