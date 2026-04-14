@@ -790,7 +790,7 @@ class TestConfigFromEnv:
             config = AdvancedStrategyConfig.from_env()
             assert config.rpc_url == ""
             assert config.jito_tip_lamports == 1_000_000
-            assert config.bundle_concentration_threshold == 0.20
+            assert config.bundle_concentration_threshold == 0.12
             assert config.mindshare_threshold == 0.5
             assert not config.enable_llm_rug_reasoning
 

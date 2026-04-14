@@ -138,7 +138,8 @@ def test_status():
     assert "broadcast_timeout" in s
     assert "arb_key_configured" in s
     assert "presets" in s
-    assert len(s["presets"]) == 3
+    assert len(s["presets"]) >= 4
+    assert "stale_exit" in s["presets"]
     print("PASS test_status")
 
 

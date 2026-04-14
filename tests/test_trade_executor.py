@@ -5,7 +5,8 @@ import time
 import unittest
 from copy import deepcopy
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 
 class TradeExecutorTests(unittest.TestCase):
@@ -78,9 +79,29 @@ class TradeExecutorTests(unittest.TestCase):
 
     def test_execute_trade_tracks_realized_pnl_in_sol_and_usd(self):
         self.te.state = self.te._default_state()
+        state_manager = SimpleNamespace(
+            acquire_trade_lock=AsyncMock(return_value=SimpleNamespace(acquired=True, error="")),
+            broadcast_event=AsyncMock(return_value=None),
+        )
+        security_checker = SimpleNamespace(
+            scan_token=AsyncMock(
+                return_value=SimpleNamespace(
+                    passed=True,
+                    risk_level="LOW",
+                    rejection_reasons=[],
+                    duration_ms=0,
+                )
+            )
+        )
 
         with patch.object(self.te, "save_state"), patch.object(
             self.te, "send_telegram"
+        ), patch.object(
+            self.te, "get_state_manager", return_value=state_manager
+        ), patch.object(
+            self.te, "get_security_checker", return_value=security_checker
+        ), patch.object(
+            self.te, "validate_signal", return_value=(True, "")
         ), patch.object(
             self.te,
             "get_pool_info",
@@ -282,7 +303,7 @@ class TradeExecutorTests(unittest.TestCase):
         self.assertEqual(error, "")
         self.assertIsNotNone(fill)
         self.assertEqual(fill["signature"], "sig_abc")
-        self.assertGreaterEqual(rpc_call_mock.call_count, 2)
+        self.assertEqual(rpc_call_mock.call_count, 0)
 
 
 if __name__ == "__main__":

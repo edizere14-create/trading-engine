@@ -2,7 +2,7 @@
  * PortfolioOptimizer Unit Tests
  */
 import { PortfolioOptimizer, SizingRecommendation } from '../src/portfolio/portfolioOptimizer';
-import { CopyPosition } from '../src/core/types';
+import { TradePosition } from '../src/core/types';
 import { HMMRegime } from '../src/ml/regimeHMM';
 
 jest.mock('../src/core/logger', () => ({
@@ -11,7 +11,7 @@ jest.mock('../src/core/logger', () => ({
   },
 }));
 
-function makePosition(overrides: Partial<CopyPosition> = {}): CopyPosition {
+function makePosition(overrides: Partial<TradePosition> = {}): TradePosition {
   return {
     id: 'pos-1',
     tokenCA: 'Token123',
@@ -26,6 +26,7 @@ function makePosition(overrides: Partial<CopyPosition> = {}): CopyPosition {
     stopLossPct: 0.3,
     takeProfitTiers: [],
     peakPriceSOL: 0.0015,
+    lastPriceSOL: 0.0012,
     lastCheckedAt: new Date(),
     status: 'OPEN',
     ...overrides,
