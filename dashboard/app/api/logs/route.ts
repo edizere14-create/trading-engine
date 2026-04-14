@@ -23,6 +23,20 @@ interface LogEntry {
   amountSOL?: number;
 }
 
+function formatSourceSnapshotMessage(parsed: any): string {
+  const windowSeconds = Number(parsed.windowSeconds);
+  const dex = Number(parsed.dexHitRatePct);
+  const jupiter = Number(parsed.jupiterHitRatePct);
+  const cache = Number(parsed.cacheKeepaliveRatePct);
+
+  const windowLabel = Number.isFinite(windowSeconds) && windowSeconds > 0 ? `${Math.round(windowSeconds)}s` : '60s';
+  const dexPct = Number.isFinite(dex) ? dex.toFixed(1) : '0.0';
+  const jupPct = Number.isFinite(jupiter) ? jupiter.toFixed(1) : '0.0';
+  const cachePct = Number.isFinite(cache) ? cache.toFixed(1) : '0.0';
+
+  return `Price source mix (${windowLabel}) DEX ${dexPct}% | JUP ${jupPct}% | CACHE ${cachePct}%`;
+}
+
 export async function GET() {
   const logPath = path.resolve(process.cwd(), LOG_DIR, 'engine.log');
   const autonomousOnly = (process.env.AUTONOMOUS_ONLY ?? 'true').toLowerCase() === 'true';
@@ -47,6 +61,7 @@ export async function GET() {
       'Autonomous signal emitted',
       'Autonomous execution',
       'System health changed',
+      'Position price source snapshot',
       ...heartbeatMessages,
       'SYSTEM HALT',
     ];
@@ -86,7 +101,11 @@ export async function GET() {
           continue;
         }
 
-        const eventKey = `${msg}|${parsed.tokenCA ?? ''}|${parsed.wallet ?? ''}|${parsed.action ?? ''}`;
+        const displayMessage = msg === 'Position price source snapshot'
+          ? formatSourceSnapshotMessage(parsed)
+          : msg;
+
+        const eventKey = `${displayMessage}|${parsed.tokenCA ?? ''}|${parsed.wallet ?? ''}|${parsed.action ?? ''}`;
         const prior = eventDedup.get(eventKey);
         if (prior && timestampMs - prior.timestampMs <= 10_000) {
           const priorEntry = entries[prior.index];
@@ -98,7 +117,7 @@ export async function GET() {
         entries.push({
           timestamp: parsed.timestamp,
           level: parsed.level,
-          message: msg,
+          message: displayMessage,
           count: 1,
           tokenCA: parsed.tokenCA,
           deployer: parsed.deployer,

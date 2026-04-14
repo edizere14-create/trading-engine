@@ -22,6 +22,9 @@ interface StatusData {
   lastHaltReason: string | null;
   lastHaltAt: string | null;
   haltCount10m: number;
+  dexHitRatePct: number | null;
+  jupiterHitRatePct: number | null;
+  cacheKeepaliveRatePct: number | null;
 }
 
 export async function GET() {
@@ -43,6 +46,9 @@ export async function GET() {
     lastHaltReason: null,
     lastHaltAt: null,
     haltCount10m: 0,
+    dexHitRatePct: null,
+    jupiterHitRatePct: null,
+    cacheKeepaliveRatePct: null,
   };
 
   // Read wallet/deployer counts directly from data files
@@ -96,6 +102,20 @@ export async function GET() {
           if (!Number.isNaN(tsMs) && now - tsMs <= 10 * 60_000) {
             status.haltCount10m += 1;
           }
+        }
+
+        if (
+          msg === 'Position price source snapshot' &&
+          status.dexHitRatePct === null &&
+          status.jupiterHitRatePct === null &&
+          status.cacheKeepaliveRatePct === null
+        ) {
+          const dex = Number(entry.dexHitRatePct);
+          const jup = Number(entry.jupiterHitRatePct);
+          const cache = Number(entry.cacheKeepaliveRatePct);
+          status.dexHitRatePct = Number.isFinite(dex) ? dex : 0;
+          status.jupiterHitRatePct = Number.isFinite(jup) ? jup : 0;
+          status.cacheKeepaliveRatePct = Number.isFinite(cache) ? cache : 0;
         }
 
         if (msg.includes('MODE:')) {

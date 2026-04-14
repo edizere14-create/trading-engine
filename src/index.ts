@@ -171,14 +171,28 @@ async function fetchSOLPriceFromDexScreener(): Promise<number> {
 }
 
 async function fetchSOLPriceFromJupiter(): Promise<number> {
-  const res = await axios.get(
-    'https://price.jup.ag/v4/price?ids=So11111111111111111111111111111111111111112',
+  const mint = 'So11111111111111111111111111111111111111112';
+
+  try {
+    const res = await axios.get('https://lite-api.jup.ag/price/v3', {
+      params: { ids: mint },
+      timeout: 5_000,
+    });
+    const v3PriceUnknown = (res.data as Record<string, { usdPrice?: number }>)?.[mint]?.usdPrice;
+    const v3Price = typeof v3PriceUnknown === 'number' ? v3PriceUnknown : Number(v3PriceUnknown);
+    if (isPlausibleSolPrice(v3Price)) return v3Price;
+  } catch {
+    // Fall through to legacy endpoint.
+  }
+
+  const legacyRes = await axios.get(
+    `https://price.jup.ag/v4/price?ids=${mint}`,
     { timeout: 5_000 }
   );
 
-  const priceUnknown = (res.data as { data?: Record<string, { price?: number }> })
-    ?.data?.So11111111111111111111111111111111111111112?.price;
-  const price = typeof priceUnknown === 'number' ? priceUnknown : Number(priceUnknown);
+  const legacyPriceUnknown = (legacyRes.data as { data?: Record<string, { price?: number }> })
+    ?.data?.[mint]?.price;
+  const price = typeof legacyPriceUnknown === 'number' ? legacyPriceUnknown : Number(legacyPriceUnknown);
 
   if (isPlausibleSolPrice(price)) return price;
   throw new Error('Jupiter returned invalid price');

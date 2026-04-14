@@ -22,6 +22,9 @@ interface Status {
   lastHaltReason?: string | null;
   lastHaltAt?: string | null;
   haltCount10m?: number;
+  dexHitRatePct?: number | null;
+  jupiterHitRatePct?: number | null;
+  cacheKeepaliveRatePct?: number | null;
 }
 
 interface Trade {
@@ -129,9 +132,10 @@ function StatusBanner({ status }: { status: Status }) {
     : 0;
   const executedTrades = status.executedTrades ?? status.paperTrades;
   const avoidedTrades = Math.max(0, status.paperTrades - executedTrades);
+  const sourceMix = formatSourceMix(status);
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-9 gap-2">
       <StatusCell label="MODE" value={status.mode} color="cyan" />
       <StatusCell label="WALLETS" value={String(status.wallets)} color="green" />
       <StatusCell label="DEPLOYERS" value={String(status.deployers)} color="green" />
@@ -156,6 +160,7 @@ function StatusBanner({ status }: { status: Status }) {
         color={status.aggression === 'NORMAL' ? 'green' : 'yellow'} />
       <StatusCell label="EQUITY DD" value={status.equityDD} color="text" />
       <StatusCell label="EDGES" value={status.edgesEnabled} color="cyan" />
+      <StatusCell label="PRICE SOURCES" value={sourceMix} color="text" />
     </div>
   );
 }
@@ -311,7 +316,7 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
           <div key={i} className="text-[11px] leading-relaxed border-b border-terminal-border/30 pb-1">
             <span className="text-terminal-dim">{formatTime(log.timestamp)}</span>{' '}
             <LogIcon message={log.message} />{' '}
-            <span className="text-terminal-text">{truncMsg(log.message)}</span>
+            <span className={getLogMessageClass(log.message)}>{truncMsg(log.message)}</span>
             {log.count && log.count > 1 && (
               <span className="text-terminal-dim ml-1">x{log.count}</span>
             )}
@@ -332,6 +337,12 @@ function LiveFeed({ logs }: { logs: LogEntry[] }) {
 }
 
 function LogIcon({ message }: { message: string }) {
+  if (message.includes('Price source mix')) {
+    const severity = getPriceSourceSeverity(message);
+    if (severity === 'alert') return <span className="text-terminal-red">▲</span>;
+    if (severity === 'warn') return <span className="text-terminal-yellow">▲</span>;
+    return <span className="text-terminal-cyan">▲</span>;
+  }
   if (message.includes('SYSTEM HALT'))
     return <span className="text-terminal-red">!</span>;
   if (message.includes('Pool') || message.includes('pool'))
@@ -426,4 +437,40 @@ function formatTime(ts?: string): string {
 
 function truncMsg(msg: string): string {
   return msg.length > 80 ? msg.slice(0, 77) + '…' : msg;
+}
+
+function getPriceSourceSeverity(message: string): 'normal' | 'warn' | 'alert' {
+  const cacheMatch = message.match(/CACHE\s+([0-9]+(?:\.[0-9]+)?)%/i);
+  const cachePct = cacheMatch ? Number(cacheMatch[1]) : 0;
+
+  if (!Number.isFinite(cachePct)) return 'normal';
+  if (cachePct >= 20) return 'alert';
+  if (cachePct >= 8) return 'warn';
+  return 'normal';
+}
+
+function getLogMessageClass(message: string): string {
+  if (!message.includes('Price source mix')) {
+    return 'text-terminal-text';
+  }
+
+  const severity = getPriceSourceSeverity(message);
+  if (severity === 'alert') return 'text-terminal-red font-bold';
+  if (severity === 'warn') return 'text-terminal-yellow font-semibold';
+  return 'text-terminal-cyan';
+}
+
+function formatSourceMix(status: Status): string {
+  const dex = status.dexHitRatePct;
+  const jup = status.jupiterHitRatePct;
+  const cache = status.cacheKeepaliveRatePct;
+
+  if (dex == null && jup == null && cache == null) {
+    return 'DEX -- | JUP -- | CACHE --';
+  }
+
+  const d = Number.isFinite(Number(dex)) ? Number(dex).toFixed(1) : '0.0';
+  const j = Number.isFinite(Number(jup)) ? Number(jup).toFixed(1) : '0.0';
+  const c = Number.isFinite(Number(cache)) ? Number(cache).toFixed(1) : '0.0';
+  return `DEX ${d}% | JUP ${j}% | CACHE ${c}%`;
 }
