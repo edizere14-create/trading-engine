@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -89,22 +88,32 @@ const FACTORS = [
 ];
 
 export async function GET() {
-  const dbPath = path.resolve(process.cwd(), DATA_DIR, 'journal.db');
+  const ptPath = path.resolve(process.cwd(), DATA_DIR, 'paperTrades.json');
 
   try {
-    const SQL = await initSqlJs();
-    const fileBuffer = fs.readFileSync(dbPath);
-    const db = new SQL.Database(fileBuffer);
-    const stmt = db.prepare("SELECT * FROM trades WHERE outcome IS NOT NULL");
-    const trades: Record<string, unknown>[] = [];
-    while (stmt.step()) {
-      trades.push(stmt.getAsObject() as Record<string, unknown>);
-    }
-    stmt.free();
-    db.close();
+    const raw = fs.readFileSync(ptPath, 'utf-8');
+    const allTrades: Record<string, unknown>[] = JSON.parse(raw);
 
-    if (trades.length === 0) {
-      // Return placeholder data when no trades exist yet
+    // Only analyse completed trades (have an outcome)
+    const trades = allTrades.filter(
+      (t) => t.outcome === 'WIN' || t.outcome === 'LOSS' || t.outcome === 'BREAKEVEN',
+    );
+
+    // Flatten signal.* sub-object into top-level fields expected by hasFactor()
+    const flat: Record<string, unknown>[] = trades.map((t) => {
+      const sig = (t.signal ?? {}) as Record<string, unknown>;
+      return {
+        ...t,
+        signalTimingEdge: t.signalTimingEdge ?? sig.timingEdge,
+        signalManipulationRisk: t.signalManipulationRisk ?? sig.manipulationRisk,
+        signalCoordinationStrength: t.signalCoordinationStrength ?? sig.coordinationStrength,
+        signalConfidence: t.signalConfidence ?? sig.confidence,
+        entryMarketState: t.entryMarketState ?? t.marketState,
+        entryRegime: t.entryRegime ?? t.regime,
+      } as Record<string, unknown>;
+    });
+
+    if (flat.length === 0) {
       const placeholders: FactorStat[] = FACTORS.map((f) => ({
         factor: f,
         winRate: 0,
@@ -120,7 +129,7 @@ export async function GET() {
     const stats: FactorStat[] = [];
 
     for (const factor of FACTORS) {
-      const matching = trades.filter((t) => hasFactor(t, factor));
+      const matching = flat.filter((t) => hasFactor(t, factor));
 
       const wins = matching.filter((t) => t.outcome === 'WIN').length;
       const losses = matching.filter((t) => t.outcome === 'LOSS').length;
@@ -144,11 +153,11 @@ export async function GET() {
       });
     }
 
-    // If legacy rows are missing factor fields, still show baseline signal quality.
-    if (stats.every((s) => s.sampleSize === 0) && trades.length > 0) {
-      const wins = trades.filter((t) => t.outcome === 'WIN').length;
-      const losses = trades.filter((t) => t.outcome === 'LOSS').length;
-      const multiples = trades
+    // If no factor had enough data, show baseline signal quality for all closed trades.
+    if (stats.every((s) => s.sampleSize === 0) && flat.length > 0) {
+      const wins = flat.filter((t) => t.outcome === 'WIN').length;
+      const losses = flat.filter((t) => t.outcome === 'LOSS').length;
+      const multiples = flat
         .map((t) => toNumber(t.realizedMultiple))
         .filter((m): m is number => m != null);
       const avgMult = multiples.length > 0
@@ -157,15 +166,15 @@ export async function GET() {
 
       stats.push({
         factor: 'allClosedTrades',
-        winRate: trades.length > 0 ? wins / trades.length : 0,
-        lossRate: trades.length > 0 ? losses / trades.length : 0,
-        sampleSize: trades.length,
+        winRate: flat.length > 0 ? wins / flat.length : 0,
+        lossRate: flat.length > 0 ? losses / flat.length : 0,
+        sampleSize: flat.length,
         avgMultiple: avgMult,
         ev: avgMult - 1,
       });
     }
 
-    return NextResponse.json({ factors: stats, tradesAnalyzed: trades.length });
+    return NextResponse.json({ factors: stats, tradesAnalyzed: flat.length });
   } catch (err) {
     const placeholders: FactorStat[] = FACTORS.map((f) => ({
       factor: f,
