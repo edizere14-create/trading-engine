@@ -161,20 +161,10 @@ export class LPCreationStream {
         return;
       }
 
-      // Also verify connection is healthy via a lightweight RPC call
-      try {
-        await this.activeConnection.getSlot();
-        this.wsHeartbeatOk++;
-      } catch {
-        this.wsHeartbeatFail++;
-        logger.warn('LP stream RPC unreachable — reconnecting', {
-          rpcRole: this.rpcRole,
-          heartbeatOk: this.wsHeartbeatOk,
-          heartbeatFail: this.wsHeartbeatFail,
-          reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
-        });
-        await this.reconnect();
-      }
+      // WS events have flowed recently — the subscription is alive.
+      // Avoid HTTP getSlot() probes which can produce false positives when the
+      // provider rate-limits HTTP but keeps WebSocket connections alive.
+      this.wsHeartbeatOk++;
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
@@ -257,10 +247,13 @@ export class LPCreationStream {
       // Do NOT reset reconnectAttempts here — only reset when real events arrive
       // in the onLogs callback. This keeps exponential backoff intact.
 
-      // Verify the connection actually works before declaring success
-      try {
-        await this.activeConnection.getSlot();
-      } catch {
+      // Verify the connection responds before declaring success.
+      // Use a 5s timeout so a slow/rate-limited HTTP endpoint doesn't hang here.
+      const lpReachable = await Promise.race([
+        this.activeConnection.getSlot().then(() => true, () => false),
+        new Promise<false>(r => setTimeout(() => r(false), 5_000)),
+      ]);
+      if (!lpReachable) {
         logger.warn('LP stream reconnected but RPC still unreachable — will retry next cycle');
         this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
         return;

@@ -531,20 +531,23 @@ export class SmartWalletStream {
       // Skip ALL health checks during cooldown after a recent reconnect
       if (Date.now() < this.reconnectCooldownUntil) return;
 
-      // Verify connection is healthy
-      try {
-        await this.activeConnection.getSlot();
-        this.wsHeartbeatOk++;
-      } catch {
+      // Use WS event recency as the primary health signal. HTTP getSlot() probes
+      // produce false positives when the provider rate-limits HTTP but keeps WS alive.
+      const silentMs = Date.now() - this.lastEventTime;
+      if (silentMs > SILENCE_THRESHOLD_MS) {
         this.wsHeartbeatFail++;
-        logger.warn('Wallet stream RPC unreachable — reconnecting', {
+        logger.warn('Wallet stream silent — reconnecting', {
+          silentSeconds: Math.round(silentMs / 1000),
           rpcRole: this.rpcRole,
-          heartbeatOk: this.wsHeartbeatOk,
           heartbeatFail: this.wsHeartbeatFail,
           reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
         });
         await this.reconnect();
+        return;
       }
+
+      // Events flowed recently — WS subscriptions are alive.
+      this.wsHeartbeatOk++;
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
@@ -626,10 +629,13 @@ export class SmartWalletStream {
       const wallets = this.walletRegistry.getAll();
       await this.subscribeAll(wallets.map(w => w.address));
 
-      // Verify the connection actually works before declaring success
-      try {
-        await this.activeConnection.getSlot();
-      } catch {
+      // Verify the connection responds before declaring success.
+      // Use a 5s timeout so a slow/rate-limited HTTP endpoint doesn't hang here.
+      const walletReachable = await Promise.race([
+        this.activeConnection.getSlot().then(() => true, () => false),
+        new Promise<false>(r => setTimeout(() => r(false), 5_000)),
+      ]);
+      if (!walletReachable) {
         logger.warn('Wallet stream reconnected but RPC still unreachable — will retry next cycle');
         this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
         return;
