@@ -14,6 +14,7 @@
 import { Connection } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
+import { NewPoolEvent, SwapEvent } from '../core/types';
 import axios from 'axios';
 
 // ── TYPES ─────────────────────────────────────────────────
@@ -81,21 +82,28 @@ export class StatArbEngine {
   private totalOpportunities = 0;
   private totalExecuted = 0;
   private enabled = true;
+  private readonly onPoolCreated = (event: NewPoolEvent) => {
+    this.watchedTokens.add(event.tokenCA);
+  };
+  private readonly onSwapDetected = (event: SwapEvent) => {
+    this.updatePriceFeed(event.tokenCA, this.inferDex(event), event.priceSOL, event.amountSOL);
+  };
 
   constructor(connection: Connection) {
     this.connection = connection;
   }
 
   start(): void {
+    if (this.scanInterval) {
+      return;
+    }
+
+    this.enabled = true;
     // Listen for new pools — automatically add tokens to watch list
-    bus.on('pool:created', (event) => {
-      this.watchedTokens.add(event.tokenCA);
-    });
+    bus.on('pool:created', this.onPoolCreated);
 
     // Listen for swap events to build price feeds from live data
-    bus.on('swap:detected', (event) => {
-      this.updatePriceFeed(event.tokenCA, this.inferDex(event), event.priceSOL, event.amountSOL);
-    });
+    bus.on('swap:detected', this.onSwapDetected);
 
     // Periodic spread scanning
     this.scanInterval = setInterval(() => this.scanSpreads(), SCAN_INTERVAL_MS);
@@ -112,6 +120,8 @@ export class StatArbEngine {
       clearInterval(this.scanInterval);
       this.scanInterval = null;
     }
+    bus.off('pool:created', this.onPoolCreated);
+    bus.off('swap:detected', this.onSwapDetected);
     this.enabled = false;
   }
 

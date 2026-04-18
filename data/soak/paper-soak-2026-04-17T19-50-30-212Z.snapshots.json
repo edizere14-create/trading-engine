@@ -1,0 +1,1828 @@
+[
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:00:44.953Z",
+    "seqNo": 1,
+    "arrayBuffersMB": 10.1,
+    "externalMB": 35.5,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 3,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 3,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 3,
+      "topBlockers": [
+        {
+          "count": 3,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 302.3,
+    "heapUsedMB": 253.4,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 10
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 391.2,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T15:56:04.270-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 10
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:05:46.444Z",
+    "seqNo": 2,
+    "arrayBuffersMB": 12.5,
+    "externalMB": 38,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 370.3,
+    "heapUsedMB": 283.7,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 20
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 462.2,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:01:04.283-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 20
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:10:36.006Z",
+    "seqNo": 3,
+    "arrayBuffersMB": 12,
+    "externalMB": 37.5,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 373.8,
+    "heapUsedMB": 274.2,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 30
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 460.2,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:06:04.283-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 30
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:15:39.198Z",
+    "seqNo": 4,
+    "arrayBuffersMB": 11.9,
+    "externalMB": 37.3,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 376.8,
+    "heapUsedMB": 284.2,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 40
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 432.8,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:11:04.354-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 39
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:20:36.799Z",
+    "seqNo": 5,
+    "arrayBuffersMB": 11.9,
+    "externalMB": 37.3,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 2,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 2,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 2,
+      "topBlockers": [
+        {
+          "count": 2,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 371.5,
+    "heapUsedMB": 278.2,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 50
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 408.6,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:16:04.360-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 49
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:25:36.208Z",
+    "seqNo": 6,
+    "arrayBuffersMB": 11.4,
+    "externalMB": 36.8,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 371.5,
+    "heapUsedMB": 278.6,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 60
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 402.7,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:21:04.353-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 59
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:30:37.214Z",
+    "seqNo": 7,
+    "arrayBuffersMB": 10.8,
+    "externalMB": 36.2,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 5,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 5,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 5,
+      "topBlockers": [
+        {
+          "count": 5,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 371.8,
+    "heapUsedMB": 272.7,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 70
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 397,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:26:04.376-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 69
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:35:38.996Z",
+    "seqNo": 8,
+    "arrayBuffersMB": 10.3,
+    "externalMB": 35.8,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 371.8,
+    "heapUsedMB": 277.4,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 80
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 395.9,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:31:04.388-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 79
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:40:39.120Z",
+    "seqNo": 9,
+    "arrayBuffersMB": 10.1,
+    "externalMB": 35.6,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 4,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 4,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 4,
+      "topBlockers": [
+        {
+          "count": 4,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 371.8,
+    "heapUsedMB": 287.5,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 90
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 394.6,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:36:04.404-04:00",
+    "tokenPoolMapSize": 0,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 89
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:45:36.943Z",
+    "seqNo": 10,
+    "arrayBuffersMB": 10.1,
+    "externalMB": 35.6,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 376.9,
+    "heapUsedMB": 286.1,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 100
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 400.6,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:41:04.415-04:00",
+    "tokenPoolMapSize": 1,
+    "tradeEntryCacheSize": 1,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.33,
+      "breakeven": 52,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6557,
+      "tradeCount": 218,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 99
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:50:38.740Z",
+    "seqNo": 11,
+    "arrayBuffersMB": 10.6,
+    "externalMB": 36,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 4,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 4,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 4,
+      "topBlockers": [
+        {
+          "count": 4,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 382.1,
+    "heapUsedMB": 256.2,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 110
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 413.1,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:46:04.429-04:00",
+    "tokenPoolMapSize": 1,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 53,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6572,
+      "tradeCount": 219,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 109
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T20:55:39.415Z",
+    "seqNo": 12,
+    "arrayBuffersMB": 8.9,
+    "externalMB": 35.6,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 382.1,
+    "heapUsedMB": 236.8,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 120
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 410.9,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:51:04.433-04:00",
+    "tokenPoolMapSize": 1,
+    "tradeEntryCacheSize": 2,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 53,
+      "losses": 150,
+      "realizedMultipleAvg": 0.6572,
+      "tradeCount": 219,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 119
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:00:39.058Z",
+    "seqNo": 13,
+    "arrayBuffersMB": 10.2,
+    "externalMB": 35.7,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 1,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 1,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 1,
+      "topBlockers": [
+        {
+          "count": 1,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 378.4,
+    "heapUsedMB": 245.5,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 130
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 414.2,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T16:56:04.437-04:00",
+    "tokenPoolMapSize": 2,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 129
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:05:46.365Z",
+    "seqNo": 14,
+    "arrayBuffersMB": 8.6,
+    "externalMB": 34.1,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 381.1,
+    "heapUsedMB": 261.1,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 140
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 412.4,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:01:04.460-04:00",
+    "tokenPoolMapSize": 2,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 139
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:10:44.544Z",
+    "seqNo": 15,
+    "arrayBuffersMB": 14.2,
+    "externalMB": 39.7,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 1,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 1,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 1,
+      "topBlockers": [
+        {
+          "count": 1,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 384.6,
+    "heapUsedMB": 285.7,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 150
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 418,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:06:04.465-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 149
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:15:39.687Z",
+    "seqNo": 16,
+    "arrayBuffersMB": 8.1,
+    "externalMB": 33.6,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 309.4,
+    "heapUsedMB": 242.4,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 160
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 346,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:11:04.470-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 159
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:20:36.346Z",
+    "seqNo": 17,
+    "arrayBuffersMB": 13.1,
+    "externalMB": 38.5,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 4,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 4,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 4,
+      "topBlockers": [
+        {
+          "count": 4,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 322.6,
+    "heapUsedMB": 271.5,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 170
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 352.6,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:16:04.457-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 169
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:25:44.121Z",
+    "seqNo": 18,
+    "arrayBuffersMB": 12.7,
+    "externalMB": 38.1,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 383.4,
+    "heapUsedMB": 244.5,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 180
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 415.8,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:21:04.485-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 179
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:30:39.658Z",
+    "seqNo": 19,
+    "arrayBuffersMB": 12.2,
+    "externalMB": 37.7,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 1,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 1,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 1,
+      "topBlockers": [
+        {
+          "count": 1,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 379.9,
+    "heapUsedMB": 263,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 190
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 417,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:26:04.485-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 1,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 54,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6601,
+      "tradeCount": 221,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 189
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:35:35.754Z",
+    "seqNo": 20,
+    "arrayBuffersMB": 12.8,
+    "externalMB": 38.2,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 381.6,
+    "heapUsedMB": 266.4,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 200
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 419.3,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:31:04.486-04:00",
+    "tokenPoolMapSize": 3,
+    "tradeEntryCacheSize": 1,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.34,
+      "breakeven": 55,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6617,
+      "tradeCount": 222,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 199
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:40:43.437Z",
+    "seqNo": 21,
+    "arrayBuffersMB": 12.4,
+    "externalMB": 37.8,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 1,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 1,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 1,
+      "topBlockers": [
+        {
+          "count": 1,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 378.9,
+    "heapUsedMB": 245.6,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 210
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 421.7,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:36:04.497-04:00",
+    "tokenPoolMapSize": 4,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.35,
+      "breakeven": 56,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6633,
+      "tradeCount": 223,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 209
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:45:38.341Z",
+    "seqNo": 22,
+    "arrayBuffersMB": 12.4,
+    "externalMB": 37.9,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 0,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 0,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 0,
+      "topBlockers": []
+    },
+    "heapTotalMB": 382.4,
+    "heapUsedMB": 283.6,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 220
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 420.5,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:41:04.488-04:00",
+    "tokenPoolMapSize": 5,
+    "tradeEntryCacheSize": 0,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.35,
+      "breakeven": 56,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6633,
+      "tradeCount": 223,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 219
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  },
+  {
+    "_schema": "2",
+    "capturedAt": "2026-04-17T21:50:36.611Z",
+    "seqNo": 23,
+    "arrayBuffersMB": 11.4,
+    "externalMB": 36.9,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 3,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 3,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 3,
+      "topBlockers": [
+        {
+          "count": 3,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "heapTotalMB": 386.4,
+    "heapUsedMB": 259.5,
+    "level": "info",
+    "lpStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 3,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 230
+    },
+    "message": "Runtime memory snapshot",
+    "rssMB": 420.5,
+    "service": "trading-engine",
+    "timestamp": "2026-04-17T17:46:04.514-04:00",
+    "tokenPoolMapSize": 5,
+    "tradeEntryCacheSize": 1,
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.35,
+      "breakeven": 56,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6633,
+      "tradeCount": 223,
+      "wins": 16
+    },
+    "walletStream": {
+      "avgRecoveryMs": 0,
+      "failoverCount": 0,
+      "lastRecoveryMs": null,
+      "reconnectAttempts": 0,
+      "reconnectBudget": "0/10",
+      "reconnectTotal": 0,
+      "rpcRole": "primary",
+      "subscriptionCount": 60,
+      "wsHeartbeatFail": 0,
+      "wsHeartbeatOk": 229
+    },
+    "wsErrorSuppression": {
+      "byType": {
+        "server responded": 4
+      },
+      "totalSuppressed": 4,
+      "unsubscribeWarnings": 0
+    }
+  }
+]

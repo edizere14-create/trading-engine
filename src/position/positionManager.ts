@@ -28,6 +28,8 @@ export class PositionManager {
   private tradesToday: number = 0;
   private config: PositionConfig;
   private monitorInterval: ReturnType<typeof setInterval> | null = null;
+  private dailyResetTimeout: ReturnType<typeof setTimeout> | null = null;
+  private dailyResetInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(config: PositionConfig) {
     this.config = config;
@@ -41,9 +43,9 @@ export class PositionManager {
     const now = new Date();
     const msUntilMidnight =
       new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).getTime() - now.getTime();
-    setTimeout(() => {
+    this.dailyResetTimeout = setTimeout(() => {
       this.tradesToday = 0;
-      setInterval(() => { this.tradesToday = 0; }, 86_400_000);
+      this.dailyResetInterval = setInterval(() => { this.tradesToday = 0; }, 86_400_000);
     }, msUntilMidnight);
 
     logger.info('PositionManager started', {
@@ -59,6 +61,14 @@ export class PositionManager {
     if (this.monitorInterval) {
       clearInterval(this.monitorInterval);
       this.monitorInterval = null;
+    }
+    if (this.dailyResetTimeout) {
+      clearTimeout(this.dailyResetTimeout);
+      this.dailyResetTimeout = null;
+    }
+    if (this.dailyResetInterval) {
+      clearInterval(this.dailyResetInterval);
+      this.dailyResetInterval = null;
     }
   }
 

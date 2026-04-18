@@ -33,6 +33,15 @@ export class LPCreationStream {
   private isClearing = false;
   private reconnectCooldownUntil = 0;
   private isStopped = false;
+  private wsHeartbeatOk = 0;
+  private wsHeartbeatFail = 0;
+  private rpcRole: 'primary' | 'backup' = 'primary';
+  private reconnectTotal = 0;
+  private failoverCount = 0;
+  private lastFailoverAtMs: number | null = null;
+  private lastRecoveryMs: number | null = null;
+  private totalRecoveryMs = 0;
+  private recoverySamples = 0;
 
   constructor(connection: Connection, backupConnection?: Connection) {
     this.primaryConnection = connection;
@@ -53,6 +62,7 @@ export class LPCreationStream {
       endpoint: getConnectionEndpoint(this.activeConnection),
       role: this.activeConnection === this.primaryConnection ? 'primary' : 'backup',
     });
+    this.rpcRole = this.activeConnection === this.primaryConnection ? 'primary' : 'backup';
 
     // Limit WS auto-reconnects on the active connection (default is Infinity)
     enableWsReconnect(this.activeConnection, 3);
@@ -140,9 +150,12 @@ export class LPCreationStream {
 
       // LP creation is naturally bursty; only treat very long silence as suspicious.
       if (silentMs > LP_SILENCE_THRESHOLD_MS) {
+        this.wsHeartbeatFail++;
         logger.warn('LP stream silent — reconnecting', {
           silentSeconds: Math.round(silentMs / 1000),
           attempt: this.reconnectAttempts + 1,
+          rpcRole: this.rpcRole,
+          reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
         });
         await this.reconnect();
         return;
@@ -151,8 +164,15 @@ export class LPCreationStream {
       // Also verify connection is healthy via a lightweight RPC call
       try {
         await this.activeConnection.getSlot();
+        this.wsHeartbeatOk++;
       } catch {
-        logger.warn('LP stream RPC unreachable — reconnecting');
+        this.wsHeartbeatFail++;
+        logger.warn('LP stream RPC unreachable — reconnecting', {
+          rpcRole: this.rpcRole,
+          heartbeatOk: this.wsHeartbeatOk,
+          heartbeatFail: this.wsHeartbeatFail,
+          reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
+        });
         await this.reconnect();
       }
     }, HEALTH_CHECK_INTERVAL_MS);
@@ -163,45 +183,71 @@ export class LPCreationStream {
     this.isReconnecting = true;
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      logger.error('LP stream max reconnect attempts reached — triggering HALT');
+      logger.error('LP stream max reconnect attempts reached — triggering HALT', {
+        reconnectAttempts: this.reconnectAttempts,
+        budget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
+        rpcRole: this.rpcRole,
+        heartbeatOk: this.wsHeartbeatOk,
+        heartbeatFail: this.wsHeartbeatFail,
+      });
       bus.emit('system:halt', { reason: 'LP stream WebSocket unrecoverable', resumeAt: undefined });
       this.isReconnecting = false;
       return;
     }
 
     this.reconnectAttempts++;
+    this.reconnectTotal++;
     const delay = Math.min(
       RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1),
       RECONNECT_MAX_DELAY_MS
     );
 
-    logger.info('LP stream reconnecting', { attempt: this.reconnectAttempts, delayMs: delay });
+    logger.info('LP stream reconnecting', {
+      attempt: this.reconnectAttempts,
+      delayMs: delay,
+      budget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
+      rpcRole: this.rpcRole,
+    });
     await new Promise((r) => setTimeout(r, delay));
 
     // Failover to backup immediately on first attempt, then alternate
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       if (supportsLogsSubscribe(this.backupConnection)) {
-        logger.info('LP stream failing over to backup RPC');
+        const prevRole = this.rpcRole;
         disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
         this.activeConnection = this.backupConnection;
+        this.rpcRole = 'backup';
+        this.failoverCount++;
+        this.lastFailoverAtMs = Date.now();
         enableWsReconnect(this.activeConnection, 3);
-        logger.info('LP stream using RPC', {
+        logger.info('LP stream RPC role changed', {
+          from: prevRole,
+          to: this.rpcRole,
           endpoint: getConnectionEndpoint(this.activeConnection),
-          role: 'backup',
+          reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
         });
       } else {
         logger.warn('LP stream backup RPC skipped during failover — logsSubscribe unsupported', {
           endpoint: getConnectionEndpoint(this.backupConnection),
+          reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
         });
       }
     } else if (this.reconnectAttempts > 1) {
-      logger.info('LP stream returning to primary RPC');
+      const prevRole = this.rpcRole;
       disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
+      this.rpcRole = 'primary';
+      if (this.lastFailoverAtMs) {
+        this.lastRecoveryMs = Date.now() - this.lastFailoverAtMs;
+        this.totalRecoveryMs += this.lastRecoveryMs;
+        this.recoverySamples++;
+      }
       enableWsReconnect(this.activeConnection, 3);
-      logger.info('LP stream using RPC', {
+      logger.info('LP stream RPC role changed', {
+        from: prevRole,
+        to: this.rpcRole,
         endpoint: getConnectionEndpoint(this.activeConnection),
-        role: 'primary',
+        reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
       });
     }
     // On attempt 1 with no backup, stays on primary
@@ -223,7 +269,12 @@ export class LPCreationStream {
       this.lastEventTime = Date.now(); // Reset timer after reconnection
       this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
       resetWsReconnectCount(this.activeConnection);
-      logger.info('LP stream reconnected successfully', { attempt: this.reconnectAttempts });
+      logger.info('LP stream reconnected successfully', {
+        attempt: this.reconnectAttempts,
+        rpcRole: this.rpcRole,
+        heartbeatOk: this.wsHeartbeatOk,
+        heartbeatFail: this.wsHeartbeatFail,
+      });
     } catch (err) {
       logger.error('LP stream reconnect failed', {
         attempt: this.reconnectAttempts,
@@ -335,6 +386,32 @@ export class LPCreationStream {
     } finally {
       this.isClearing = false;
     }
+  }
+
+  public getTelemetry(): {
+    reconnectAttempts: number;
+    reconnectTotal: number;
+    reconnectBudget: string;
+    rpcRole: 'primary' | 'backup';
+    failoverCount: number;
+    lastRecoveryMs: number | null;
+    avgRecoveryMs: number;
+    wsHeartbeatOk: number;
+    wsHeartbeatFail: number;
+    subscriptionCount: number;
+  } {
+    return {
+      reconnectAttempts: this.reconnectAttempts,
+      reconnectTotal: this.reconnectTotal,
+      reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
+      rpcRole: this.rpcRole,
+      failoverCount: this.failoverCount,
+      lastRecoveryMs: this.lastRecoveryMs,
+      avgRecoveryMs: this.recoverySamples > 0 ? this.totalRecoveryMs / this.recoverySamples : 0,
+      wsHeartbeatOk: this.wsHeartbeatOk,
+      wsHeartbeatFail: this.wsHeartbeatFail,
+      subscriptionCount: this.subscriptions.length,
+    };
   }
 
   async stop(): Promise<void> {

@@ -13,6 +13,15 @@ export interface PaperTradeSummary {
   mostReliableEdge: { edge: EdgeName; winRate: number; count: number } | null;
 }
 
+export interface PaperTradeRuntimeMetrics {
+  totalTrades: number;
+  wins: number;
+  losses: number;
+  breakeven: number;
+  realizedMultipleAvg: number;
+  averageScoreAtEntry: number;
+}
+
 export class PaperTradeGate {
   readonly MINIMUM_TRADES = 50;
   readonly MAX_WP_CALIBRATION_ERROR = 0.15;
@@ -203,6 +212,32 @@ export class PaperTradeGate {
       bestTrade,
       worstTrade,
       mostReliableEdge,
+    };
+  }
+
+  getRuntimeMetrics(): PaperTradeRuntimeMetrics {
+    const completed = this.trades.filter((t) => t.outcome !== undefined);
+    const wins = completed.filter((t) => t.outcome === 'WIN').length;
+    const losses = completed.filter((t) => t.outcome === 'LOSS').length;
+    const breakeven = completed.filter((t) => t.outcome === 'BREAKEVEN').length;
+
+    const withMultiple = completed.filter((t) => typeof t.realizedMultiple === 'number');
+    const realizedMultipleAvg = withMultiple.length > 0
+      ? withMultiple.reduce((sum, t) => sum + (t.realizedMultiple ?? 0), 0) / withMultiple.length
+      : 0;
+
+    const withScore = completed.filter((t) => typeof t.signal?.totalScore === 'number');
+    const averageScoreAtEntry = withScore.length > 0
+      ? withScore.reduce((sum, t) => sum + (t.signal?.totalScore ?? 0), 0) / withScore.length
+      : 0;
+
+    return {
+      totalTrades: completed.length,
+      wins,
+      losses,
+      breakeven,
+      realizedMultipleAvg,
+      averageScoreAtEntry,
     };
   }
 

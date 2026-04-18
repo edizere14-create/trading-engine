@@ -1,0 +1,69 @@
+{
+  "_schema": "2",
+  "runId": "2026-04-17T19-50-30-212Z",
+  "mode": "soak",
+  "startedAt": "2026-04-17T19:50:35.403Z",
+  "endedAt": "2026-04-17T21:50:36.635Z",
+  "elapsedMinutes": 120,
+  "configuredDurationMinutes": 120,
+  "intervalMinutes": 5,
+  "hardStop": null,
+  "summary": {
+    "snapshotCount": 23,
+    "heapStartMB": 253.4,
+    "heapEndMB": 259.5,
+    "heapDriftMB": 6.099999999999994,
+    "rssStartMB": 391.2,
+    "rssEndMB": 420.5,
+    "rssDriftMB": 29.30000000000001,
+    "reconnectDrift": 0,
+    "heartbeatFailsTotal": 0,
+    "unsubscribeWarningsTotal": 0,
+    "gateHealth": {
+      "blockReasonsWindow": {
+        "alreadyPositioned": 0,
+        "executionUnavailable": 0,
+        "hybridSuppression": 0,
+        "jupiterCircuitOpen": 0,
+        "maxConcurrent": 0,
+        "maxDaily": 0,
+        "signalLowScore": 3,
+        "simulationFailed": 0,
+        "survivalHalt": 0,
+        "systemHealth": 0,
+        "tradeLowScore": 0,
+        "tradeNoPool": 0,
+        "tradePortfolio": 0,
+        "tradeSafety": 0
+      },
+      "blockedSignals": 3,
+      "executionUnavailableRejects": 0,
+      "lowScoreRejects": 3,
+      "topBlockers": [
+        {
+          "count": 3,
+          "reason": "signalLowScore"
+        }
+      ]
+    },
+    "tradingHealth": {
+      "averageScoreAtEntry": 3.35,
+      "breakeven": 56,
+      "losses": 151,
+      "realizedMultipleAvg": 0.6633,
+      "tradeCount": 223,
+      "wins": 16
+    },
+    "rpcHealth": {
+      "lpRole": "primary",
+      "walletRole": "primary",
+      "lpFailovers": 0,
+      "walletFailovers": 0,
+      "lpAvgRecoveryMs": 0,
+      "walletAvgRecoveryMs": 0
+    },
+    "pass": true
+  },
+  "pass": true,
+  "snapshotFile": "C:\\trading-engine\\data\\soak\\paper-soak-2026-04-17T19-50-30-212Z.snapshots.json"
+}

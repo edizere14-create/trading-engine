@@ -10,6 +10,7 @@ const envSchema = z.object({
   PRIMARY_RPC:             z.string().url('PRIMARY_RPC must be a valid URL'),
   BACKUP_RPC:              z.string().url('BACKUP_RPC must be a valid URL'),
   PAPER_MODE:              z.enum(['true', 'false']).default('true'),
+  LIVE_TRADING_ARMED:      z.enum(['true', 'false']).default('false'),
   AUTONOMOUS_ONLY:         z.enum(['true', 'false']).default('true'),
   INITIAL_CAPITAL_USD:     z.coerce.number().positive('INITIAL_CAPITAL_USD must be > 0'),
   MAX_TRADES_PER_DAY:      z.coerce.number().int().min(1).default(2),
@@ -96,6 +97,7 @@ export type EnvConfig = z.infer<typeof envSchema>;
 
 export interface AppConfig extends EnvConfig {
   PAPER_MODE: 'true' | 'false';
+  LIVE_TRADING_ARMED: 'true' | 'false';
   AUTONOMOUS_ONLY: 'true' | 'false';
   connection: Connection;
   backupConnection: Connection;
@@ -113,7 +115,22 @@ function createConnection(rpcUrl: string): Connection {
 
 export const config = {
   load(): AppConfig {
-    const parsed = envSchema.safeParse(process.env);
+    const rawEnv = { ...process.env } as NodeJS.ProcessEnv;
+    const legacyMode = rawEnv.MODE;
+
+    if (legacyMode && !rawEnv.PAPER_MODE) {
+      const normalized = legacyMode.toLowerCase() === 'paper' ? 'true' : 'false';
+      rawEnv.PAPER_MODE = normalized;
+    }
+
+    if (legacyMode && rawEnv.PAPER_MODE) {
+      const legacyAsPaperMode = legacyMode.toLowerCase() === 'paper' ? 'true' : 'false';
+      if (legacyAsPaperMode !== rawEnv.PAPER_MODE) {
+        throw new Error('CONFIG VALIDATION FAILED:\n  PAPER_MODE conflicts with legacy MODE. Use PAPER_MODE only.');
+      }
+    }
+
+    const parsed = envSchema.safeParse(rawEnv);
 
     if (!parsed.success) {
       const errors = parsed.error.issues
@@ -123,6 +140,10 @@ export const config = {
     }
 
     const env = parsed.data;
+
+    if (env.PAPER_MODE === 'false' && env.LIVE_TRADING_ARMED !== 'true') {
+      throw new Error('CONFIG VALIDATION FAILED:\n  PAPER_MODE=false requires LIVE_TRADING_ARMED=true.');
+    }
 
     const rootDir = process.cwd();
     const resolvePath = (p: string): string => (path.isAbsolute(p) ? p : path.resolve(rootDir, p));

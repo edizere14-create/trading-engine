@@ -1,0 +1,36 @@
+{
+  "_schema": "2",
+  "runId": "2026-04-16T00-58-31-418Z",
+  "mode": "validate",
+  "startedAt": "2026-04-16T00:58:38.986Z",
+  "endedAt": "2026-04-16T00:58:49.090Z",
+  "elapsedMinutes": 0,
+  "configuredDurationMinutes": 2,
+  "intervalMinutes": 5,
+  "hardStop": "Primary RPC startup failure detected: [Startup] RPC unreachable",
+  "summary": {
+    "snapshotCount": 0,
+    "heapStartMB": 0,
+    "heapEndMB": 0,
+    "heapDriftMB": 0,
+    "rssStartMB": 0,
+    "rssEndMB": 0,
+    "rssDriftMB": 0,
+    "reconnectDrift": 0,
+    "heartbeatFailsTotal": 0,
+    "unsubscribeWarningsTotal": 0,
+    "gateHealth": {},
+    "tradingHealth": {},
+    "rpcHealth": {
+      "lpRole": null,
+      "walletRole": null,
+      "lpFailovers": 0,
+      "walletFailovers": 0,
+      "lpAvgRecoveryMs": 0,
+      "walletAvgRecoveryMs": 0
+    },
+    "pass": true
+  },
+  "pass": false,
+  "snapshotFile": "C:\\trading-engine\\data\\soak\\paper-soak-2026-04-16T00-58-31-418Z.snapshots.json"
+}

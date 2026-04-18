@@ -18,7 +18,7 @@
 
 import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
-import { SwapEvent } from '../core/types';
+import { NewPoolEvent, SwapEvent } from '../core/types';
 import { PositionManager } from '../position/positionManager';
 import { logger } from '../core/logger';
 import { enableWsReconnect } from '../ingestion/wsControl';
@@ -92,6 +92,16 @@ export class HybridPowerPlay {
   private migrationSubId: number | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private active = false;
+  private migrationStageTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  private readonly onPoolCreated = (event: NewPoolEvent) => {
+    this.knownPools.add(event.tokenCA);
+    // If we're tracking this token in BONDING_CURVE, migration just happened
+    const lifecycle = this.tokens.get(event.tokenCA);
+    if (lifecycle && lifecycle.stage === 'BONDING_CURVE') {
+      this.transitionToMigrating(lifecycle);
+    }
+  };
+  private readonly onSwapDetected = (event: SwapEvent) => this.onSwap(event);
 
   // Stats
   private totalStage1Entries = 0;
@@ -106,22 +116,19 @@ export class HybridPowerPlay {
   }
 
   async start(): Promise<void> {
+    if (this.active) {
+      return;
+    }
+
     this.active = true;
     // Limit WS auto-reconnects (default is Infinity)
     enableWsReconnect(this.connection, 3);
 
     // Track which tokens already have DEX pools (post-migration)
-    bus.on('pool:created', (event) => {
-      this.knownPools.add(event.tokenCA);
-      // If we're tracking this token in BONDING_CURVE, migration just happened
-      const lifecycle = this.tokens.get(event.tokenCA);
-      if (lifecycle && lifecycle.stage === 'BONDING_CURVE') {
-        this.transitionToMigrating(lifecycle);
-      }
-    });
+    bus.on('pool:created', this.onPoolCreated);
 
     // Process swaps for bonding curve tracking + post-migration sandwich detection
-    bus.on('swap:detected', (event) => this.onSwap(event));
+    bus.on('swap:detected', this.onSwapDetected);
 
     // Monitor PumpSwap Migration Account
     await this.subscribeMigrationAccount();
@@ -144,6 +151,12 @@ export class HybridPowerPlay {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    for (const timeout of this.migrationStageTimers.values()) {
+      clearTimeout(timeout);
+    }
+    this.migrationStageTimers.clear();
+    bus.off('pool:created', this.onPoolCreated);
+    bus.off('swap:detected', this.onSwapDetected);
     this.removeMigrationSubscription();
   }
 
@@ -360,7 +373,12 @@ export class HybridPowerPlay {
     });
 
     // After suppression window: transition to Stage 3
-    setTimeout(() => {
+    const existingTimer = this.migrationStageTimers.get(lifecycle.tokenCA);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    const timer = setTimeout(() => {
+      this.migrationStageTimers.delete(lifecycle.tokenCA);
       if (lifecycle.stage === 'MIGRATING') {
         lifecycle.stage = 'POST_MIGRATION';
         lifecycle.migrationCompleteAt = Date.now();
@@ -372,6 +390,7 @@ export class HybridPowerPlay {
         });
       }
     }, MIGRATION_SUPPRESSION_MS);
+    this.migrationStageTimers.set(lifecycle.tokenCA, timer);
   }
 
   private extractTokenFromMigrationLogs(logs: Logs): string | null {
@@ -568,11 +587,21 @@ export class HybridPowerPlay {
     for (const [tokenCA, lifecycle] of this.tokens) {
       // Remove completed tokens after 5 minutes
       if (lifecycle.stage === 'COMPLETED' && now - lifecycle.enteredAt > 300_000) {
+        const timer = this.migrationStageTimers.get(tokenCA);
+        if (timer) {
+          clearTimeout(timer);
+          this.migrationStageTimers.delete(tokenCA);
+        }
         this.tokens.delete(tokenCA);
         continue;
       }
       // Remove stale tokens with no activity (any stage)
       if (now - lifecycle.enteredAt > STALE_TOKEN_MS) {
+        const timer = this.migrationStageTimers.get(tokenCA);
+        if (timer) {
+          clearTimeout(timer);
+          this.migrationStageTimers.delete(tokenCA);
+        }
         this.tokens.delete(tokenCA);
       }
     }

@@ -1,0 +1,36 @@
+{
+  "_schema": "2",
+  "runId": "2026-04-17T19-44-17-354Z",
+  "mode": "validate",
+  "startedAt": "2026-04-17T19:44:22.858Z",
+  "endedAt": "2026-04-17T19:46:33.813Z",
+  "elapsedMinutes": 2,
+  "configuredDurationMinutes": 2,
+  "intervalMinutes": 5,
+  "hardStop": null,
+  "summary": {
+    "snapshotCount": 0,
+    "heapStartMB": 0,
+    "heapEndMB": 0,
+    "heapDriftMB": 0,
+    "rssStartMB": 0,
+    "rssEndMB": 0,
+    "rssDriftMB": 0,
+    "reconnectDrift": 0,
+    "heartbeatFailsTotal": 0,
+    "unsubscribeWarningsTotal": 0,
+    "gateHealth": {},
+    "tradingHealth": {},
+    "rpcHealth": {
+      "lpRole": null,
+      "walletRole": null,
+      "lpFailovers": 0,
+      "walletFailovers": 0,
+      "lpAvgRecoveryMs": 0,
+      "walletAvgRecoveryMs": 0
+    },
+    "pass": true
+  },
+  "pass": true,
+  "snapshotFile": "C:\\trading-engine\\data\\soak\\paper-soak-2026-04-17T19-44-17-354Z.snapshots.json"
+}

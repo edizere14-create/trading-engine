@@ -20,7 +20,7 @@ import { DEFAULT_WEIGHTS } from './signals/signalVector';
 
 import { LPCreationStream } from './ingestion/lpCreationStream';
 import { SmartWalletStream } from './ingestion/smartWalletStream';
-import { installWsErrorSuppression } from './ingestion/wsControl';
+import { getWsErrorSuppressionStats, installWsErrorSuppression } from './ingestion/wsControl';
 
 // Suppress @solana/web3.js WS error spam before any Connection objects are created
 installWsErrorSuppression();
@@ -77,10 +77,55 @@ let positionPricePoller: PositionPricePoller | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
 
-// tokenCA → poolAddress mapping (populated from pool:created events)
-const tokenPoolMap: Map<string, string> = new Map();
+// tokenCA -> poolAddress mapping (populated from pool:created events)
+interface TokenPoolEntry {
+  poolAddress: string;
+  lastSeenMs: number;
+}
+const tokenPoolMap: Map<string, TokenPoolEntry> = new Map();
+const TOKEN_POOL_TTL_MS = Math.max(Number(process.env.TOKEN_POOL_TTL_MS ?? 6 * 60 * 60 * 1000), 60_000);
+const TOKEN_POOL_MAX_ENTRIES = Math.max(Number(process.env.TOKEN_POOL_MAX_ENTRIES ?? 20_000), 1_000);
 
-// tokenCA → signal context at entry time (for journal/paper trade records)
+function rememberTokenPool(tokenCA: string, poolAddress: string): void {
+  const now = Date.now();
+  const prev = tokenPoolMap.get(tokenCA);
+  if (prev) {
+    // Refresh insertion order for LRU-style eviction.
+    tokenPoolMap.delete(tokenCA);
+  }
+  tokenPoolMap.set(tokenCA, { poolAddress, lastSeenMs: now });
+  pruneTokenPoolMap(now);
+}
+
+function getTokenPoolAddress(tokenCA: string): string | undefined {
+  const entry = tokenPoolMap.get(tokenCA);
+  if (!entry) return undefined;
+
+  const now = Date.now();
+  if (now - entry.lastSeenMs > TOKEN_POOL_TTL_MS) {
+    tokenPoolMap.delete(tokenCA);
+    return undefined;
+  }
+
+  entry.lastSeenMs = now;
+  return entry.poolAddress;
+}
+
+function pruneTokenPoolMap(nowMs = Date.now()): void {
+  for (const [tokenCA, entry] of tokenPoolMap) {
+    if (nowMs - entry.lastSeenMs > TOKEN_POOL_TTL_MS) {
+      tokenPoolMap.delete(tokenCA);
+    }
+  }
+
+  while (tokenPoolMap.size > TOKEN_POOL_MAX_ENTRIES) {
+    const oldestKey = tokenPoolMap.keys().next().value;
+    if (!oldestKey) break;
+    tokenPoolMap.delete(oldestKey);
+  }
+}
+
+// tokenCA -> signal context at entry time (for journal/paper trade records)
 interface TradeEntryContext {
   signal: { timingEdge: number; deployerQuality: number; organicFlow: number; manipulationRisk: number; coordinationStrength: number; socialVelocity: number; totalScore: number; confidence: number };
   poolAddress: string;
@@ -108,6 +153,22 @@ type GateMetricKey =
   | 'tradeProbeFallbackUsed'
   | 'tradeOpened';
 
+type GateBlockReasonKey =
+  | 'signalLowScore'
+  | 'tradeLowScore'
+  | 'tradeNoPool'
+  | 'tradeSafety'
+  | 'tradePortfolio'
+  | 'systemHealth'
+  | 'hybridSuppression'
+  | 'survivalHalt'
+  | 'alreadyPositioned'
+  | 'maxConcurrent'
+  | 'maxDaily'
+  | 'executionUnavailable'
+  | 'jupiterCircuitOpen'
+  | 'simulationFailed';
+
 const gateMetrics: Record<GateMetricKey, number> = {
   swapSignalsSeen: 0,
   signalsGenerated: 0,
@@ -122,10 +183,39 @@ const gateMetrics: Record<GateMetricKey, number> = {
   tradeOpened: 0,
 };
 
+const gateBlockReasons: Record<GateBlockReasonKey, number> = {
+  signalLowScore: 0,
+  tradeLowScore: 0,
+  tradeNoPool: 0,
+  tradeSafety: 0,
+  tradePortfolio: 0,
+  systemHealth: 0,
+  hybridSuppression: 0,
+  survivalHalt: 0,
+  alreadyPositioned: 0,
+  maxConcurrent: 0,
+  maxDaily: 0,
+  executionUnavailable: 0,
+  jupiterCircuitOpen: 0,
+  simulationFailed: 0,
+};
+
 let gateMetricsWindowStartMs = Date.now();
 
 function bumpGateMetric(key: GateMetricKey): void {
   gateMetrics[key] += 1;
+}
+
+function bumpGateBlockReason(key: GateBlockReasonKey): void {
+  gateBlockReasons[key] += 1;
+}
+
+function getTopGateBlockReasons(limit = 5): Array<{ reason: string; count: number }> {
+  return Object.entries(gateBlockReasons)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([reason, count]) => ({ reason, count }));
 }
 
 const PAPER_PROBE_ON_OPT_REJECT = String(process.env.PAPER_PROBE_ON_OPT_REJECT ?? 'true').toLowerCase() === 'true';
@@ -327,6 +417,18 @@ function loadExecutionWallet(secret?: string): Keypair | null {
 
 const dataSync = new DataSync();
 
+async function probeRpc(label: 'primary' | 'backup' | 'safety', getSlot: () => Promise<number>): Promise<{ ok: boolean; slot?: number; error?: string }> {
+  try {
+    const slot = await getSlot();
+    logger.info('[Startup] RPC reachable', { label, slot });
+    return { ok: true, slot };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    logger.warn('[Startup] RPC unreachable', { label, error });
+    return { ok: false, error };
+  }
+}
+
 async function boot(): Promise<void> {
   logger.info('═══════════════════════════════════════════');
   logger.info('  TRADING ENGINE v4.1 — BOOTING');
@@ -368,6 +470,20 @@ async function boot(): Promise<void> {
     deployers: deployerRegistry.count(),
     wallets: walletRegistry.count(),
   });
+
+  if (walletRegistry.count() === 0) {
+    throw new Error('STARTUP ASSERTION FAILED: wallet registry is empty. Populate wallets before boot.');
+  }
+
+  const [primaryProbe, backupProbe, safetyProbe] = await Promise.all([
+    probeRpc('primary', () => cfg.connection.getSlot()),
+    probeRpc('backup', () => cfg.backupConnection.getSlot()),
+    probeRpc('safety', () => cfg.safetyConnection.getSlot()),
+  ]);
+
+  if (!primaryProbe.ok) {
+    throw new Error(`STARTUP ASSERTION FAILED: primary RPC unreachable (${primaryProbe.error ?? 'unknown'}).`);
+  }
 
   // 3. Load calibration + performance
   const paperGate = await PaperTradeGate.load(cfg.PAPER_TRADES_FILE);
@@ -415,6 +531,19 @@ async function boot(): Promise<void> {
     winRate: (gateStatus.actualWinRate * 100).toFixed(1) + '%',
     gateUnlocked: gateStatus.gateUnlocked,
     blockedReasons: gateStatus.blockedReasons,
+  });
+
+  logger.info('Startup assertions', {
+    paperMode: cfg.isPaperMode,
+    liveTradingArmed: cfg.LIVE_TRADING_ARMED,
+    autonomousOnly: cfg.isAutonomousOnly,
+    gateUnlocked: gateStatus.gateUnlocked,
+    gateBlockedReasons: gateStatus.blockedReasons,
+    rpcReachability: {
+      primary: primaryProbe.ok,
+      backup: backupProbe.ok,
+      safety: safetyProbe.ok,
+    },
   });
 
   // 5. Instantiate engines
@@ -585,10 +714,10 @@ async function boot(): Promise<void> {
    try {
     antifragileEngine?.heartbeat();
 
-    // Always store tokenCA → poolAddress for reserve-based price tracking,
+    // Always store tokenCA -> poolAddress for reserve-based price tracking,
     // even if the pool is filtered out for trading. Positions opened via
     // smart wallet signals still need price feeds from the pool.
-    tokenPoolMap.set(event.tokenCA, event.poolAddress);
+    rememberTokenPool(event.tokenCA, event.poolAddress);
 
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
@@ -857,7 +986,7 @@ async function boot(): Promise<void> {
 
     // If position is open but pool price stream not yet tracking, try to subscribe
     if (poolPriceStream && positionManager!.hasPosition(event.tokenCA) && !poolPriceStream.isTracking(event.tokenCA)) {
-      const poolAddr = tokenPoolMap.get(event.tokenCA);
+      const poolAddr = getTokenPoolAddress(event.tokenCA);
       if (poolAddr) {
         poolPriceStream.subscribe(poolAddr, event.tokenCA);
       }
@@ -906,6 +1035,7 @@ async function boot(): Promise<void> {
 
     if (signal.score < 4) {
       bumpGateMetric('signalsBlockedLowScore');
+      bumpGateBlockReason('signalLowScore');
       logger.info('Signal BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         wallet: signal.triggerWallet,
@@ -949,6 +1079,7 @@ async function boot(): Promise<void> {
     if (antifragileEngine) {
       const health = antifragileEngine.getSystemHealth();
       if (health.overallStatus === 'CRITICAL' || health.overallStatus === 'DEAD') {
+        bumpGateBlockReason('systemHealth');
         logger.warn('Signal BLOCKED — system health', { state: health.overallStatus });
         return;
       }
@@ -956,6 +1087,7 @@ async function boot(): Promise<void> {
 
     // HybridPowerPlay: suppress signals during migration cooldown
     if (hybridPowerPlay?.shouldSuppressSignal(signal.tokenCA)) {
+      bumpGateBlockReason('hybridSuppression');
       logger.info('Signal BLOCKED — HybridPowerPlay migration suppression', {
         tokenCA: signal.tokenCA,
       });
@@ -973,6 +1105,7 @@ async function boot(): Promise<void> {
 
     if (signal.source === 'SINGLE_WALLET' && signal.score < 4) {
       bumpGateMetric('tradeBlockedLowScore');
+      bumpGateBlockReason('tradeLowScore');
       logger.info('Trade BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         score: signal.score.toFixed(2),
@@ -981,9 +1114,10 @@ async function boot(): Promise<void> {
       return;
     }
 
-    const poolAddress = tokenPoolMap.get(signal.tokenCA) ?? '';
+    const poolAddress = getTokenPoolAddress(signal.tokenCA) ?? '';
     if (!poolAddress && signal.source !== 'SINGLE_WALLET') {
       bumpGateMetric('tradeBlockedNoPool');
+      bumpGateBlockReason('tradeNoPool');
       logger.info('Trade BLOCKED — no pool context', {
         tokenCA: signal.tokenCA,
         source: signal.source,
@@ -1003,6 +1137,7 @@ async function boot(): Promise<void> {
     const safety = await tokenSafety.check(signal.tokenCA);
     if (!safety.isSafe) {
       bumpGateMetric('tradeBlockedSafety');
+      bumpGateBlockReason('tradeSafety');
       logger.warn('Trade BLOCKED by safety', {
         tokenCA: signal.tokenCA,
         rugScore: safety.rugScore,
@@ -1049,6 +1184,7 @@ async function boot(): Promise<void> {
           });
         } else {
           bumpGateMetric('tradeBlockedPortfolio');
+          bumpGateBlockReason('tradePortfolio');
           logger.warn('Trade BLOCKED — portfolio optimizer rejected', {
             tokenCA: signal.tokenCA,
             reason: sizing.reason,
@@ -1061,6 +1197,7 @@ async function boot(): Promise<void> {
 
     if (!cfg.isPaperMode) {
       if (!executionEngine || !executionWallet) {
+        bumpGateBlockReason('executionUnavailable');
         logger.error('Autonomous execution blocked: execution engine or wallet unavailable', {
           tokenCA: signal.tokenCA,
         });
@@ -1071,6 +1208,7 @@ async function boot(): Promise<void> {
       }
 
       if (antifragileEngine && !antifragileEngine.canUseJupiter()) {
+        bumpGateBlockReason('jupiterCircuitOpen');
         logger.warn('Autonomous execution blocked: Jupiter circuit is open', {
           tokenCA: signal.tokenCA,
         });
@@ -1079,14 +1217,17 @@ async function boot(): Promise<void> {
 
       const stats = positionManager!.getStats();
       if (survival.state === 'HALT') {
+        bumpGateBlockReason('survivalHalt');
         logger.warn('Autonomous execution blocked by survival HALT', { tokenCA: signal.tokenCA });
         return;
       }
       if (positionManager!.hasPosition(signal.tokenCA)) {
+        bumpGateBlockReason('alreadyPositioned');
         logger.debug('Autonomous execution skipped: already positioned', { tokenCA: signal.tokenCA });
         return;
       }
       if (stats.openCount >= cfg.MAX_CONCURRENT_POSITIONS) {
+        bumpGateBlockReason('maxConcurrent');
         logger.info('Autonomous execution blocked: max concurrent positions reached', {
           tokenCA: signal.tokenCA,
           openCount: stats.openCount,
@@ -1094,6 +1235,7 @@ async function boot(): Promise<void> {
         return;
       }
       if (stats.tradesToday >= cfg.MAX_TRADES_PER_DAY) {
+        bumpGateBlockReason('maxDaily');
         logger.info('Autonomous execution blocked: max daily trades reached', {
           tokenCA: signal.tokenCA,
           tradesToday: stats.tradesToday,
@@ -1111,6 +1253,7 @@ async function boot(): Promise<void> {
       const urgency = signal.score >= 7 ? 'HIGH' : signal.score >= 5 ? 'MEDIUM' : 'LOW';
       const simulation = await executionEngine.simulate(signal.tokenCA, 'BUY', amountSOL);
       if (!simulation.passed) {
+        bumpGateBlockReason('simulationFailed');
         antifragileEngine?.recordJupiterFailure();
         logger.warn('Autonomous execution blocked by pre-flight simulation', {
           tokenCA: signal.tokenCA,
@@ -1507,7 +1650,7 @@ async function boot(): Promise<void> {
 
     // Subscribe to pool swap events for reserve-based price tracking
     if (poolPriceStream) {
-      const poolAddr = tokenPoolMap.get(position.tokenCA);
+      const poolAddr = getTokenPoolAddress(position.tokenCA);
       if (poolAddr) {
         poolPriceStream.subscribe(poolAddr, position.tokenCA);
       } else {
@@ -1569,7 +1712,7 @@ async function boot(): Promise<void> {
     // ── Persist to journal.db so dashboard can display ──
     const holdMs = Date.now() - position.entryTimestamp.getTime();
     const ctx = tradeEntryCache.get(position.tokenCA);
-    const poolAddr = tokenPoolMap.get(position.tokenCA) ?? ctx?.poolAddress ?? '';
+    const poolAddr = getTokenPoolAddress(position.tokenCA) ?? ctx?.poolAddress ?? '';
     const exitPriceSOL = position.lastPriceSOL > 0
       ? position.lastPriceSOL
       : position.entryPriceSOL * (position.realizedMultiple ?? 1);
@@ -1885,9 +2028,13 @@ async function boot(): Promise<void> {
 
   const gateInterval = setInterval(() => {
     const windowMinutes = Math.max(1, Math.round((Date.now() - gateMetricsWindowStartMs) / 60000));
+    const topBlockReasons = getTopGateBlockReasons(5);
+
     logger.info('Gate funnel snapshot', {
       windowMinutes,
       ...gateMetrics,
+      gateBlockReasons,
+      topBlockReasons,
     });
 
     if (gateMetrics.tradeSignalsReceived >= 5 && gateMetrics.tradeOpened === 0) {
@@ -1906,12 +2053,54 @@ async function boot(): Promise<void> {
     for (const key of Object.keys(gateMetrics) as GateMetricKey[]) {
       gateMetrics[key] = 0;
     }
+    for (const key of Object.keys(gateBlockReasons) as GateBlockReasonKey[]) {
+      gateBlockReasons[key] = 0;
+    }
     gateMetricsWindowStartMs = Date.now();
   }, 600_000);
   gateInterval.unref();
   logger.info('Gate funnel interval started (600s)', {
     paperProbeOnOptReject: PAPER_PROBE_ON_OPT_REJECT,
     paperProbeMinSizeUSD: PAPER_PROBE_MIN_SIZE_USD,
+  });
+
+  const memoryInterval = setInterval(() => {
+    pruneTokenPoolMap();
+    const mem = process.memoryUsage();
+    const tradingMetrics = paperGate.getRuntimeMetrics();
+    const gateTopBlockers = getTopGateBlockReasons(5);
+    logger.info('Runtime memory snapshot', {
+      rssMB: Number((mem.rss / 1024 / 1024).toFixed(1)),
+      heapUsedMB: Number((mem.heapUsed / 1024 / 1024).toFixed(1)),
+      heapTotalMB: Number((mem.heapTotal / 1024 / 1024).toFixed(1)),
+      externalMB: Number((mem.external / 1024 / 1024).toFixed(1)),
+      arrayBuffersMB: Number((((mem.arrayBuffers ?? 0) as number) / 1024 / 1024).toFixed(1)),
+      tokenPoolMapSize: tokenPoolMap.size,
+      tradeEntryCacheSize: tradeEntryCache.size,
+      lpStream: lpStream?.getTelemetry() ?? null,
+      walletStream: walletStream?.getTelemetry() ?? null,
+      wsErrorSuppression: getWsErrorSuppressionStats(),
+      gateHealth: {
+        blockedSignals: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore + gateMetrics.tradeBlockedNoPool + gateMetrics.tradeBlockedSafety + gateMetrics.tradeBlockedPortfolio,
+        lowScoreRejects: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore,
+        executionUnavailableRejects: gateBlockReasons.executionUnavailable,
+        blockReasonsWindow: gateBlockReasons,
+        topBlockers: gateTopBlockers,
+      },
+      tradingHealth: {
+        tradeCount: tradingMetrics.totalTrades,
+        wins: tradingMetrics.wins,
+        losses: tradingMetrics.losses,
+        breakeven: tradingMetrics.breakeven,
+        realizedMultipleAvg: Number(tradingMetrics.realizedMultipleAvg.toFixed(4)),
+        averageScoreAtEntry: Number(tradingMetrics.averageScoreAtEntry.toFixed(2)),
+      },
+    });
+  }, 300_000);
+  memoryInterval.unref();
+  logger.info('Memory snapshot interval started (300s)', {
+    tokenPoolTtlMinutes: Math.round(TOKEN_POOL_TTL_MS / 60_000),
+    tokenPoolMaxEntries: TOKEN_POOL_MAX_ENTRIES,
   });
 
   // ── Start cloud data sync ──────────────────────────────

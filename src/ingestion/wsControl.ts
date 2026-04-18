@@ -58,6 +58,7 @@ export function supportsLogsSubscribe(conn: Connection): boolean {
  * We patch Connection._wsOnError to rate-limit + downgrade the logging.
  */
 const wsErrorCounts = new Map<string, { count: number; lastLoggedAt: number }>();
+const wsErrorTotals = new Map<string, number>();
 const WS_ERROR_LOG_INTERVAL_MS = 30_000; // Log at most once per 30s per error type
 
 const _originalConsoleError = console.error;
@@ -111,6 +112,7 @@ export function installWsErrorSuppression(): void {
 
       if (entry) {
         entry.count++;
+        wsErrorTotals.set(errorKey, (wsErrorTotals.get(errorKey) ?? 0) + 1);
         // Only log periodically
         if (now - entry.lastLoggedAt >= WS_ERROR_LOG_INTERVAL_MS) {
           logger.warn(`WS errors suppressed`, {
@@ -123,6 +125,7 @@ export function installWsErrorSuppression(): void {
         }
       } else {
         // First occurrence — log it once then suppress
+        wsErrorTotals.set(errorKey, (wsErrorTotals.get(errorKey) ?? 0) + 1);
         wsErrorCounts.set(errorKey, { count: 0, lastLoggedAt: now });
         logger.warn(`WS error (will suppress repeats for 30s)`, { error: errorKey });
       }
@@ -134,6 +137,30 @@ export function installWsErrorSuppression(): void {
   };
 
   logger.info('[wsControl] WS error suppression installed');
+}
+
+export function getWsErrorSuppressionStats(): {
+  totalSuppressed: number;
+  unsubscribeWarnings: number;
+  byType: Record<string, number>;
+} {
+  const byType: Record<string, number> = {};
+  let totalSuppressed = 0;
+  let unsubscribeWarnings = 0;
+
+  for (const [key, count] of wsErrorTotals.entries()) {
+    byType[key] = count;
+    totalSuppressed += count;
+    if (key.toLowerCase().includes('unsubscribe')) {
+      unsubscribeWarnings += count;
+    }
+  }
+
+  return {
+    totalSuppressed,
+    unsubscribeWarnings,
+    byType,
+  };
 }
 
 

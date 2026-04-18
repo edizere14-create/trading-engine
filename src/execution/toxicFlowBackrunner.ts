@@ -84,14 +84,20 @@ export class ToxicFlowBackrunner {
   private totalSandwichesDetected = 0;
   private totalOpportunities = 0;
   private enabled = true;
+  private readonly onSwapDetected = (event: SwapEvent) => this.onSwap(event);
 
   constructor(connection: Connection) {
     this.connection = connection;
   }
 
   start(): void {
+    if (this.cleanupInterval) {
+      return;
+    }
+
+    this.enabled = true;
     // Listen to ALL swaps (not just smart wallets) — sandwich attacks come from any wallet
-    bus.on('swap:detected', (event) => this.onSwap(event));
+    bus.on('swap:detected', this.onSwapDetected);
 
     this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
 
@@ -107,6 +113,7 @@ export class ToxicFlowBackrunner {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
     }
+    bus.off('swap:detected', this.onSwapDetected);
     this.enabled = false;
   }
 
