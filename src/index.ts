@@ -55,6 +55,7 @@ import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
 import { HybridPowerPlay } from './execution/hybridPowerPlay';
 import { PoolPriceStream } from './ingestion/poolPriceStream';
 import { PositionPricePoller } from './ingestion/positionPricePoller';
+import { MigrationAccountStream } from './ingestion/migrationAccountStream';
 
 let lpStream: LPCreationStream | null = null;
 let walletStream: SmartWalletStream | null = null;
@@ -74,6 +75,7 @@ let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
 let poolPriceStream: PoolPriceStream | null = null;
 let positionPricePoller: PositionPricePoller | null = null;
+let migrationStream: MigrationAccountStream | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
 
@@ -1585,6 +1587,9 @@ async function boot(): Promise<void> {
           await new Promise((r) => setTimeout(r, 2_000));
           walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
           await walletStream.start();
+          await new Promise((r) => setTimeout(r, 2_000));
+          migrationStream = new MigrationAccountStream(cfg.connection, cfg.backupConnection);
+          await migrationStream.start();
           if (antifragileEngine) {
             antifragileEngine.heartbeat();
           }
@@ -1956,6 +1961,9 @@ async function boot(): Promise<void> {
   await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before wallet stream
   walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
   await walletStream.start();
+  await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before migration stream
+  migrationStream = new MigrationAccountStream(cfg.connection, cfg.backupConnection);
+  await migrationStream.start();
 
   // 8. Final status banner
   logger.info('════════════════════════════════════════════');
@@ -2079,6 +2087,7 @@ async function boot(): Promise<void> {
       tradeEntryCacheSize: tradeEntryCache.size,
       lpStream: lpStream?.getTelemetry() ?? null,
       walletStream: walletStream?.getTelemetry() ?? null,
+      migrationStream: migrationStream?.getTelemetry() ?? null,
       wsErrorSuppression: getWsErrorSuppressionStats(),
       gateHealth: {
         blockedSignals: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore + gateMetrics.tradeBlockedNoPool + gateMetrics.tradeBlockedSafety + gateMetrics.tradeBlockedPortfolio,
@@ -2171,6 +2180,7 @@ async function stopAllStreams(): Promise<void> {
     lpStream ? lpStream.stop() : Promise.resolve(),
     walletStream ? walletStream.stop() : Promise.resolve(),
     poolPriceStream ? poolPriceStream.stop() : Promise.resolve(),
+    migrationStream ? migrationStream.stop() : Promise.resolve(),
   ]);
 
   if (positionPricePoller) positionPricePoller.stop();
