@@ -67,6 +67,18 @@ export interface NewPoolEvent {
   source: 'HELIUS_WS' | 'RPC_LOGS' | 'DEXSCREENER';
 }
 
+// ── PUMPSWAP GRADUATION EVENT ─────────────────────────────
+
+export interface PumpSwapGraduationEvent {
+  signature: string;
+  slot: number;
+  tokenCA: string;
+  poolAddress: string;
+  deployer: string;
+  initialLiquiditySOL: number;
+  detectedAt: number;  // Date.now() at detection
+}
+
 // ── SWAP EVENT ─────────────────────────────────────────────
 
 export interface SwapEvent {

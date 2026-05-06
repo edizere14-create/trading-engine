@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import {
   NewPoolEvent,
+  PumpSwapGraduationEvent,
   SwapEvent,
   ClusterAlert,
   LiquiditySnapshot,
@@ -25,6 +26,7 @@ import type { DeployerProfile } from '../intelligence/deployerIntelligence';
 // Typed event map — no string event names anywhere in the codebase
 export interface EngineEvents {
   'pool:created':          NewPoolEvent;
+  'pool:graduated':        PumpSwapGraduationEvent;
   'swap:detected':         SwapEvent;
   'cluster:alert':         ClusterAlert;
   'liquidity:updated':     LiquiditySnapshot;

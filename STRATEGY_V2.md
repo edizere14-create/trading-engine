@@ -259,3 +259,9 @@ These findings inform v2 design and don't need to be rediscovered:
 - The signature-only dedup has a known sync-callback race: both confirmed and finalized callbacks pass an empty-map check before the first await suspends. TokenCA dedup catches the second one downstream.
 - RAYDIUM_V4 produces overwhelming dust pool noise (mean 0.062 SOL liquidity). Not worth subscribing to.
 - The `realizedMultiple: undefined` artifact in round 1 was caused by `entryPriceLamports: 0`, which produced 369/0 → Infinity → JSON null. Schema validators in v2 prevent this class of bug entirely.
+
+## v2 cleanup, post-build
+
+- [ ] Decide hybridPowerPlay disposition: disable per v2 non-goal, or repurpose to consume `pool:graduated`
+- [ ] Same for antifragileEngine, portfolioOptimizer
+- [ ] Audit which round-1 modules are actually wired vs orphaned

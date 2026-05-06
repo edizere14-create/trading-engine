@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main", "sniper-v2"]
+
+jobs:
+  test:
+    name: Jest tests (Node 20)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --forceExit --detectOpenHandles
+        env:
+          # Stub required env vars so config.load() doesn't throw during test import
+          HELIUS_API_KEY: test-key
+          PRIMARY_RPC: https://api.mainnet-beta.solana.com
+          BACKUP_RPC: https://api.mainnet-beta.solana.com
+          PAPER_MODE: "true"
+          LIVE_TRADING_ARMED: "false"
+          AUTONOMOUS_ONLY: "true"
+          INITIAL_CAPITAL_USD: "1000"
+          LOG_LEVEL: "error"
