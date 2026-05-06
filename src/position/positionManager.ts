@@ -149,6 +149,8 @@ export class PositionManager {
       lastPriceSOL: signal.entryPriceSOL,
       lastCheckedAt: new Date(),
       status: 'OPEN',
+      priceBasisInvalid: signal.entryPriceSOL === 0,
+      entryPriceBasis: signal.entryPriceSOL > 0 ? 'OPEN_PRICE' : undefined,
     };
 
     this.positions.set(signal.tokenCA, position);
@@ -181,6 +183,20 @@ export class PositionManager {
   updatePrice(tokenCA: string, currentPriceSOL: number): void {
     const position = this.positions.get(tokenCA);
     if (!position) return;
+
+    // Anchor entry price on first valid tick — do not evaluate exits on the anchoring tick.
+    if (position.entryPriceSOL === 0 && currentPriceSOL > 0) {
+      position.entryPriceSOL = currentPriceSOL;
+      position.peakPriceSOL  = currentPriceSOL;
+      position.lastPriceSOL  = currentPriceSOL;
+      position.entryPriceBasis  = 'FIRST_TICK';
+      position.priceBasisInvalid = false;
+      position.lastCheckedAt = new Date();
+      return;
+    }
+
+    // Never evaluate exits while entry is unanchored.
+    if (position.priceBasisInvalid || position.entryPriceSOL === 0) return;
 
     position.lastCheckedAt = new Date();
     position.lastPriceSOL = currentPriceSOL;

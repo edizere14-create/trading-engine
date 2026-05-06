@@ -18,7 +18,7 @@ export type EdgeName      =
   | 'AUTONOMOUS';
 
 export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
-export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT' | 'STALE_EXIT' | 'STOP_LOSS' | 'RAPID_DUMP_EXIT' | 'EARLY_STOP' | 'TRAILING_STOP' | 'ALL_TIERS_HIT' | 'EMERGENCY' | 'UNKNOWN';
+export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'TIME_EXIT' | 'STALE_EXIT' | 'STOP_LOSS' | 'RAPID_DUMP_EXIT' | 'EARLY_STOP' | 'TRAILING_STOP' | 'ALL_TIERS_HIT' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
 
@@ -35,6 +35,21 @@ export interface SignalVector {
   socialVelocity: number;       // 0–10: KOL + Telegram cross-confirmation
   totalScore: number;           // weighted sum — computed by signalAggregator
   confidence: number;           // 0–1: data freshness × source count
+}
+
+// ── V2 SNIPER TYPES ────────────────────────────────────────
+
+export type HoneypotClassification = 'CLEAN' | 'INDEX_LAG' | 'NOT_ROUTABLE' | 'UNCONFIRMED';
+
+export interface SafetyCheckTrace {
+  liquidity:            { passed: boolean; valueSOL: number };
+  mintAuthority:        { passed: boolean; revoked: boolean };
+  freezeAuthority:      { passed: boolean; revoked: boolean };
+  lpLock:               { passed: boolean; locked: boolean; lockDurationDays?: number };
+  holderConcentration:  { passed: boolean; topPct: number };
+  scammyName:           { passed: boolean };
+  deployerBlacklist:    { passed: boolean };
+  honeypot:             { passed: boolean; classification: HoneypotClassification; sellQuoteSlippagePct?: number };
 }
 
 // ── NEW POOL EVENT (from ingestion layer) ──────────────────
@@ -153,6 +168,13 @@ export interface TradeRecord {
   predictedWP: number;
   predictedEV: number;
   actualWP?: number;            // 1 if won, 0 if lost
+
+  // v2 sniper fields
+  schemaVersion?: 2;
+  strategy?: 'SNIPER' | 'AUTONOMOUS';
+  priceBasisInvalid?: boolean;
+  entryPriceBasis?: 'OPEN_PRICE' | 'FIRST_TICK';
+  safetyChecks?: SafetyCheckTrace;
 }
 
 // ── EXIT TIER ─────────────────────────────────────────────
@@ -263,6 +285,10 @@ export interface TradePosition {
   realizedPnLSOL?: number;
   realizedMultiple?: number;
   outcome?: 'WIN' | 'LOSS' | 'BREAKEVEN';
+
+  // v2 sniper fields
+  priceBasisInvalid?: boolean;
+  entryPriceBasis?: 'OPEN_PRICE' | 'FIRST_TICK';
 }
 
 export interface TakeProfitTier {
