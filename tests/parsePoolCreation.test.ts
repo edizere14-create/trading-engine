@@ -4,12 +4,13 @@
  * Uses the real migration transaction fetched from Solana mainnet:
  *   31V8YGSQUtjGTFvd4C6axU4AU7ujPAZGZQUr95nxkWo2XPvqvPJAqgEeT1K42ERYM4NVERhUUio9QYo5AjpiqmVF
  * Saved to tests/fixtures/pumpswap-migration-31V8YGSQ.json.
- * No live RPC dependency — fully self-contained.
+ * No live RPC dependency — Connection.getParsedTransaction is mocked with the fixture.
  */
 
 import path from 'path';
 import fs from 'fs';
-import { VersionedTransactionResponse } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { parsePoolCreation, WRAPPED_SOL } from '../src/ingestion/migrationAccountStream';
 
 // ── Fixture loader ─────────────────────────────────────────────────────────────
@@ -40,13 +41,13 @@ interface RawFixture {
 
 /**
  * Transform the raw JSON-RPC fixture into a shape that matches
- * VersionedTransactionResponse as accessed by parsePoolCreation.
+ * ParsedTransactionWithMeta as accessed by parsePoolCreation.
  *
  * parsePoolCreation accesses:
- *   tx.transaction.message.staticAccountKeys[n].toBase58()
+ *   tx.transaction.message.accountKeys[n].pubkey.toBase58()
  *   tx.meta.postTokenBalances[n].{mint, owner, uiTokenAmount.uiAmount}
  */
-function fixtureToMock(raw: RawFixture): VersionedTransactionResponse {
+function fixtureToMock(raw: RawFixture): object {
   const { result } = raw;
   return {
     slot: result.slot,
@@ -54,11 +55,13 @@ function fixtureToMock(raw: RawFixture): VersionedTransactionResponse {
     version: result.version,
     transaction: {
       message: {
-        staticAccountKeys: result.transaction.message.accountKeys.map((k) => ({
-          toBase58: () => k,
+        accountKeys: result.transaction.message.accountKeys.map((k) => ({
+          pubkey: { toBase58: () => k },
+          signer: false,
+          writable: false,
         })),
-      } as unknown,
-    } as unknown,
+      },
+    },
     meta: {
       err: result.meta.err,
       fee: result.meta.fee,
@@ -69,22 +72,26 @@ function fixtureToMock(raw: RawFixture): VersionedTransactionResponse {
       innerInstructions: [],
       logMessages: [],
       rewards: [],
-    } as unknown,
-  } as unknown as VersionedTransactionResponse;
+    },
+  };
+}
+
+function makeConnection(parsedTx: object | null): Connection {
+  return {
+    getParsedTransaction: jest.fn().mockResolvedValue(parsedTx),
+  } as unknown as Connection;
 }
 
 // ── Constants derived from real fixture ───────────────────────────────────────
 
-const FIXTURE_SIG     = '31V8YGSQUtjGTFvd4C6axU4AU7ujPAZGZQUr95nxkWo2XPvqvPJAqgEeT1K42ERYM4NVERhUUio9QYo5AjpiqmVF';
-const FIXTURE_SLOT    = 416647963;
-const EXPECTED_TOKEN  = '6Aixvhgirbn8rHmAtFnwHNBqgxtenKDz8ycvHeQepump';
-const EXPECTED_POOL   = '7ugTEN5mq5kGURByfXrK1AqTAJ76wQMauggskosVzEoK';
-const EXPECTED_SIGNER = 'niggerd597QYedtvjQDVHZTCCGyJrwHNm2i49dkm5zS';
-const EXPECTED_LIQ    = 98.956567797;
+const FIXTURE_SIG    = '31V8YGSQUtjGTFvd4C6axU4AU7ujPAZGZQUr95nxkWo2XPvqvPJAqgEeT1K42ERYM4NVERhUUio9QYo5AjpiqmVF';
+const EXPECTED_TOKEN = '6Aixvhgirbn8rHmAtFnwHNBqgxtenKDz8ycvHeQepump';
+const EXPECTED_POOL  = '7ugTEN5mq5kGURByfXrK1AqTAJ76wQMauggskosVzEoK';
+const EXPECTED_LIQ   = 98.956567797;
 
 // ── Test setup ────────────────────────────────────────────────────────────────
 
-let mockTx: VersionedTransactionResponse;
+let mockTx: object;
 
 beforeAll(() => {
   const fixturePath = path.resolve(__dirname, 'fixtures', 'pumpswap-migration-31V8YGSQ.json');
@@ -95,57 +102,64 @@ beforeAll(() => {
 // ── Real-fixture tests ────────────────────────────────────────────────────────
 
 describe('parsePoolCreation — real fixture (31V8YGSQ)', () => {
-  it('returns a non-null result', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT);
-    expect(result).not.toBeNull();
+  it('returns a result (does not throw)', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
+    expect(result).toBeDefined();
   });
 
-  it('extracts the correct tokenCA', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
+  it('extracts the correct tokenCA', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
     expect(result.tokenCA).toBe(EXPECTED_TOKEN);
   });
 
-  it('extracts the correct poolAddress (non-fee-payer owner with both vaults)', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
+  it('extracts the correct poolAddress (non-fee-payer owner with both vaults)', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
     expect(result.poolAddress).toBe(EXPECTED_POOL);
   });
 
-  it('extracts deployer as fee-payer (migration signer, not original creator)', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
-    expect(result.deployer).toBe(EXPECTED_SIGNER);
-  });
-
-  it('extracts initialLiquiditySOL from wSOL postTokenBalance (not fee-payer delta)', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
+  it('extracts initialLiquiditySOL from wSOL postTokenBalance', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
     expect(result.initialLiquiditySOL).toBeCloseTo(EXPECTED_LIQ, 4);
   });
 
-  it('preserves signature and slot passthrough', () => {
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
-    expect(result.signature).toBe(FIXTURE_SIG);
-    expect(result.slot).toBe(FIXTURE_SLOT);
+  it('sets deployer to UNKNOWN with deployerResolved=false (bonding-curve lookup deferred)', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
+    expect(result.deployer).toBe('UNKNOWN');
+    expect(result.deployerResolved).toBe(false);
   });
 
-  it('detectedAt is a recent timestamp (Date.now() at parse time)', () => {
-    const before = Date.now();
-    const result = parsePoolCreation(mockTx, FIXTURE_SIG, FIXTURE_SLOT)!;
-    const after = Date.now();
-    expect(result.detectedAt).toBeGreaterThanOrEqual(before);
-    expect(result.detectedAt).toBeLessThanOrEqual(after);
+  it('derives wsolVault as ATA of WSOL owned by pool PDA', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
+    const expected = getAssociatedTokenAddressSync(
+      new PublicKey(WRAPPED_SOL),
+      new PublicKey(EXPECTED_POOL),
+      true, // pool PDA is off-curve
+    ).toBase58();
+    expect(result.wsolVault).toBe(expected);
+  });
+
+  it('parseLatencyMs is a non-negative number', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
+    expect(typeof result.parseLatencyMs).toBe('number');
+    expect(result.parseLatencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('preserves signature passthrough', async () => {
+    const result = await parsePoolCreation(makeConnection(mockTx), FIXTURE_SIG);
+    expect(result.signature).toBe(FIXTURE_SIG);
   });
 });
 
 // ── Synthetic edge-case tests ─────────────────────────────────────────────────
 
 describe('parsePoolCreation — edge cases', () => {
-  const SIG  = 'synthetic-sig-001';
-  const SLOT = 999_999;
+  const SIG      = 'synthetic-sig-001';
+  // Valid 32-byte base58 Solana public keys (required by PublicKey constructor)
+  const FEE_PAYER = 'CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8';
+  const POOL      = '8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR';
+  const TOKEN     = 'GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq';
 
-  const FEE_PAYER = 'FeePayer11111111111111111111111111111111111';
-  const POOL      = 'PoolAddress1111111111111111111111111111111';
-  const TOKEN     = 'TokenMint1111111111111111111111111111111111';
-
-  function makeTx(
+  function makeParsedTx(
     postTokenBalances: Array<{
       accountIndex: number;
       mint: string;
@@ -153,16 +167,16 @@ describe('parsePoolCreation — edge cases', () => {
       uiTokenAmount: { uiAmount: number | null; amount: string; decimals: number };
     }>,
     accountKey0 = FEE_PAYER
-  ): VersionedTransactionResponse {
+  ): object {
     return {
-      slot: SLOT,
+      slot: 999_999,
       blockTime: null,
       version: 0,
       transaction: {
         message: {
-          staticAccountKeys: [{ toBase58: () => accountKey0 }],
-        } as unknown,
-      } as unknown,
+          accountKeys: [{ pubkey: { toBase58: () => accountKey0 }, signer: true, writable: true }],
+        },
+      },
       meta: {
         err: null,
         fee: 5000,
@@ -173,71 +187,75 @@ describe('parsePoolCreation — edge cases', () => {
         innerInstructions: [],
         logMessages: [],
         rewards: [],
-      } as unknown,
-    } as unknown as VersionedTransactionResponse;
+      },
+    };
   }
 
-  it('returns null when postTokenBalances is empty (no mints at all)', () => {
-    const tx = makeTx([]);
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+  it('throws when getParsedTransaction returns null', async () => {
+    await expect(parsePoolCreation(makeConnection(null), SIG)).rejects.toThrow(
+      'tx not found or incomplete'
+    );
   });
 
-  it('returns null when there is no non-SOL mint', () => {
-    const tx = makeTx([
+  it('throws when postTokenBalances is empty (no mints at all)', async () => {
+    const tx = makeParsedTx([]);
+    await expect(parsePoolCreation(makeConnection(tx), SIG)).rejects.toThrow(
+      'no non-SOL mint'
+    );
+  });
+
+  it('throws when there is no non-SOL mint', async () => {
+    const tx = makeParsedTx([
       { accountIndex: 0, mint: WRAPPED_SOL, owner: POOL, uiTokenAmount: { uiAmount: 10, amount: '', decimals: 9 } },
     ]);
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+    await expect(parsePoolCreation(makeConnection(tx), SIG)).rejects.toThrow(
+      'no non-SOL mint'
+    );
   });
 
-  it('returns null when there are multiple distinct non-SOL mints (ambiguous)', () => {
-    const tx = makeTx([
+  it('throws when there are multiple distinct non-SOL mints (ambiguous)', async () => {
+    const tx = makeParsedTx([
       { accountIndex: 0, mint: 'TokenMintAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', owner: POOL, uiTokenAmount: { uiAmount: 1000, amount: '', decimals: 6 } },
       { accountIndex: 1, mint: 'TokenMintBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', owner: POOL, uiTokenAmount: { uiAmount: 2000, amount: '', decimals: 6 } },
     ]);
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+    await expect(parsePoolCreation(makeConnection(tx), SIG)).rejects.toThrow(
+      'multiple non-SOL mints'
+    );
   });
 
-  it('returns null when the only wSOL entry is owned by the fee-payer (no pool candidate)', () => {
-    // fee-payer has both, but no other owner does
-    const tx = makeTx([
+  it('throws when the only wSOL entry is owned by the fee-payer (no pool candidate)', async () => {
+    const tx = makeParsedTx([
       { accountIndex: 0, mint: TOKEN,       owner: FEE_PAYER, uiTokenAmount: { uiAmount: 1000, amount: '', decimals: 6 } },
       { accountIndex: 1, mint: WRAPPED_SOL, owner: FEE_PAYER, uiTokenAmount: { uiAmount: 50,   amount: '', decimals: 9 } },
     ]);
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+    await expect(parsePoolCreation(makeConnection(tx), SIG)).rejects.toThrow(
+      'no pool candidate'
+    );
   });
 
-  it('returns null when the pool has a token vault but no wSOL vault', () => {
-    const tx = makeTx([
+  it('throws when the pool has a token vault but no wSOL vault', async () => {
+    const tx = makeParsedTx([
       { accountIndex: 0, mint: TOKEN,       owner: FEE_PAYER, uiTokenAmount: { uiAmount: 100, amount: '', decimals: 6 } },
       { accountIndex: 1, mint: WRAPPED_SOL, owner: FEE_PAYER, uiTokenAmount: { uiAmount: 5,   amount: '', decimals: 9 } },
       { accountIndex: 2, mint: TOKEN,       owner: POOL,      uiTokenAmount: { uiAmount: 500, amount: '', decimals: 6 } },
-      // No wSOL entry owned by POOL
     ]);
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+    await expect(parsePoolCreation(makeConnection(tx), SIG)).rejects.toThrow(
+      'no pool candidate'
+    );
   });
 
-  it('correctly identifies pool when fee-payer also holds both vaults', () => {
-    // The pool has MORE SOL than the fee-payer → tiebreaker selects pool
-    const tx = makeTx([
+  it('correctly identifies pool when fee-payer also holds both vaults', async () => {
+    const tx = makeParsedTx([
       { accountIndex: 0, mint: TOKEN,       owner: FEE_PAYER, uiTokenAmount: { uiAmount: 100,  amount: '', decimals: 6 } },
       { accountIndex: 1, mint: WRAPPED_SOL, owner: FEE_PAYER, uiTokenAmount: { uiAmount: 5,    amount: '', decimals: 9 } },
       { accountIndex: 2, mint: TOKEN,       owner: POOL,      uiTokenAmount: { uiAmount: 5000, amount: '', decimals: 6 } },
       { accountIndex: 3, mint: WRAPPED_SOL, owner: POOL,      uiTokenAmount: { uiAmount: 99,   amount: '', decimals: 9 } },
     ]);
-    const result = parsePoolCreation(tx, SIG, SLOT)!;
-    expect(result).not.toBeNull();
+    const result = await parsePoolCreation(makeConnection(tx), SIG);
     expect(result.poolAddress).toBe(POOL);
     expect(result.initialLiquiditySOL).toBeCloseTo(99, 4);
     expect(result.tokenCA).toBe(TOKEN);
-    expect(result.deployer).toBe(FEE_PAYER);
-  });
-
-  it('returns null when tx.meta is null', () => {
-    const tx = {
-      slot: SLOT, blockTime: null, version: 0,
-      transaction: { message: { staticAccountKeys: [{ toBase58: () => FEE_PAYER }] } as unknown } as unknown,
-      meta: null,
-    } as unknown as VersionedTransactionResponse;
-    expect(parsePoolCreation(tx, SIG, SLOT)).toBeNull();
+    expect(result.deployer).toBe('UNKNOWN');
+    expect(result.deployerResolved).toBe(false);
   });
 });

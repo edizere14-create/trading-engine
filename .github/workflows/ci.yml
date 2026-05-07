@@ -20,9 +20,7 @@ jobs:
           node-version: "22"
 
       - name: Install dependencies
-        # --ignore-scripts skips native addon compilation (bigint-buffer, utf-8-validate)
-        # which is not needed for Jest unit tests and avoids node-gyp failures
-        run: npm install --ignore-scripts --no-audit --no-fund
+        run: npm ci
 
       - name: Run tests
         run: npm test -- --forceExit --detectOpenHandles
