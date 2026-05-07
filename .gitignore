@@ -46,3 +46,6 @@ sqljs-files.txt
 sqljs-pkg.txt
 data/sentinel_events.json
 data/backups/
+data/wallets.json
+data/paperTrades*.json
+data/soak/

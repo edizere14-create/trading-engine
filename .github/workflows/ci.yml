@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Jest tests (Node 20)
+    name: Jest tests (Node 22)
     runs-on: ubuntu-latest
 
     steps:
@@ -17,11 +17,12 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: "npm"
+          node-version: "22"
 
       - name: Install dependencies
-        run: npm ci
+        # --ignore-scripts skips native addon compilation (bigint-buffer, utf-8-validate)
+        # which is not needed for Jest unit tests and avoids node-gyp failures
+        run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Run tests
         run: npm test -- --forceExit --detectOpenHandles
