@@ -22,7 +22,7 @@ const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 
 function makeMockTx(
   overrides?: Partial<{
-    postTokenBalances: VersionedTransactionResponse['meta']['postTokenBalances'];
+    postTokenBalances: NonNullable<VersionedTransactionResponse['meta']>['postTokenBalances'];
     accountKey0: string;
   }>
 ): VersionedTransactionResponse {
