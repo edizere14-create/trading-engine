@@ -25,20 +25,17 @@ describe('checkScammyName', () => {
   });
 
   describe('scam patterns reject', () => {
-    it('rejects "rug" at start of word', () => {
-      expect(checkScammyName('RUGTOKEN').passed).toBe(false);
+    it('rejects standalone "rug" as a word', () => {
       expect(checkScammyName('rug pull coin').passed).toBe(false);
       expect(checkScammyName('THE RUG').passed).toBe(false);
     });
 
-    it('rejects "scam" at start of word', () => {
-      expect(checkScammyName('SCAMCOIN').passed).toBe(false);
+    it('rejects standalone "scam" as a word', () => {
       expect(checkScammyName('SCAM TOKEN').passed).toBe(false);
       expect(checkScammyName('Scam Pepe').passed).toBe(false);
     });
 
-    it('rejects "fake" at start of word', () => {
-      expect(checkScammyName('FAKEDOGE').passed).toBe(false);
+    it('rejects standalone "fake" as a word', () => {
       expect(checkScammyName('fake DOGE').passed).toBe(false);
       expect(checkScammyName('Fake Pepe').passed).toBe(false);
     });
@@ -63,16 +60,16 @@ describe('checkScammyName', () => {
   });
 
   describe('case insensitivity', () => {
-    it('matches all casings of "rug"', () => {
-      expect(checkScammyName('rugcoin').passed).toBe(false);
-      expect(checkScammyName('RUGCOIN').passed).toBe(false);
-      expect(checkScammyName('RugCoin').passed).toBe(false);
+    it('matches all casings of standalone "rug"', () => {
+      expect(checkScammyName('rug pull').passed).toBe(false);
+      expect(checkScammyName('RUG PULL').passed).toBe(false);
+      expect(checkScammyName('Rug Pull').passed).toBe(false);
     });
   });
 
   describe('matchedPattern returned on rejection', () => {
     it('returns matched pattern source for "rug"', () => {
-      const result = checkScammyName('RUGCOIN');
+      const result = checkScammyName('rug pull');
       expect(result.passed).toBe(false);
       expect(result.matchedPattern).toBeDefined();
       expect(result.matchedPattern).toContain('rug');
@@ -82,6 +79,21 @@ describe('checkScammyName', () => {
       const result = checkScammyName('PEPE');
       expect(result.passed).toBe(true);
       expect(result.matchedPattern).toBeUndefined();
+    });
+  });
+
+  describe('known limitations: compound names slip through', () => {
+    // Word boundaries on both sides mean "RUGCOIN" / "SCAMCOIN" / "FAKEDOGE" don't match.
+    // Trade-off: we avoid false positives like "Scampi" / "Faker.js" / "Drugstore" but
+    // also miss obvious compound scams. Soak data will tell us if this matters; other
+    // safety checks (holder concentration, LP lock, mint/freeze authority) catch most
+    // real scams independent of name.
+    it('does NOT reject compound forms like RUGCOIN, SCAMCOIN, FAKEDOGE', () => {
+      expect(checkScammyName('RUGCOIN').passed).toBe(true);
+      expect(checkScammyName('SCAMCOIN').passed).toBe(true);
+      expect(checkScammyName('FAKEDOGE').passed).toBe(true);
+      expect(checkScammyName('RUGTOKEN').passed).toBe(true);
+      expect(checkScammyName('rugcoin').passed).toBe(true);
     });
   });
 });

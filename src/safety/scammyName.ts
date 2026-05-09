@@ -11,9 +11,9 @@
  */
 
 const SCAM_PATTERNS: RegExp[] = [
-  /\brug/i,        // matches "RUGTOKEN", "rug pull", "the rug" — not "Frugal", "Drugstore"
-  /\bscam/i,       // matches "SCAMCOIN", "scam token" — not "Scampi"
-  /\bfake/i,       // matches "FAKEDOGE", "fake pepe" — not "Faker.js"
+  /\brug\b/i,      // matches "rug", "rug pull", "the rug" — not "Drugstore", "Frugal", "RUGCOIN" (compound names slip through; soak data tunes)
+  /\bscam\b/i,     // matches "scam", "scam token" — not "Scampi", "SCAMCOIN" (compound names slip through)
+  /\bfake\b/i,     // matches "fake", "fake DOGE" — not "Faker.js", "FAKEDOGE" (compound names slip through)
   /honeypot/i,     // no boundary needed — no legitimate token contains this substring
   /\btest\s*token/i,
   /do\s*not\s*buy/i,
