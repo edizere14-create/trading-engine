@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    name: Jest tests (Node 22)
+    name: Jest tests (Node 24)
     runs-on: ubuntu-latest
 
     steps:
@@ -17,7 +17,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Install dependencies
         run: npm ci
