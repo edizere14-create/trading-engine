@@ -144,7 +144,12 @@ export class TokenSafetyChecker {
     let rugScore = 0;
     let topHolderPct = 0;
     let topHolderCheckUnavailable = false;
-    const lpLocked = false;
+    // PumpSwap migrations create pools where LP is held by the program account
+    // itself, not transferable by users. For v2 (PumpSwap-only scope), all
+    // graduated pools are locked-by-construction. Revisit if the engine ever
+    // subscribes to additional DEX programs (Raydium, Meteora, Orca CPMM)
+    // where LP locking varies per-pool.
+    const lpLocked = true;
     let mintAuthRevoked = false;
     let freezeAuthRevoked = false;
     const isHoneypot = false;
