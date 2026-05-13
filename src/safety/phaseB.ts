@@ -41,7 +41,7 @@ export type PhaseBFailedCheck =
   | 'honeypot'
   | 'deployerBlacklist';
 
-export type PhaseBTrace = Pick
+export type PhaseBTrace = Pick<
   SafetyCheckTrace,
   'lpLock' | 'mintAuthority' | 'freezeAuthority' | 'holderConcentration' | 'honeypot' | 'deployerBlacklist'
 >;
