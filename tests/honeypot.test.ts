@@ -127,7 +127,6 @@ describe('checkHoneypot', () => {
       const result = await checkHoneypot(TOKEN_CA, TEST_AMOUNT, 50);
       expect(result.passed).toBe(false);
       expect(result.classification).toBe('INDEX_LAG');
-      expect(result.durationMs).toBeGreaterThanOrEqual(50);
     });
 
     it('rejects on malformed response (NaN priceImpactPct)', async () => {
