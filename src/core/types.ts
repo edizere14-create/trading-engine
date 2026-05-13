@@ -46,6 +46,7 @@ export interface SafetyCheckTrace {
   mintAuthority:        { passed: boolean; revoked: boolean };
   freezeAuthority:      { passed: boolean; revoked: boolean };
   lpLock:               { passed: boolean; locked: boolean; lockDurationDays?: number };
+  /** Top holder share is tracked as a percentage (0-100), not a fraction. */
   holderConcentration:  { passed: boolean; topPct: number };
   scammyName:           { passed: boolean };
   deployerBlacklist:    { passed: boolean };
@@ -315,7 +316,9 @@ export interface TokenSafetyResult {
   isSafe: boolean;
   reasons: string[];
   rugScore: number;             // 0–10 (10 = definitely rug)
-  topHolderPct: number;
+  topHolderPct: number;         // fraction (0-1), not percentage
+  /** Atomic per-check signal: true if topHolderPct <= 0.30 (matches the 'high' band threshold). */
+  holderConcentrationOk: boolean;
   lpLocked: boolean;
   mintAuthRevoked: boolean;
   freezeAuthRevoked: boolean;

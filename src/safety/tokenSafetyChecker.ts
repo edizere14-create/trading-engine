@@ -101,6 +101,7 @@ export class TokenSafetyChecker {
         reasons: [],
         rugScore: 5,
         topHolderPct: 0,
+        holderConcentrationOk: true,
         lpLocked: false,
         mintAuthRevoked: false,
         freezeAuthRevoked: false,
@@ -124,6 +125,7 @@ export class TokenSafetyChecker {
       reasons: ['SAFETY_CHECK_FAILED — RPC error, all retries exhausted'],
       rugScore: 10,
       topHolderPct: 0,
+      holderConcentrationOk: false,
       lpLocked: false,
       mintAuthRevoked: false,
       freezeAuthRevoked: false,
@@ -188,6 +190,7 @@ export class TokenSafetyChecker {
       });
     }
 
+    const holderConcentrationOk = topHolderPct <= 0.30;
     const isSafe = rugScore <= 5 && !isHoneypot;
 
     if (topHolderCheckUnavailable) {
@@ -200,6 +203,7 @@ export class TokenSafetyChecker {
       reasons,
       rugScore: Math.min(10, rugScore),
       topHolderPct,
+      holderConcentrationOk,
       lpLocked,
       mintAuthRevoked,
       freezeAuthRevoked,
