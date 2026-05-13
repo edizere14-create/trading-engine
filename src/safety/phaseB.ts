@@ -107,10 +107,19 @@ export async function runPhaseB(
   const ts: TokenSafetyResult | null = tokenSafetyTimedOut ? null : tokenSafetyResult;
 
   const trace: PhaseBTrace = {
-    lpLock:               { passed: ts?.lpLocked ?? false },
-    mintAuthority:        { passed: ts?.mintAuthRevoked ?? false },
-    freezeAuthority:      { passed: ts?.freezeAuthRevoked ?? false },
-    holderConcentration:  {
+    lpLock: {
+      passed: ts?.lpLocked ?? false,
+      locked: ts?.lpLocked ?? false,
+    },
+    mintAuthority: {
+      passed: ts?.mintAuthRevoked ?? false,
+      revoked: ts?.mintAuthRevoked ?? false,
+    },
+    freezeAuthority: {
+      passed: ts?.freezeAuthRevoked ?? false,
+      revoked: ts?.freezeAuthRevoked ?? false,
+    },
+    holderConcentration: {
       passed: ts?.holderConcentrationOk ?? false,
       topPct: (ts?.topHolderPct ?? 0) * 100,
     },
@@ -119,7 +128,9 @@ export async function runPhaseB(
       classification: honeypotResult.classification,
       sellQuoteSlippagePct: honeypotResult.sellQuoteSlippagePct,
     },
-    deployerBlacklist:    { passed: deployerResult.passed },
+    deployerBlacklist: {
+      passed: deployerResult.passed,
+    },
   };
 
   // failedCheck resolution: declared order.
