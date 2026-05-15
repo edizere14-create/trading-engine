@@ -11,6 +11,7 @@
     "start": "node dist/src/server.js",
     "start:engine": "node dist/src/index.js",
     "test": "jest --forceExit --detectOpenHandles",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "journal:query": "ts-node src/journal/journalQuery.ts",
     "factors:report": "ts-node src/factors/factorReport.ts",
     "replay:run": "ts-node src/replay/replaySimulator.ts",
