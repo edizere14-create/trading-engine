@@ -1,7 +1,4 @@
-import { TokenMetadataResolver } from '../src/safety/tokenMetadataResolver';
-import type { createHelius } from 'helius-sdk';
-
-type HeliusClient = ReturnType<typeof createHelius>;
+import { TokenMetadataResolver, type HeliusClient } from '../src/safety/tokenMetadataResolver';
 
 function makeMockHelius(getAssetImpl: jest.Mock): HeliusClient {
   return { getAsset: getAssetImpl } as unknown as HeliusClient;

@@ -1,7 +1,10 @@
-import type { createHelius } from 'helius-sdk';
 import { logger } from '../core/logger';
 
-type HeliusClient = ReturnType<typeof createHelius>;
+export type HeliusClient = {
+  getAsset: (args: { id: string }) => Promise<{
+    content?: { metadata: { name: string } };
+  }>;
+};
 
 interface CachedName {
   name: string | null;  // null = resolved, no metadata exists
