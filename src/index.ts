@@ -38,6 +38,7 @@ import * as fs from 'fs';
 // ── Trade infrastructure ──────────────────────────────────
 import { PositionManager } from './position/positionManager';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
+import { GraduationHandler } from './safety/graduationHandler';   // ← add
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
 import { OnlineLearner } from './ml/onlineLearner';
@@ -76,6 +77,7 @@ let hybridPowerPlay: HybridPowerPlay | null = null;
 let poolPriceStream: PoolPriceStream | null = null;
 let positionPricePoller: PositionPricePoller | null = null;
 let migrationStream: MigrationAccountStream | null = null;
+let graduationHandler: GraduationHandler | null = null;
 let journal: TradeJournal | null = null;
 let isShuttingDown = false;
 
@@ -710,6 +712,10 @@ async function boot(): Promise<void> {
   await hybridPowerPlay.start();
   logger.info('Hybrid Power Play started');
 
+  // 5p. Graduation handler — bridges pool:graduated -> trade:signal via safety pipeline
+  graduationHandler = new GraduationHandler(tokenSafety, antifragileEngine ?? undefined);
+  logger.info('Graduation handler initialized');
+
   // 6. Wire event bus listeners
 
   bus.on('pool:created', async (event) => {
@@ -1317,9 +1323,9 @@ async function boot(): Promise<void> {
       void telegram.send(
         `[LIVE] AUTONOMOUS EXECUTED\n` +
         `Token: ${signal.tokenCA}\n` +
-        `Size: ${amountSOL.toFixed(4)} SOL\n` +
-        `Fill Ratio: ${(result.fillRatio ?? 0).toFixed(3)}\n` +
-        `Tx: ${result.txSignature ?? 'n/a'}`
+        `Size: ${amountSOL.toFixed(4)} SOL ($${amountSOL.toFixed(2)})\n` +
+        `Max Hold: ${Math.round(amountSOL * 1000 / 1e9)}s\n` +
+        `Stop: -${(amountSOL * 100).toFixed(1)}%`
       );
     }
 
@@ -1463,7 +1469,7 @@ async function boot(): Promise<void> {
       id: trade.id,
       mode: trade.mode,
       tokenCA: trade.tokenCA,
-      ticker: trade.ticker,
+      ticker: trade.tokenCA.slice(0, 6) + '...',
       chain: 'SOLANA',
       poolAddress: trade.poolAddress,
       entryTimestamp: trade.entryTimestamp,
@@ -1964,6 +1970,7 @@ async function boot(): Promise<void> {
   await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before migration stream
   migrationStream = new MigrationAccountStream(cfg.connection, cfg.backupConnection);
   await migrationStream.start();
+  graduationHandler!.start();   // ← add
 
   // 8. Final status banner
   logger.info('════════════════════════════════════════════');
@@ -2173,6 +2180,7 @@ async function stopAllStreams(): Promise<void> {
     smartMoneyTracker ? Promise.resolve(smartMoneyTracker.stop()) : Promise.resolve(),
     toxicFlowBackrunner ? Promise.resolve(toxicFlowBackrunner.stop()) : Promise.resolve(),
     hybridPowerPlay ? Promise.resolve(hybridPowerPlay.stop()) : Promise.resolve(),
+    graduationHandler ? Promise.resolve(graduationHandler.stop()) : Promise.resolve(),   // ← add
   ]);
 
   // ── Phase 5: Close connections last ───────────────────
