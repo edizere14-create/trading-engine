@@ -34,6 +34,7 @@ import {
   TradeSignal,
 } from '../core/types';
 import { TokenSafetyChecker } from './tokenSafetyChecker';
+import { TokenMetadataResolver } from './tokenMetadataResolver';
 import { AntifragileEngine } from '../antifragile/antifragileEngine';
 import { runSafetyPipeline, SafetyPipelineResult } from './orchestrator';
 
@@ -43,6 +44,7 @@ export class GraduationHandler {
   constructor(
     private tokenSafetyChecker: TokenSafetyChecker,
     private antifragile?: AntifragileEngine,
+    private metadataResolver?: TokenMetadataResolver,
   ) {}
 
   start(): void {
@@ -70,10 +72,25 @@ export class GraduationHandler {
    */
   async handle(event: PumpSwapGraduationEvent): Promise<void> {
     try {
+      // Pre-resolve token name for Phase A scammyName check.
+      // resolveName returns string | null | undefined; we coerce null
+      // to undefined since the pipeline signature is string | undefined,
+      // and both collapse to "scammyName auto-passes" downstream.
+      const resolvedName = this.metadataResolver
+        ? await this.metadataResolver.resolveName(event.tokenCA)
+        : undefined;
+      const tokenName = resolvedName ?? undefined;
+
+      logger.debug('Graduation token name resolved', {
+        mint: event.tokenCA,
+        resolvedName,
+        hasResolver: this.metadataResolver !== undefined,
+      });
+
       const result = await runSafetyPipeline(
         event,
         this.tokenSafetyChecker,
-        undefined, // tokenName: v2 baseline, name resolution deferred
+        tokenName,
         this.antifragile,
       );
 

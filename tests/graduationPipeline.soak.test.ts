@@ -7,6 +7,7 @@ import {
   TokenSafetyResult,
 } from '../src/core/types';
 import { TokenSafetyChecker } from '../src/safety/tokenSafetyChecker';
+import { TokenMetadataResolver } from '../src/safety/tokenMetadataResolver';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -69,11 +70,13 @@ const SCENARIOS = {
   belowEdge: { tokenCA: 'belowedge', initialLiquiditySOL: 2.99 }, // FAIL: just below
   honeypot:  { tokenCA: 'honeypot1', initialLiquiditySOL: 50 }, // FAIL: Jupiter returns UNCONFIRMED
   mintFail:  { tokenCA: 'mintfail1', initialLiquiditySOL: 99 }, // FAIL: mintAuth not revoked
+  scammyName: { tokenCA: 'honeypotname1', initialLiquiditySOL: 99 }, // FAIL: name matches scam pattern
 };
 
 describe('graduation pipeline soak (mocked external deps)', () => {
   let handler: GraduationHandler;
   let mockTokenSafetyChecker: TokenSafetyChecker;
+  let mockMetadataResolver: TokenMetadataResolver;
   let tradeSignals: TradeSignal[];
   let blockedEvents: Array<{ tokenCA: string; reasons: string[] }>;
   let onTradeSignal: (s: TradeSignal) => void;
@@ -97,7 +100,14 @@ describe('graduation pipeline soak (mocked external deps)', () => {
     // Default honeypot mock: clean response.
     mockedAxios.get.mockResolvedValue(makeAxiosResponse('5'));
 
-    handler = new GraduationHandler(mockTokenSafetyChecker);
+    // Default resolver returns null (no metadata) so existing scenarios
+    // continue to auto-pass scammyName. Tests that need a specific name
+    // override this with mockResolvedValueOnce.
+    mockMetadataResolver = {
+      resolveName: jest.fn().mockResolvedValue(null),
+    } as unknown as TokenMetadataResolver;
+
+    handler = new GraduationHandler(mockTokenSafetyChecker, undefined, mockMetadataResolver);
   });
 
   afterEach(() => {
@@ -159,6 +169,19 @@ describe('graduation pipeline soak (mocked external deps)', () => {
     expect(tradeSignals).toHaveLength(0);
     expect(blockedEvents).toHaveLength(1);
     expect(blockedEvents[0].reasons[0]).toBe('MINT_AUTHORITY_ACTIVE — deployer can inflate supply');
+  });
+
+  it('Phase A scammyName fail -> SCAMMY_NAME reason', async () => {
+    // Override default null resolution: this token has a scammy name
+    (mockMetadataResolver.resolveName as jest.Mock).mockResolvedValueOnce(
+      'honeypot coin'
+    );
+
+    await handler.handle(makeEvent(SCENARIOS.scammyName));
+
+    expect(tradeSignals).toHaveLength(0);
+    expect(blockedEvents).toHaveLength(1);
+    expect(blockedEvents[0].reasons[0]).toContain('SCAMMY_NAME');
   });
 
   it('full mixed batch: 7 pass, 3 fail with correct attribution', async () => {

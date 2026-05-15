@@ -3,6 +3,7 @@ import { runSafetyPipeline } from '../src/safety/orchestrator';
 import { bus } from '../src/core/eventBus';
 import { PumpSwapGraduationEvent, TradeSignal } from '../src/core/types';
 import { TokenSafetyChecker } from '../src/safety/tokenSafetyChecker';
+import { TokenMetadataResolver } from '../src/safety/tokenMetadataResolver';
 
 jest.mock('../src/safety/orchestrator');
 const mockedRunSafetyPipeline = runSafetyPipeline as jest.MockedFunction<typeof runSafetyPipeline>;
@@ -168,6 +169,72 @@ describe('GraduationHandler', () => {
       await handler.handle(baseEvent);
 
       expect(blockedEvents[0].reasons[0]).toContain('SCAMMY_NAME');
+    });
+  });
+
+  describe('token name resolution', () => {
+    it('passes resolved name to pipeline when resolver is provided', async () => {
+      const mockResolver = {
+        resolveName: jest.fn().mockResolvedValue('Real Token Name'),
+      } as unknown as TokenMetadataResolver;
+      mockedRunSafetyPipeline.mockResolvedValueOnce({
+        passed: true,
+        phaseA: { passed: true, trace: {}, durationMs: 1 },
+        trace: {},
+        durationMs: 10,
+      });
+      const handler = new GraduationHandler(mockTokenSafetyChecker, undefined, mockResolver);
+
+      await handler.handle(baseEvent);
+
+      expect(mockResolver.resolveName).toHaveBeenCalledWith(baseEvent.tokenCA);
+      expect(mockedRunSafetyPipeline).toHaveBeenCalledWith(
+        baseEvent,
+        mockTokenSafetyChecker,
+        'Real Token Name',
+        undefined,
+      );
+    });
+
+    it('passes undefined to pipeline when resolver returns null', async () => {
+      const mockResolver = {
+        resolveName: jest.fn().mockResolvedValue(null),
+      } as unknown as TokenMetadataResolver;
+      mockedRunSafetyPipeline.mockResolvedValueOnce({
+        passed: true,
+        phaseA: { passed: true, trace: {}, durationMs: 1 },
+        trace: {},
+        durationMs: 10,
+      });
+      const handler = new GraduationHandler(mockTokenSafetyChecker, undefined, mockResolver);
+
+      await handler.handle(baseEvent);
+
+      expect(mockedRunSafetyPipeline).toHaveBeenCalledWith(
+        baseEvent,
+        mockTokenSafetyChecker,
+        undefined,
+        undefined,
+      );
+    });
+
+    it('passes undefined to pipeline when no resolver is injected', async () => {
+      mockedRunSafetyPipeline.mockResolvedValueOnce({
+        passed: true,
+        phaseA: { passed: true, trace: {}, durationMs: 1 },
+        trace: {},
+        durationMs: 10,
+      });
+      const handler = new GraduationHandler(mockTokenSafetyChecker);
+
+      await handler.handle(baseEvent);
+
+      expect(mockedRunSafetyPipeline).toHaveBeenCalledWith(
+        baseEvent,
+        mockTokenSafetyChecker,
+        undefined,
+        undefined,
+      );
     });
   });
 
