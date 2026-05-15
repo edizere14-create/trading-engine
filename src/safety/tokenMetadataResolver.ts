@@ -74,3 +74,30 @@ export class TokenMetadataResolver {
     this.cache.set(mint, { name, expiresAt: Date.now() + CACHE_TTL_MS });
   }
 }
+
+/**
+ * Factory for constructing a TokenMetadataResolver with a live Helius client.
+ *
+ * Uses CommonJS require() to load helius-sdk because the package uses a
+ * modern exports map that TypeScript's classic moduleResolution ("node")
+ * cannot read (verified: import { createHelius } from 'helius-sdk' fails
+ * with TS2307 under the current tsconfig). The require call works at
+ * runtime via Node's CJS resolver, which reads exports maps correctly.
+ *
+ * Migrating tsconfig to moduleResolution:"bundler" would require switching
+ * module emit to es2015+ (TS5095), which is a project-wide change. Until
+ * that migration, this factory is the only place in src/ that touches
+ * helius-sdk -- all other code consumes TokenMetadataResolver via this
+ * factory or its instance methods.
+ *
+ * The structural HeliusClient type defined above captures exactly the
+ * surface we depend on (getAsset only). The cast bridges between
+ * createHelius's full SDK return type and our minimal contract.
+ */
+export function createTokenMetadataResolver(apiKey: string): TokenMetadataResolver {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createHelius } = require('helius-sdk') as {
+    createHelius: (opts: { apiKey: string }) => HeliusClient;
+  };
+  return new TokenMetadataResolver(createHelius({ apiKey }));
+}

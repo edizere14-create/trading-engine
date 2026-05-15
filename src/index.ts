@@ -38,7 +38,8 @@ import * as fs from 'fs';
 // ── Trade infrastructure ──────────────────────────────────
 import { PositionManager } from './position/positionManager';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
-import { GraduationHandler } from './safety/graduationHandler';   // ← add
+import { GraduationHandler } from './safety/graduationHandler';
+import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
 import { OnlineLearner } from './ml/onlineLearner';
@@ -713,7 +714,12 @@ async function boot(): Promise<void> {
   logger.info('Hybrid Power Play started');
 
   // 5p. Graduation handler — bridges pool:graduated -> trade:signal via safety pipeline
-  graduationHandler = new GraduationHandler(tokenSafety, antifragileEngine ?? undefined);
+  const metadataResolver = createTokenMetadataResolver(cfg.HELIUS_API_KEY);
+  graduationHandler = new GraduationHandler(
+    tokenSafety,
+    antifragileEngine ?? undefined,
+    metadataResolver,
+  );
   logger.info('Graduation handler initialized');
 
   // 6. Wire event bus listeners
