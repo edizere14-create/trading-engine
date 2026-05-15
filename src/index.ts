@@ -1323,9 +1323,9 @@ async function boot(): Promise<void> {
       void telegram.send(
         `[LIVE] AUTONOMOUS EXECUTED\n` +
         `Token: ${signal.tokenCA}\n` +
-        `Size: ${amountSOL.toFixed(4)} SOL ($${amountSOL.toFixed(2)})\n` +
-        `Max Hold: ${Math.round(amountSOL * 1000 / 1e9)}s\n` +
-        `Stop: -${(amountSOL * 100).toFixed(1)}%`
+        `Size: ${amountSOL.toFixed(4)} SOL\n` +
+        `Fill Ratio: ${(result.fillRatio ?? 0).toFixed(3)}\n` +
+        `Tx: ${result.txSignature ?? 'n/a'}`
       );
     }
 
@@ -1469,7 +1469,7 @@ async function boot(): Promise<void> {
       id: trade.id,
       mode: trade.mode,
       tokenCA: trade.tokenCA,
-      ticker: trade.tokenCA.slice(0, 6) + '...',
+      ticker: trade.ticker,
       chain: 'SOLANA',
       poolAddress: trade.poolAddress,
       entryTimestamp: trade.entryTimestamp,
