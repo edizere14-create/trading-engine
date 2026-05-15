@@ -34,10 +34,10 @@ fast, catches the entire class of type-contract bugs that test-only CI misses.
 
 `runSafetyPipeline` is wired but several gates are stubbed or inert:
 
-- **Token name resolution**: `GraduationHandler.handle()` currently passes `undefined`
-  for `tokenName` to `runSafetyPipeline`. Phase A's `scammyName` check therefore
-  short-circuits to passing for every graduation. Need a name resolver (Helius metadata
-  fetch on the mint, or Jupiter token list lookup) before the check is meaningful.
+- **Token name resolution**: ✅ Completed Day 5. `TokenMetadataResolver` fetches names
+  via Helius DAS `getAsset`, with 1h cache and 2s timeout. `GraduationHandler` pre-resolves
+  before invoking the pipeline; Phase A `scammyName` gate now operates on real names.
+  Factory (`createTokenMetadataResolver`) isolates helius-sdk CJS require() to one module.
 - **NOT_ROUTABLE honeypot classification**: The honeypot module classifies fast-fail
   Jupiter errors as `INDEX_LAG` and high-price-impact responses as `UNCONFIRMED`, but
   the T+5s re-probe path that distinguishes genuinely-unroutable tokens from
@@ -59,6 +59,26 @@ Position sizing and exit logic are immature for graduation-sourced trades:
   or emergency only. No partial take-profit at multiples (e.g., sell 25% at 2x, 25% at
   3x, trail the rest). Strategy doc specifies the ladder; implementation is pending.
 
+## TypeScript moduleResolution migration (deferred)
+
+The project uses `moduleResolution: "node"` (the default for `module: "commonjs"`).
+This cannot read modern `package.json` exports maps. helius-sdk@2.2.2 uses an exports
+map, so `import { createHelius } from 'helius-sdk'` fails with TS2307 under the current
+config.
+
+Workaround in place: `createTokenMetadataResolver` uses `require('helius-sdk')` with an
+explicit cast, bypassing tsc's resolver. This is documented and isolated to one function.
+
+The real fix is `moduleResolution: "bundler"`, which requires `module: "es2015"` or later
+(TS5095 if you try to mix with `module: "commonjs"`). That's a project-wide emit change
+affecting ts-node scripts, PM2 runtime, and ts-jest config. Sequence when ready:
+  1. Switch `module` and `moduleResolution` together in tsconfig.json
+  2. Add `.js` extensions to local relative imports (required by node16/nodenext)
+  3. Verify ts-node, ts-jest, and PM2 runtime all handle ESM emit correctly
+  4. Remove the `require()` workaround in tokenMetadataResolver.ts
+
+Until then, keep helius-sdk contact in `tokenMetadataResolver.ts` only.
+
 ## Process discipline notes (Day 4 retrospective)
 
 These are not code tasks but learnings to apply in every future commit session:
@@ -78,3 +98,29 @@ These are not code tasks but learnings to apply in every future commit session:
   drift into both `src/index.ts` and `tests/honeypot.test.ts` while the files sat open
   during Day 4. Files open = drift surface. Especially for files unrelated to the
   current task.
+
+## Process discipline notes (Day 5 retrospective)
+
+- **Empirical verification beats argued assumptions on TypeScript config**: Day 5 spent
+  two CI runs (TS2307, TS5095) and significant time arguing about whether `moduleResolution:
+  "bundler"` was compatible with `module: "commonjs"`. The answer was obtainable in 30
+  seconds with `npm run typecheck` locally. When a config claim feels uncertain, probe it
+  before designing around it. The probe that confirmed TS2307 on a value import took 60
+  seconds and settled the factory-vs-direct-import debate definitively.
+- **Local typecheck is available and fast — use it**: `npm run typecheck` runs `tsc --noEmit`
+  directly and exits in ~3s. It doesn't require ts-jest (which was broken locally on Windows).
+  Any design involving src/ type changes should be validated locally before pushing to CI.
+  CI is not the first line of defence; it's the last.
+- **PowerShell `git commit -m` breaks on `--` in message body**: git treats `--` as its
+  argument separator, splitting the message into pathspecs. Use `-F <file>` with a temp file
+  for long commit messages on Windows. The `@'...'@` here-string approach does not protect
+  against this.
+- **Don't carry stale CI state across screenshots**: Day 5 had a red CI screenshot followed
+  by a green one for the same commit. The diagnostic work (phaseB.ts analysis) was based on
+  the red screenshot after the green one had already arrived. Read each CI result fresh;
+  don't carry the previous run's failure into the current analysis.
+- **Structural type as SDK contract is correct pattern for narrow surfaces**: `HeliusClient`
+  with only `getAsset` is more honest than importing the full SDK type. It documents exactly
+  what we depend on, survives SDK major-version restructuring better, and sidesteps the
+  moduleResolution issue entirely for the type surface. Apply this pattern to other narrow
+  external SDK dependencies.
