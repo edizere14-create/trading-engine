@@ -1,6 +1,6 @@
 import { runPhaseB } from '../src/safety/phaseB';
 import { TokenSafetyChecker } from '../src/safety/tokenSafetyChecker';
-import { checkHoneypot } from '../src/safety/honeypot';
+import { checkHoneypotWithDeferredProbe } from '../src/safety/honeypot';
 import { checkDeployerBlacklist } from '../src/safety/deployerBlacklist';
 import { PumpSwapGraduationEvent, TokenSafetyResult } from '../src/core/types';
 import { AntifragileEngine } from '../src/antifragile/antifragileEngine';
@@ -8,7 +8,7 @@ import { AntifragileEngine } from '../src/antifragile/antifragileEngine';
 jest.mock('../src/safety/honeypot');
 jest.mock('../src/safety/deployerBlacklist');
 
-const mockedHoneypot = checkHoneypot as jest.MockedFunction<typeof checkHoneypot>;
+const mockedHoneypot = checkHoneypotWithDeferredProbe as jest.MockedFunction<typeof checkHoneypotWithDeferredProbe>;
 const mockedDeployer = checkDeployerBlacklist as jest.MockedFunction<typeof checkDeployerBlacklist>;
 
 const baseEvent: PumpSwapGraduationEvent = {
