@@ -214,6 +214,7 @@ describe('graduation pipeline soak (mocked external deps)', () => {
       expect(blockedEvents[0].reasons[0]).toBe('HONEYPOT_NOT_ROUTABLE — sellability check failed');
       expect(mockedAxios.get).toHaveBeenCalledTimes(2);
     } finally {
+      jest.clearAllTimers();
       jest.useRealTimers();
     }
   });

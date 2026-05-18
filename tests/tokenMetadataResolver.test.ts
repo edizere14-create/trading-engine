@@ -5,6 +5,10 @@ function makeMockHelius(getAssetImpl: jest.Mock): HeliusClient {
 }
 
 describe('TokenMetadataResolver', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   describe('resolution outcomes', () => {
     it('returns the name when Helius returns metadata', async () => {
       const helius = makeMockHelius(
