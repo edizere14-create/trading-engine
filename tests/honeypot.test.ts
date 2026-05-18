@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { checkHoneypot } from '../src/safety/honeypot';
+import { checkHoneypot, checkHoneypotWithDeferredProbe } from '../src/safety/honeypot';
 import { AntifragileEngine } from '../src/antifragile/antifragileEngine';
 
 jest.mock('axios');
@@ -211,6 +211,82 @@ describe('checkHoneypot', () => {
       mockedAxios.get.mockResolvedValueOnce(makeAxiosResponse('5'));
       const result = await checkHoneypot(TOKEN_CA, TEST_AMOUNT, BUDGET_MS);
       expect(result.classification).toBeDefined();
+    });
+  });
+});
+
+describe('checkHoneypotWithDeferredProbe', () => {
+  const TEST_DEFERRED_DELAY = 10; // ms — small value avoids real 5s waits
+
+  describe('non-route first-probe outcomes (no re-probe)', () => {
+    it('CLEAN on 200 with low priceImpactPct (no re-probe)', async () => {
+      mockedAxios.get.mockResolvedValueOnce(makeAxiosResponse('5.0'));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, undefined, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(true);
+      expect(result.classification).toBe('CLEAN');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('UNCONFIRMED on 200 with high priceImpactPct (no re-probe)', async () => {
+      mockedAxios.get.mockResolvedValueOnce(makeAxiosResponse('75'));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, undefined, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.classification).toBe('UNCONFIRMED');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('INDEX_LAG on 5xx without re-probe', async () => {
+      mockedAxios.get.mockRejectedValueOnce(makeAxiosError(503));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, undefined, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.classification).toBe('INDEX_LAG');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('4xx first-probe triggers deferred re-probe', () => {
+    it('NOT_ROUTABLE when re-probe also returns 4xx', async () => {
+      const breaker = makeBreaker();
+      mockedAxios.get
+        .mockRejectedValueOnce(makeAxiosError(404))
+        .mockRejectedValueOnce(makeAxiosError(404));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, breaker, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.classification).toBe('NOT_ROUTABLE');
+      expect(breaker.recordJupiterFailure).not.toHaveBeenCalled(); // 4xx never penalizes
+      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('CLEAN when re-probe returns valid quote (indexing caught up)', async () => {
+      mockedAxios.get
+        .mockRejectedValueOnce(makeAxiosError(404))
+        .mockResolvedValueOnce(makeAxiosResponse('5.0'));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, undefined, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(true);
+      expect(result.classification).toBe('CLEAN');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    });
+
+    it('INDEX_LAG when re-probe returns 5xx', async () => {
+      mockedAxios.get
+        .mockRejectedValueOnce(makeAxiosError(404))
+        .mockRejectedValueOnce(makeAxiosError(500));
+      const result = await checkHoneypotWithDeferredProbe(
+        TOKEN_CA, TEST_AMOUNT, BUDGET_MS, undefined, TEST_DEFERRED_DELAY,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.classification).toBe('INDEX_LAG');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
     });
   });
 });
