@@ -8,6 +8,7 @@ import {
 } from '../src/core/types';
 import { TokenSafetyChecker } from '../src/safety/tokenSafetyChecker';
 import { TokenMetadataResolver } from '../src/safety/tokenMetadataResolver';
+import { DEFERRED_PROBE_DELAY_MS } from '../src/safety/honeypot';
 
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
@@ -46,6 +47,13 @@ function makeAxiosResponse(priceImpactPct: string) {
   };
 }
 
+function makeAxiosError(status: number) {
+  const err = new Error('Request failed') as Error & { response?: { status: number }; isAxiosError?: boolean };
+  err.response = { status };
+  err.isAxiosError = true;
+  return err;
+}
+
 function makeEvent(overrides: Partial<PumpSwapGraduationEvent> & { tokenCA: string }): PumpSwapGraduationEvent {
   return {
     signature: `sig-${overrides.tokenCA}`,
@@ -71,6 +79,7 @@ const SCENARIOS = {
   honeypot:  { tokenCA: 'honeypot1', initialLiquiditySOL: 50 }, // FAIL: Jupiter returns UNCONFIRMED
   mintFail:  { tokenCA: 'mintfail1', initialLiquiditySOL: 99 }, // FAIL: mintAuth not revoked
   scammyName: { tokenCA: 'honeypotname1', initialLiquiditySOL: 99 }, // FAIL: name matches scam pattern
+  notRoutable: { tokenCA: 'notroutable1', initialLiquiditySOL: 99 }, // FAIL: 4xx twice
 };
 
 describe('graduation pipeline soak (mocked external deps)', () => {
@@ -182,6 +191,31 @@ describe('graduation pipeline soak (mocked external deps)', () => {
     expect(tradeSignals).toHaveLength(0);
     expect(blockedEvents).toHaveLength(1);
     expect(blockedEvents[0].reasons[0]).toContain('SCAMMY_NAME');
+  });
+
+  it('Phase B honeypot NOT_ROUTABLE: 4xx + 4xx after deferred probe', async () => {
+    jest.useFakeTimers();
+    try {
+      // First probe: 4xx (Jupiter has no route yet). Re-probe: 4xx again.
+      mockedAxios.get
+        .mockRejectedValueOnce(makeAxiosError(404))
+        .mockRejectedValueOnce(makeAxiosError(404));
+
+      const handlerPromise = handler.handle(makeEvent(SCENARIOS.notRoutable));
+
+      // Advance past the deferred-probe wait so the second axios call fires
+      // and the handle() promise can resolve.
+      await jest.advanceTimersByTimeAsync(DEFERRED_PROBE_DELAY_MS);
+
+      await handlerPromise;
+
+      expect(tradeSignals).toHaveLength(0);
+      expect(blockedEvents).toHaveLength(1);
+      expect(blockedEvents[0].reasons[0]).toBe('HONEYPOT_NOT_ROUTABLE — sellability check failed');
+      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('full mixed batch: 7 pass, 3 fail with correct attribution', async () => {

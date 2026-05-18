@@ -4,7 +4,8 @@
  * Runs three checks concurrently with per-check budget enforcement:
  *   1. tokenSafetyChecker.check() — mintAuthority, freezeAuthority,
  *      holderConcentration, lpLock (4 atomic signals via TokenSafetyResult)
- *   2. checkHoneypot() — Jupiter sell-quote classification
+ *   2. checkHoneypotWithDeferredProbe() — Jupiter sell-quote with T+5s re-probe
+ *      for 4xx responses (resolves indexing-lag ambiguity)
  *   3. checkDeployerBlacklist() — stub-pass in v2 baseline
  *
  * Each check is wrapped with a per-check budget. honeypot enforces its own
@@ -27,7 +28,7 @@
 
 import { PumpSwapGraduationEvent, SafetyCheckTrace, TokenSafetyResult } from '../core/types';
 import { TokenSafetyChecker } from './tokenSafetyChecker';
-import { checkHoneypot, HoneypotResult } from './honeypot';
+import { checkHoneypotWithDeferredProbe, HoneypotResult } from './honeypot';
 import { checkDeployerBlacklist, DeployerBlacklistResult } from './deployerBlacklist';
 import { AntifragileEngine } from '../antifragile/antifragileEngine';
 
@@ -88,7 +89,7 @@ export async function runPhaseB(
     tokenSafetyChecker.check(event.tokenCA),
     budgetMs,
   );
-  const honeypotP = checkHoneypot(
+  const honeypotP = checkHoneypotWithDeferredProbe(
     event.tokenCA,
     HONEYPOT_TEST_AMOUNT_LAMPORTS,
     budgetMs,
