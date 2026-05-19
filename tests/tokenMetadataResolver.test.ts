@@ -53,7 +53,7 @@ describe('TokenMetadataResolver', () => {
       const resolver = new TokenMetadataResolver(helius);
 
       const promise = resolver.resolveName('mint1');
-      jest.advanceTimersByTime(2001);
+      await jest.advanceTimersByTimeAsync(2001);
 
       const result = await promise;
       expect(result).toBeUndefined();
