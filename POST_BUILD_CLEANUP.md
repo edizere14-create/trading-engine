@@ -38,11 +38,14 @@ fast, catches the entire class of type-contract bugs that test-only CI misses.
   via Helius DAS `getAsset`, with 1h cache and 2s timeout. `GraduationHandler` pre-resolves
   before invoking the pipeline; Phase A `scammyName` gate now operates on real names.
   Factory (`createTokenMetadataResolver`) isolates helius-sdk CJS require() to one module.
-- **NOT_ROUTABLE honeypot classification**: The honeypot module classifies fast-fail
-  Jupiter errors as `INDEX_LAG` and high-price-impact responses as `UNCONFIRMED`, but
-  the T+5s re-probe path that distinguishes genuinely-unroutable tokens from
-  indexing-lagged ones is not yet implemented. Currently borderline tokens get the
-  pessimistic `UNCONFIRMED` label.
+- **NOT_ROUTABLE honeypot classification**: ✅ Completed Day 7/8. `checkHoneypotWithDeferredProbe`
+  adds a T+5s re-probe path for 4xx responses only. 4xx at T0 = INDEX_LAG (uncertain);
+  4xx at T+5s = NOT_ROUTABLE (resolved — past the bimodal slow-index tail). Other
+  first-probe outcomes (timeout, 5xx, breaker-open, malformed) bypass re-probe.
+  `fetchJupiterQuote` private helper discriminates 4xx from all other error paths via
+  a `QuoteOutcome` union. `mapOutcome` unifies result mapping with a `noRouteAs`
+  parameter — the only divergence between the two exported functions. `deferredProbeDelayMs`
+  injectable for unit tests; soak test uses `jest.useFakeTimers()` + `advanceTimersByTimeAsync`.
 - **Real-RPC soak**: Day 4 soak harness mocks `axios` and `TokenSafetyChecker.check`.
   Useful for pipeline correctness, not for catching real Jupiter / Helius behaviors.
   Next step is a manual run against testnet or recorded devnet graduation events with
@@ -58,6 +61,65 @@ Position sizing and exit logic are immature for graduation-sourced trades:
 - **TP ladder / trailing stop**: `positionManager` currently exits on stop-loss, max-hold,
   or emergency only. No partial take-profit at multiples (e.g., sell 25% at 2x, 25% at
   3x, trail the rest). Strategy doc specifies the ladder; implementation is pending.
+
+## Process discipline notes (Day 7/8 retrospective)
+
+Day 7 was a full design session (no code written). Day 8 implemented. Four lessons:
+
+- **Probe window is the operational definition**: The key framing for NOT_ROUTABLE was
+  "loose at T0, strict at T+5s." A 4xx response at T0 is INDEX_LAG (ambiguous — could be
+  permanent or indexing-lagged). A 4xx at T+5s, after waiting past the bimodal slow-index
+  tail (~2.7s), is NOT_ROUTABLE (resolved). The probe window itself resolves the ambiguity.
+  This framing told us where NOT_ROUTABLE belongs in the classification tree: it's a
+  resolved-by-time state, not a first-look state.
+
+- **Black-box wrappers can't see sub-reason**: The original plan was `checkHoneypotWithDeferredProbe`
+  calling `checkHoneypot` as a black box and re-probing on INDEX_LAG. This failed because
+  `HoneypotResult` collapses four error paths (4xx, 5xx, timeout, breaker-open) into one
+  classification. The wrapper couldn't distinguish "4xx INDEX_LAG" from "5xx INDEX_LAG."
+  Fix: extract `fetchJupiterQuote` as a shared private helper returning a discriminated
+  `QuoteOutcome` union. Both functions call the helper; the wrapper branches on `kind: 'no-route'`
+  directly. General lesson: when a function collapses distinctions you later need, extract
+  a finer-grained intermediate rather than wrapping the coarse one.
+
+- **Checkpoint discipline and fatigue**: Day 7 ended with a stop call after the local test
+  gate produced an environmental failure (Windows ts-jest preset resolution — the known
+  issue from Day 4, documented here). Instead of stopping at the failure and reporting it,
+  several more commands ran, a wrong diagnosis formed ("ts-jest v30 doesn't exist / pairing
+  incompatible"), and permission was requested to npm install. The verifiable-fact error
+  (ts-jest v30 does exist; the pairing has been green in CI all week) was caught before
+  pushing. Pattern: fatigue produces confident wrong diagnoses. The stop call was correct;
+  it should have come earlier.
+
+- **Read the CI summary line before the stack trace**: Day 8 had two CI failures
+  (CI #33, CI #34). The actual failing file was `tests/phaseB.test.ts` — visible in
+  the CI summary as "FAIL tests/phaseB.test.ts." The root cause was that commit 86a8d9a
+  changed phaseB.ts to call `checkHoneypotWithDeferredProbe` but the test file's
+  `jest.mock` handle still referenced `checkHoneypot` (old name). Jest auto-mocked
+  `checkHoneypotWithDeferredProbe` but returned `undefined` (no configured return value),
+  causing `honeypotResult.passed` → `TypeError` in every phaseB test.
+  Instead of reading the summary line, diagnostic work focused on resolver test stack
+  traces in the failure screenshot — wasting one CI cycle on a timer-leak hypothesis
+  (commit 7ed3f9e) that was genuine hygiene but not the root cause. Lesson: CI summary
+  lists the failing file. Read that first, before any stack trace.
+
+## Known future cleanup (from Day 7/8)
+
+- **`advanceTimersByTime` → `advanceTimersByTimeAsync` in resolver test**: Line 52 of
+  `tests/tokenMetadataResolver.test.ts` uses the synchronous version. Works today because
+  the resolver's await sequence is shallow enough that one post-clock-advance microtask
+  flush is sufficient. Fragile to internal changes. Upgrade in a future pass.
+
+- **`checkHoneypot` dead export**: `src/safety/honeypot.ts` still exports `checkHoneypot`
+  after the Day 7/8 refactor. Nothing in production calls it; its 14 tests exercise the
+  shared private helpers (`fetchJupiterQuote`, `mapOutcome`) that `checkHoneypotWithDeferredProbe`
+  also uses. Kept for coverage value. Remove in a future cleanup commit when the coverage
+  is verified redundant.
+
+- **Resolver afterEach is hygiene, not a root cause fix**: CI #33 and #34 failed because
+  of the stale phaseB.test.ts mock (see above), not timer leaks. The `afterEach` added to
+  `tokenMetadataResolver.test.ts` (commit 7ed3f9e) is real hygiene — the timeout test's
+  cleanup was assertion-dependent — but it was not the cause of the CI failures.
 
 ## TypeScript moduleResolution migration (deferred)
 
