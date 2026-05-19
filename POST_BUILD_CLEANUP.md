@@ -46,10 +46,16 @@ fast, catches the entire class of type-contract bugs that test-only CI misses.
   a `QuoteOutcome` union. `mapOutcome` unifies result mapping with a `noRouteAs`
   parameter — the only divergence between the two exported functions. `deferredProbeDelayMs`
   injectable for unit tests; soak test uses `jest.useFakeTimers()` + `advanceTimersByTimeAsync`.
-- **Real-RPC soak**: Day 4 soak harness mocks `axios` and `TokenSafetyChecker.check`.
-  Useful for pipeline correctness, not for catching real Jupiter / Helius behaviors.
-  Next step is a manual run against testnet or recorded devnet graduation events with
-  real RPC.
+- **Real-RPC soak**: ✅ Completed Day 6. `scripts/realRpcSoak.ts` validates the resolver
+  against live Helius DAS for fixture mints, complementing the mock-based jest suite.
+  Three fixture categories (`scripts/realRpcSoak.fixtures.json`): stable mints with
+  metadata (hard-assert non-empty string + cache hit < 5ms), mints with any metadata
+  (hard-assert string), mints without metadata (hard-assert null). Default fixture
+  (USDC, BONK) runs without operator setup; operator extends fixtures for categories 2
+  and 3. Hermetic CI is preserved — script is manual-only, run via `npm run soak:rpc`
+  before structural changes to the resolver or SDK integration. Initial validation:
+  USDC 465ms / cache 0.04ms, BONK 79ms / cache 0.01ms, structural type confirmed
+  against real `getAsset` response shape.
 
 ## Day 5+ work (exit-side capability gaps)
 
@@ -64,7 +70,7 @@ Position sizing and exit logic are immature for graduation-sourced trades:
 
 ## Process discipline notes (Day 7/8 retrospective)
 
-Day 7 was a full design session (no code written). Day 8 implemented. Four lessons:
+Day 7 was a full design session (no code written). Day 8 implemented. Five lessons:
 
 - **Probe window is the operational definition**: The key framing for NOT_ROUTABLE was
   "loose at T0, strict at T+5s." A 4xx response at T0 is INDEX_LAG (ambiguous — could be
@@ -102,6 +108,16 @@ Day 7 was a full design session (no code written). Day 8 implemented. Four lesso
   traces in the failure screenshot — wasting one CI cycle on a timer-leak hypothesis
   (commit 7ed3f9e) that was genuine hygiene but not the root cause. Lesson: CI summary
   lists the failing file. Read that first, before any stack trace.
+
+- **Riskiest test in its own commit**: Day 8 commit 2 (`86a8d9a`) bundled the phaseB.ts
+  wiring (1-line import + 1-line call change — low-risk rename) with the new fake-timer
+  soak test (highest-risk new code in the work). When CI #33 failed, the commit alone
+  couldn't tell us whether the wiring or the soak test broke things. We had to read the
+  CI summary and grep test files to localize. If commit 2 had been split into "phaseB.ts
+  rename" + "soak test addition," the wiring would have landed green and the soak test's
+  failure would have been isolated, revertable on its own. Sequencing principle: when a
+  multi-file commit mixes low-risk and high-risk pieces, split them. The high-risk piece
+  gets its own commit so revert/diagnostic surface stays narrow.
 
 ## Known future cleanup (from Day 7/8)
 
@@ -186,3 +202,52 @@ These are not code tasks but learnings to apply in every future commit session:
   what we depend on, survives SDK major-version restructuring better, and sidesteps the
   moduleResolution issue entirely for the type surface. Apply this pattern to other narrow
   external SDK dependencies.
+
+## Process discipline notes (Day 6 retrospective)
+
+Day 6 was a short, focused session: design, build, validate, ship — one commit
+(`e7d3f90`). The real-RPC soak script landed clean. Four lessons captured for
+future reference:
+
+- **Don't load full app config for scripts that use one field**: First instinct
+  was to call `config.load()` in the soak script to get `HELIUS_API_KEY`.
+  Reading `config.ts` revealed `config.load()` validates `PRIMARY_RPC`,
+  `BACKUP_RPC`, `INITIAL_CAPITAL_USD` and instantiates three unused Solana
+  Connection objects. A soak script that fails with `PRIMARY_RPC must be a
+  valid URL` before touching the resolver is a bad operator experience.
+  Correct call: read `process.env.HELIUS_API_KEY` directly with an explicit
+  truthy guard. Lesson: when a script needs one config field, read that
+  field — don't drag the whole validation surface in.
+
+- **Hybrid assertion strategy beats pure hard or pure observational**: The
+  initial design considered "hard-assert exact value (e.g., USDC name ===
+  'USD Coin')" vs "log everything, human inspects." Both have failure modes:
+  hard-asserting an upstream-controlled string is brittle to non-bug changes
+  (Helius could surface "USDC" instead of "USD Coin" and the test would
+  fail on a non-regression); pure observational requires human attention
+  every run. Final design: hard-assert the contract that matters (`typeof name
+  === 'string' && name.length > 0`), observationally print the actual value
+  for human review. Hard assertions catch real regressions; observational
+  output catches subtle issues humans notice but contracts don't express.
+
+- **Cache hit threshold needs a binary signal, not precise latency**: The
+  Day 6 design discussed whether 5ms was the right cache-hit threshold.
+  The right framing: the assertion is testing whether the cache was hit at
+  all, not measuring how fast it is. Network call is ~150ms-500ms (Helius
+  p50). Map.get() is microseconds. Anything < 5ms is definitely a cache
+  hit; anything >50ms is definitely a miss; the gap between is empty in
+  practice. The threshold isn't an SLO, it's a discriminator. 5ms shipped
+  and ran at 0.01-0.04ms — plenty of headroom.
+
+- **Manual-only scripts are the right pattern for live-RPC validation**:
+  Three options were considered for soak placement — CI step (continuous
+  validation), manual script (developer-run), scheduled job (cron-style).
+  CI was wrong because it requires `HELIUS_API_KEY` as a CI secret, costs
+  Helius quota per push, and makes CI flake on provider outages — none
+  acceptable trade-offs for a test gate. Scheduled job adds infrastructure
+  without proportional value at this stage. Manual script wins: CI stays
+  hermetic (only mocks), the script becomes the pre-change gate operators
+  invoke before pushing changes to the resolver or SDK integration.
+  Portable principle: hermetic CI + manual live-RPC scripts is the right
+  pattern for validating SDK integrations. The script is the discipline
+  gate, not the automation gate.
