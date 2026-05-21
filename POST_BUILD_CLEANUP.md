@@ -256,7 +256,8 @@ future reference:
   Portable principle: hermetic CI + manual live-RPC scripts is the right
   pattern for validating SDK integrations. The script is the discipline
   gate, not the automation gate.
-  ## Process discipline notes (Day 11 retrospective)
+  
+## Process discipline notes (Day 11 retrospective)
 
 Day 11 was planned as HPP-B feature work. First diagnostic (grep for `pool:graduated`
 in HPP) returned empty. Second diagnostic (broader grep across `src/`) confirmed HPP
