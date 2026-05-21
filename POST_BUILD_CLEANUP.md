@@ -131,11 +131,20 @@ Day 7 was a full design session (no code written). Day 8 implemented. Five lesso
   the resolver's await sequence is shallow enough that one post-clock-advance microtask
   flush is sufficient. Fragile to internal changes. Upgrade in a future pass.
 
-- **`checkHoneypot` dead export**: `src/safety/honeypot.ts` still exports `checkHoneypot`
-  after the Day 7/8 refactor. Nothing in production calls it; its 14 tests exercise the
-  shared private helpers (`fetchJupiterQuote`, `mapOutcome`) that `checkHoneypotWithDeferredProbe`
-  also uses. Kept for coverage value. Remove in a future cleanup commit when the coverage
-  is verified redundant.
+- **`checkHoneypot` retained for coverage** (verified Day 11): `src/safety/honeypot.ts`
+  still exports `checkHoneypot` after the Day 7/8 refactor. Nothing in production calls
+  it. Day 11 verification of the test coverage hypothesis found the coverage is NOT
+  redundant. Tests for `checkHoneypotWithDeferredProbe` (6 tests) cover the deferred-probe
+  paths but do NOT replicate `checkHoneypot`'s telemetry tests (durationMs, classification
+  populated), full breaker integration assertions (5 of which only `checkHoneypot` exercises),
+  or sub-budget timeout behavior. Removing `checkHoneypot` would delete ~10 tests of real
+  coverage on the shared private helpers (`fetchJupiterQuote`, `mapOutcome`) that are
+  still in production via `checkHoneypotWithDeferredProbe`.
+
+  Decision: keep `checkHoneypot` exported. The cost is one dead export. The benefit is
+  preserved coverage on shared logic. If a future migration translates the coverage to
+  `checkHoneypotWithDeferredProbe` tests, removal becomes viable. Until then, this item
+  is verified-resolved, not pending.
 
 - **Resolver afterEach is hygiene, not a root cause fix**: CI #33 and #34 failed because
   of the stale phaseB.test.ts mock (see above), not timer leaks. The `afterEach` added to
@@ -256,7 +265,7 @@ future reference:
   Portable principle: hermetic CI + manual live-RPC scripts is the right
   pattern for validating SDK integrations. The script is the discipline
   gate, not the automation gate.
-  
+
 ## Process discipline notes (Day 11 retrospective)
 
 Day 11 was planned as HPP-B feature work. First diagnostic (grep for `pool:graduated`
