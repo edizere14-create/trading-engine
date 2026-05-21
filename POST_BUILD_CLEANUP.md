@@ -10,12 +10,17 @@ audit and trim the class: remove unused methods, simplify the entry-price anchor
 superseded by sniper-v2 entry flow, and evaluate whether the module can be collapsed into
 `executionEngine`.
 
-Specific to graduation flow (added Day 4): HPP still has its own `pool:graduated`
-subscription, now duplicated by `GraduationHandler`. Target disposition (HPP-B): keep
-HPP's migration cooldown suppression role (`shouldSuppressSignal()` is called from
-`bus.on('trade:signal')` at index.ts:1075), remove its duplicate subscription. Suppression
-still applies to graduation-derived signals because they flow through the same
-`trade:signal` event.
+~~Specific to graduation flow (added Day 4): HPP still has its own `pool:graduated`
+subscription, now duplicated by `GraduationHandler`.~~ Resolved Day 11 by verification:
+HPP does NOT subscribe to `pool:graduated`. Grep across `src/` confirms only
+`graduationHandler.ts` subscribes, `migrationAccountStream.ts` emits, `eventBus.ts`
+declares the type, and `index.ts` references it in a comment. HPP's only bus subscriptions
+are `pool:created` and `swap:detected` (see `src/execution/hybridPowerPlay.ts:128,131`).
+The Day 4 note was based on an unverified assumption, not a grep of the code. HPP's
+migration cooldown suppression role (`shouldSuppressSignal()` called from
+`bus.on('trade:signal')` in `index.ts`) is unchanged and still correct — suppression
+applies to graduation-derived signals because they flow through the same `trade:signal`
+event after `GraduationHandler` processes them.
 
 ## CI hardening
 
@@ -251,3 +256,26 @@ future reference:
   Portable principle: hermetic CI + manual live-RPC scripts is the right
   pattern for validating SDK integrations. The script is the discipline
   gate, not the automation gate.
+  ## Process discipline notes (Day 11 retrospective)
+
+Day 11 was planned as HPP-B feature work. First diagnostic (grep for `pool:graduated`
+in HPP) returned empty. Second diagnostic (broader grep across `src/`) confirmed HPP
+has never subscribed to `pool:graduated`. The HPP-B task didn't exist — POST_BUILD_CLEANUP
+had carried a phantom todo for a week, based on an unverified assumption in the Day 4
+note.
+
+One lesson:
+
+- **Retrospective entries are claims that need verification before becoming tasks**:
+  POST_BUILD_CLEANUP.md is a working doc, not a verified record. Entries get added
+  during retrospectives based on the writer's mental model at the time, which can be
+  wrong. Before acting on any cleanup item, verify the claim against the current
+  codebase with a primary-source check (grep, file inspection). The Day 11 verification
+  was a 30-second grep that we could have run any time in the previous week to discover
+  the HPP-B item didn't exist. The check should have been the first step of HPP-B, not
+  the third.
+
+  General pattern: doc claims about code state are stale by default. Re-verify before
+  acting. This is the same lesson as "read CI summary before stack trace" (Day 8) and
+  "don't load full app config when one field will do" (Day 6) — primary source over
+  mental model, every time.
