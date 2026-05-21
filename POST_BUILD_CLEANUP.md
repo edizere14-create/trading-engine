@@ -126,11 +126,12 @@ Day 7 was a full design session (no code written). Day 8 implemented. Five lesso
 
 ## Known future cleanup (from Day 7/8)
 
-- **`advanceTimersByTime` → `advanceTimersByTimeAsync` in resolver test**: Line 52 of
-  `tests/tokenMetadataResolver.test.ts` uses the synchronous version. Works today because
-  the resolver's await sequence is shallow enough that one post-clock-advance microtask
-  flush is sufficient. Fragile to internal changes. Upgrade in a future pass.
-
+- **`advanceTimersByTime` → `advanceTimersByTimeAsync` in resolver test**: ✅ Completed Day 9
+  (commit `570c6d6`). The resolver timeout test in `tests/tokenMetadataResolver.test.ts`
+  now uses `await jest.advanceTimersByTimeAsync(2001)` instead of the synchronous variant.
+  The async version flushes microtasks deterministically between timer advancements,
+  making the test robust against future internal changes to the resolver's await pattern.
+  
 - **`checkHoneypot` retained for coverage** (verified Day 11): `src/safety/honeypot.ts`
   still exports `checkHoneypot` after the Day 7/8 refactor. Nothing in production calls
   it. Day 11 verification of the test coverage hypothesis found the coverage is NOT
