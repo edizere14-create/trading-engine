@@ -436,3 +436,234 @@ new modules)**:
 `tests/positionManager.test.ts` assertions that reference current mode
 names. Test changes interleave with implementation changes; precise
 sequencing in Section 5.
+
+## Gap analysis
+
+### What this section is for
+
+Section 2 enumerated everything that exists in the code today. Section 3
+enumerates what's missing or wrong relative to the spec, organized by
+impact on the v2 validation gate.
+
+The format is paired: each gap states (a) what the spec requires, (b)
+what the code currently does, (c) what the gap means for the v2 success
+criteria from `STRATEGY_V2.md`.
+
+### Gaps in the exit taxonomy
+
+**Gap 1: 5 spec mode names absent from `ExitMode` union.**
+
+- Spec requires (`STRATEGY_V2.md` position management section):
+  `TP_TIER_1`, `TP_TIER_2`, `TP_TIER_3`, `TP_TIER_4`, `HARD_STOP`,
+  `MAX_HOLD` as `ExitMode` values.
+- Code has (`src/core/types.ts:21`): none of these names. Current modes
+  serve overlapping roles under different names (`STOP_LOSS` for
+  HARD_STOP, `TIME_EXIT` for MAX_HOLD, `ALL_TIERS_HIT` for the terminal
+  tier).
+- Validation impact: the success criteria ("realistic exit-mode
+  distribution, not >50% MAX_HOLD") explicitly references spec mode
+  names. Records persisted with `STOP_LOSS` or `TIME_EXIT` cannot be
+  measured against this criterion without translation logic that doesn't
+  exist.
+- Pre-commit verification carried from Section 2: the dual `exitMode`
+  declarations at `src/core/types.ts:175` (optional) and `:212`
+  (required) on different types are unaudited. Their relationship
+  surfaces during the taxonomy commit, since both are affected when
+  ExitMode values change.
+
+**Gap 2: 7 round-1 mode names present in `ExitMode` union that the
+spec doesn't include.**
+
+- Code has (`src/core/types.ts:21`): `HARVEST`, `PANIC`, `DRIP`,
+  `RAPID_DUMP_EXIT`, `EARLY_STOP`, `ALL_TIERS_HIT`, `UNKNOWN`.
+- Spec requires: only 8 trading modes total. None of these 7 are in
+  spec.
+- Validation impact: any record with these values is outside the spec
+  taxonomy and would need to be either translated, excluded, or counted
+  as anomaly during validation.
+
+### Gaps in exit logic
+
+**Gap 3: TP ladder splits don't match spec.**
+
+- Spec requires: 30/30/20/20 splits at 1.5/2.0/3.0/5.0x.
+- Code has (`src/position/positionManager.ts:417-422`): 40/30/20/10
+  splits at 1.3/1.6/2.5/5.0x.
+- Validation impact: the spec's multiples define what counts as "tier 1
+  hit" in records. Trades that hit 1.3x but not 1.5x under current
+  logic register tier 1; under spec logic they would not. The
+  realized-multiple distribution in 50+ recorded trades would shift
+  meaningfully.
+
+**Gap 4: Per-tier partial closes not implemented.**
+
+- Spec requires: each tier hit triggers a partial sell at that tier's
+  pct. Position size decreases progressively.
+- Code has (`positionManager.ts:241-260`): tier hits set
+  `triggered: true` and log; no actual partial sell is issued. Only
+  when all 4 tiers triggered does a full close fire under
+  `ALL_TIERS_HIT`.
+- Validation impact: average winner metric (≥1.8x per spec) is
+  calculated against realized multiples. Without partial closes, a
+  position hitting 1.6x then retracing to 1.0x records 1.0x as the
+  realized multiple. With partial closes, the same trajectory records a
+  weighted average of 1.6x and 1.0x (likely ~1.4x). The metric measures
+  different things in the two implementations. See Gap 11 — addressing
+  this gap is also blocked on schema changes the current journal layer
+  doesn't support.
+
+**Gap 5: Trailing stop activation and trigger model wrong.**
+
+- Spec requires: activate when peak ≥1.15x; close when current price
+  falls 25% below peak.
+- Code has (`positionManager.ts:262-267`): activate when peak >1.5x;
+  close when current <1.1x absolute.
+- Validation impact: protection model is different in shape, not just
+  thresholds. Positions peaking at 1.4x get zero protection under
+  current logic; spec would protect them above 1.15x.
+  Realized-multiple distribution for moderate winners is significantly
+  different.
+
+**Gap 6: HARD_STOP threshold unverified.**
+
+- Spec requires: hard stop at 0.40x (60% drawdown).
+- Code has (`positionManager.ts:234-238`): pure drawdown gate using
+  `position.stopLossPct`, value config-driven. Value not surfaced in
+  Day 12 diagnostics.
+- Validation impact: if `stopLossPct === 0.60`, the rename to HARD_STOP
+  is taxonomy-only. If it differs, threshold migration is also required.
+  Cannot decide without verifying config.
+
+**Gap 7: RUG_TRIGGER firing logic absent.**
+
+- Spec requires: subscribe to pool wSOL vault account during hold
+  window; emergency exit at any slippage when `postBalance` drops >40%
+  in a single transaction.
+- Code has: type slot only (`ExitMode` includes `RUG_TRIGGER`). No wSOL
+  vault subscription, no postBalance-drop detection, nothing emits the
+  mode.
+- Validation impact: rugged tokens currently exit via whatever catches
+  the price drop (RAPID_DUMP_EXIT, EARLY_STOP, STOP_LOSS, or
+  TIME_EXIT). Without rug-trigger, rugged trades distort win/loss
+  attribution — they look like "strategy got out at the wrong time"
+  rather than "system caught a rug and exited cleanly."
+
+### Gaps in surrounding infrastructure
+
+**Gap 8: Exit-event subscription path broken.**
+
+- Code has (`src/exits/exitEngine.ts:35-39`):
+  `bus.emit('exit:triggered')` fires from `ExitEngine.checkTiers()`.
+  No `bus.on('exit:triggered')` exists anywhere in `src/index.ts`.
+- Spec requires: events emitted should drive position closes; the
+  actual close path runs via positionManager directly, not via the
+  event bus.
+- Validation impact: none for sniper today (the dead code path doesn't
+  fire for sniper positions). But it's confusing tech debt — the event
+  type is declared, the emitter exists, no consumer. Worth retiring
+  with ExitEngine.
+
+**Gap 9: ExitEngine class is instantiated dead code.**
+
+- Code has (`src/index.ts:571`): `const exitEngine = new ExitEngine();`.
+  The variable is declared, assigned, and never referenced again.
+- Spec requires: nothing about ExitEngine. The class operates on
+  round-1 smart-money signals (`manipulationRisk`,
+  `smartWalletsSelling`, `volumeAccelerating`) which are explicit
+  non-goals.
+- Validation impact: none directly. But the class's existence in the
+  build adds confusion and risk — future readers might wire it back in
+  thinking it's active.
+
+**Gap 10: Type coupling in non-goal modules.**
+
+- Code has: `src/ml/mlTypes.ts:11` imports `ExitMode`.
+  `src/replay/replaySimulator.ts:72` uses
+  `entry.exitMode === 'TIME_EXIT'` by literal.
+- Spec requires: nothing about these modules. They are non-goals per
+  `STRATEGY_V2.md`.
+- Validation impact: changing `ExitMode` values forces decisions on
+  these modules. The taxonomy rename will break the replaySimulator
+  literal check; if mlTypes uses exhaustive `Record<ExitMode>` or
+  `switch`, it will also break.
+
+**Gap 11: Journal schema cannot represent per-tier partial closes.**
+
+- Spec requires per-tier exit data sufficient to compute "average
+  winner ≥1.8x" against realized multiples weighted by
+  partial-close pcts.
+- Code has (`src/journal/journalTypes.ts:55`,
+  `src/journal/tradeJournal.ts:99`): single `exitMode?: string` field,
+  single `exitMode TEXT` column per trade record. Per-tier emission
+  (Gap 4) produces 4 close events per position; the current schema can
+  store only one.
+- Validation impact: even with Gap 4 fully addressed (per-tier emission
+  logic shipped), the validation gate's "average winner" metric is
+  unmeasurable without schema changes to represent multiple closes per
+  position. Two schema-direction options exist (multi-row
+  representation, or a nested closes array per record); the decision
+  shapes how positionManager emits records during partial closes.
+- Coupling: this gap is structurally bound to Gap 4. The schema
+  decision is not independent — it has to be made before per-tier
+  emission can land.
+
+### Gaps that aren't actually gaps
+
+To avoid Section 5 over-scoping, here are spec items marked as ALREADY
+MET, with citations:
+
+**Not-a-gap 1: TRAILING_STOP exists in the ExitMode union.**
+
+- Spec requires `TRAILING_STOP`. Code (`src/core/types.ts:21`) has it.
+  The name and slot survive the migration; only the firing logic (Gap 5)
+  needs change.
+
+**Not-a-gap 2: RUG_TRIGGER exists in the ExitMode union.**
+
+- Spec requires `RUG_TRIGGER`. Code (`src/core/types.ts:21`) has it.
+  Only the firing logic (Gap 7) needs change.
+
+**Not-a-gap 3: STOP_LOSS mechanism (pure drawdown) matches spec's
+HARD_STOP design.**
+
+- Spec requires hard stop on drawdown threshold, no time component.
+  Code (`positionManager.ts:234-238`) implements exactly that. Rename +
+  threshold-value verification (Gap 6) are the only changes needed; the
+  mechanism is correct.
+
+**Not-a-gap 4: TIME_EXIT mechanism (hold-duration exit) matches spec's
+MAX_HOLD design.**
+
+- Spec requires exit when held longer than maxHoldMs. Code
+  (`positionManager.ts:373-377`) implements exactly that. Pure rename
+  needed.
+
+**Not-a-gap 5: Tier-tracking data structure is present.**
+
+- Spec requires 4-tier ladder with `triggered` state per tier. Code
+  (`positionManager.ts:417-422` + `241-253`) has this structural pattern
+  already in place. The multiples (Gap 3), splits (Gap 3), and per-tier
+  emission (Gap 4) are wrong, but the underlying tracking shape doesn't
+  need to be invented from scratch — the migration modifies what's
+  already there rather than building new structure.
+
+### Summary
+
+11 gaps total. Distributed as:
+
+- 2 in the type taxonomy (modes missing, modes extraneous)
+- 5 in the exit logic (TP splits, per-tier closes, trailing stop model,
+  HARD_STOP threshold, RUG_TRIGGER firing)
+- 3 in surrounding infrastructure (event bus dead path, ExitEngine
+  class dead, type coupling in non-goal modules)
+- 1 in journal/persistence (schema cannot represent per-tier closes;
+  structurally coupled to per-tier emission work)
+
+5 not-actually-gaps: TRAILING_STOP and RUG_TRIGGER slots present,
+STOP_LOSS and TIME_EXIT mechanisms correct, tier-tracking structure
+present.
+
+The migration plan in Section 5 will address gaps 1-11 in a sequenced
+commit order, with not-a-gap items providing the framework on which the
+migration builds (existing slots, existing mechanisms, existing
+structure).
