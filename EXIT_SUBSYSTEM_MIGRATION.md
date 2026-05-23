@@ -1028,3 +1028,468 @@ following pre-Section-5 verifications must complete:
 Section 5 sequences the migration. Section 6 defines the success gate for
 considering the migration complete enough to begin validation data
 collection.
+
+## Migration plan
+
+This section sequences the migration into phases. Each phase is a coherent
+unit of work with explicit entry conditions, commits, and a phase boundary.
+The migration is complete for its stated purpose when Phase 4 lands and the
+validation-data boundary is marked. Phase 5 is technical debt remediation —
+included here because the path is defined, not because it gates anything.
+
+### Sequencing principles
+
+Five principles shape commit ordering:
+
+1. **Smallest contained change first.** Each commit should be the minimum
+   atomic change that produces a working build. Bundling unrelated work
+   makes "what broke?" questions harder when CI fails.
+
+2. **Riskiest test in its own commit.** A lesson from earlier sessions:
+   when a commit bundles a low-risk implementation change with a higher-risk
+   test change, CI failures attribute incorrectly. Splitting the riskier
+   change isolates the signal.
+
+3. **Pre-commit verification is non-negotiable.** Each commit in this plan
+   has a pre-commit checklist (carried forward from Section 4 decisions and
+   Section 3 gap analysis). Skipping the checklist risks shipping commits
+   with hidden coupling.
+
+4. **Test data cleanliness during interim phases.** Paper trading may continue
+   during the migration for development purposes. Behavior changes (Phase 2
+   trailing stop, Phase 3 per-tier emission, Phase 4 RUG_TRIGGER and the
+   floor change) should land in an order that maximizes the validity of
+   interim test data — even though that data won't count toward the
+   validation gate.
+
+5. **The validation-data boundary is a phase marker, not a commit boundary.**
+   Section 4 Decision 4 established this: validation data collection cannot
+   begin until both RUG_TRIGGER emission and RAPID_DUMP_EXIT/EARLY_STOP
+   removal are shipped. The commits within Phase 4 can land at any interval
+   in any order; the boundary is at the end of the phase.
+
+### Phase 0: Pre-migration cleanup
+
+**Purpose**: Clear dead code surface before the taxonomy work begins. Reduces
+the change-set per subsequent commit and removes potential confusion about
+which code paths are live.
+
+**Commit 0.1: Delete ExitEngine and associated dead code.**
+
+- Files touched:
+  - Delete: `src/exits/exitEngine.ts`
+  - Modify: `src/index.ts` (remove import at line 17, remove unused
+    instantiation at line 571)
+  - Modify (conditional): `src/core/eventBus.ts:38` — remove
+    `'exit:triggered'` event type declaration if pre-commit grep is clean
+  - Modify (conditional): `src/core/types.ts` — remove `ExitTier` type if
+    pre-commit grep shows ExitEngine was its only consumer
+
+- Pre-commit checklist (from Section 4 Decision 1):
+  1. Grep `src/` for `ExitTier` references
+  2. Inspect `exitEngine.ts` module scope for top-level executable code
+     outside the class definition
+  3. Grep entire codebase for `'exit:triggered'`
+
+- Tests: none expected to change. Verify with `npm test` post-edit.
+
+- Atomicity: single commit, all conditional changes resolved per pre-commit
+  grep results.
+
+### Phase 1: Taxonomy rename (non-disruptive)
+
+**Purpose**: Bring the ExitMode taxonomy into spec compliance for the modes
+whose mechanisms already match spec design. Two-file changes (type + map);
+positionManager unchanged.
+
+**Entry condition**: Phase 0 commits landed.
+
+**Commit 1.1: STOP_LOSS → HARD_STOP rename.**
+
+- Files touched:
+  - Modify: `src/core/types.ts:21` (ExitMode union: replace `STOP_LOSS`
+    with `HARD_STOP`)
+  - Modify: `src/core/types.ts:175` and `:212` (audit dual-declaration
+    relationship per Section 2 pre-commit verification — same change to
+    both if appropriate)
+  - Modify: `src/index.ts:1740` (exitModeMap: `'STOP_LOSS': 'STOP_LOSS'`
+    becomes `'STOP_LOSS': 'HARD_STOP'`; keep key as `'STOP_LOSS'` since
+    positionManager emits that string)
+  - No change to `src/position/positionManager.ts` (the reason string
+    `'STOP_LOSS (X% loss)'` remains unchanged)
+
+- Pre-commit checklist:
+  1. Resolve the `types.ts:175`/`:212` dual-declaration audit. If both
+     fields are the same type, change both. If they're divergent, decide
+     in this commit how to reconcile.
+  2. Verify `position.stopLossPct` config value against spec's 0.40x
+     (equivalent to `stopLossPct: 0.60`). If mismatched, threshold
+     migration is a separate decision — either align config in this
+     commit or document the deviation. Indirect evidence available
+     from the 231 archived pre-migration records (Section 4 notes).
+  3. Grep `src/ml/` and `src/replay/` for `'STOP_LOSS'` string literals
+     or exhaustive ExitMode patterns. Update string literals in-commit;
+     pre-commit grep must complete before staging.
+
+- Tests: `tests/positionManager.test.ts` assertions referencing
+  `'STOP_LOSS'` need updating to `'HARD_STOP'`. Same commit.
+
+- Atomicity: single commit.
+
+**Commit 1.2: TIME_EXIT → MAX_HOLD rename.**
+
+- Files touched:
+  - Modify: `src/core/types.ts:21` (ExitMode union: replace `TIME_EXIT`
+    with `MAX_HOLD`)
+  - Modify: `src/index.ts:1746` (exitModeMap: `'TIME_EXIT': 'TIME_EXIT'`
+    becomes `'TIME_EXIT': 'MAX_HOLD'`; key unchanged)
+  - Modify: `src/replay/replaySimulator.ts:72` (string literal
+    `'TIME_EXIT'` becomes `'MAX_HOLD'` per Section 4 Decision 5)
+  - No change to `src/position/positionManager.ts`
+
+- Pre-commit checklist:
+  1. Grep `src/ml/` and `src/replay/` for additional `'TIME_EXIT'` string
+     literals or exhaustive ExitMode patterns. The replaySimulator
+     site was the only one surfaced during inventory, but the grep
+     must run before staging.
+
+- Tests: `tests/positionManager.test.ts` assertions referencing
+  `'TIME_EXIT'` need updating. Same commit.
+
+- Atomicity: single commit.
+
+**Commit 1.3: Add ExitMode documentation comment block.**
+
+- Files touched:
+  - Modify: `src/core/types.ts:21` (add the documentation comment from
+    Section 4 Decision 3 above the type definition)
+
+- Pre-commit checklist: none specific to this commit. The text is fixed
+  from Section 4.
+
+- Tests: none. Comment-only change.
+
+- Atomicity: single commit. Lands after 1.1 and 1.2 so the comment
+  reflects the post-rename taxonomy.
+
+**Phase 1 exit condition**: Working tree clean. ExitMode union now contains
+HARD_STOP (renamed), MAX_HOLD (renamed), and the documentation comment is in
+place. positionManager unchanged. Tests passing.
+
+### Phase 2: Trailing stop fix
+
+**Purpose**: Bring trailing stop into spec compliance. Threshold-only change,
+single-file, isolated from the rest of the migration. Placed before Phase 3
+so any test data generated during Phase 3 development uses the correct
+protection model.
+
+**Entry condition**: Phase 1 complete.
+
+**Commit 2.1: Trailing stop activation and trigger model.**
+
+- Files touched:
+  - Modify: `src/position/positionManager.ts:262-267` (replace activation
+    condition `peakMultiple > 1.5 && multiple < 1.1` with `peakMultiple >= 1.15
+    && multiple <= peakMultiple * 0.75`; update the close-reason string template
+    to reflect peak-relative thresholds for diagnostic readability)
+  - No type or map changes (the `TRAILING_STOP` mode name is unchanged)
+
+- Pre-commit checklist:
+  1. Verify the change to the conditional preserves the existing dual-gate
+     (must have both peak threshold AND retracement). The new model uses
+     `peakMultiple * 0.75` for the trail floor; confirm no off-by-one in
+     edge cases (peak exactly at 1.15x).
+  2. Confirm the close-reason string template includes both the peak and
+     the trail floor for log readability (e.g., `'TRAILING_STOP (peak
+     {peak}x, trail floor {0.75*peak}x, now {current}x)'`).
+
+- Tests: `tests/positionManager.test.ts` assertions for trailing stop
+  behavior need updating. Existing tests likely use the old thresholds.
+  New tests should cover the spec scenarios:
+  - Position peaks at 1.4x, retraces to 1.0x: does NOT trigger under old
+    logic (peak < 1.5x), but DOES trigger under new logic if peak ever
+    crossed 1.15x.
+  - Position peaks at 3x, retraces to 1.4x: triggers under new logic
+    (1.4 < 3 * 0.75 = 2.25), would not have triggered under old (1.4 > 1.1).
+  - Edge case: peak exactly at 1.15x, current exactly at 0.8625x (75% of 1.15).
+
+- Atomicity: single commit. Riskiest test (the edge case at exact threshold)
+  in the same commit as the logic change since the change is small enough
+  that test/implementation interleaving is not a concern.
+
+**Phase 2 exit condition**: Trailing stop fires per spec. Tests passing.
+
+### Phase 3: Schema and per-tier emission
+
+**Purpose**: Implement Gap 11 (journal schema) and Gap 4 (per-tier partial
+closes) as the structurally bound work they are. Adds TP_TIER_1..4 to the
+taxonomy. Largest coupled change in the migration.
+
+**Entry condition**: Phase 2 complete.
+
+**Commit 3.1: Add partial_closes table schema.**
+
+- Files touched:
+  - Modify: `src/journal/tradeJournal.ts` (add CREATE TABLE for
+    `partial_closes` with the schema from Section 4 Decision 2; ensure
+    the table is created idempotently with `CREATE TABLE IF NOT EXISTS`)
+  - Modify: `src/journal/journalTypes.ts` (add `PartialClose` interface
+    matching the table schema)
+
+- Pre-commit checklist (from Section 4 Decision 2):
+  1. Verify the current write path for `trades` is once-at-close. If
+     positions are written incrementally, the "unchanged write path"
+     framing breaks and the commit's scope expands.
+  2. Confirm `tradeJournal.ts` exposes a method to write `partial_closes`
+     rows independently of trade rows (or that the method will be added
+     in this commit).
+
+- Tests: add tests for `partial_closes` write/read paths. Tests for
+  existing `trades` table should pass unchanged.
+
+- Atomicity: single commit. No taxonomy changes yet — the table exists
+  but nothing writes to it.
+
+**Commit 3.2: Add TP_TIER_1..4 to ExitMode and exitModeMap.**
+
+- Files touched:
+  - Modify: `src/core/types.ts:21` (add `TP_TIER_1 | TP_TIER_2 | TP_TIER_3
+    | TP_TIER_4` to the union; remove `ALL_TIERS_HIT`)
+  - Modify: `src/index.ts:1740-1747` (add map entries for tier reason
+    strings; remove `'ALL_TIERS_HIT'` entry)
+  - The mapping shape: `'TIER_1_HIT': 'TP_TIER_1'`, `'TIER_2_HIT':
+    'TP_TIER_2'`, etc. (exact reason-string format TBD in this commit
+    but must match what Commit 3.3 emits)
+
+- Pre-commit checklist:
+  1. Coordinate the reason-string format between this commit and Commit
+     3.3. The map keys must match positionManager's emitted strings
+     exactly (with `startsWith` matcher). Decide format here: prefer
+     `'TIER_1_HIT (at {multiple}x, sold {pct}%)'` so the prefix `'TIER_1_HIT'`
+     uniquely identifies the tier.
+  2. Grep `src/` for any `'ALL_TIERS_HIT'` references being removed.
+
+- Tests: existing `ALL_TIERS_HIT` test assertions need updating or
+  removal. New TP_TIER tests come in Commit 3.3.
+
+- Atomicity: single commit. positionManager doesn't yet emit the new
+  strings — they're recognized by the map but won't fire. This is the
+  intermediate state where the type is updated but logic still emits
+  old strings; tests must validate this transitional shape.
+
+**Commit 3.3: Rewrite tier hit logic to emit per-tier closes.**
+
+- Files touched:
+  - Modify: `src/position/positionManager.ts:241-260` (replace the
+    track-without-closing logic with per-tier partial close emission).
+    Each tier hit:
+    - Records the close-price in in-memory tier state (Section 4
+      Decision 2 pre-commit checklist item 2)
+    - Calls a new internal helper `recordPartialClose(tier, pct, price)`
+      that writes a `partial_closes` row
+    - Marks the tier `triggered: true`
+  - When tier 4 hits (or any terminal condition), the positions row
+    writes with `exitMode = 'TP_TIER_4'` (or whichever tier hit last)
+    and `realizedMultiple` computed from in-memory weighted average
+
+- Pre-commit checklist (from Section 4 Decision 2):
+  1. `realizedMultiple` computed from in-memory tier state, not DB query
+  2. Positions row write and all partial_closes row writes in same
+     transaction
+  3. No other module computes `realizedMultiple` independently
+  4. `partial_closes.exit_mode` values constrained to TP_TIER_1..4
+     (application-layer or DB CHECK)
+
+- Tests: 
+  - Position hits all 4 tiers cleanly: 4 partial_closes rows, positions
+    row with exitMode=TP_TIER_4 and realizedMultiple = weighted average
+  - Position hits 2 tiers then HARD_STOP: 2 partial_closes rows, positions
+    row with exitMode=HARD_STOP and realizedMultiple = weighted including
+    the residual loss
+  - Position hits 1 tier then MAX_HOLD: 1 partial_close row, positions
+    row with exitMode=MAX_HOLD
+  - Riskiest test in own commit: the weighted-multiple math is non-trivial.
+    If the test for weighted-multiple-with-residual is the riskiest, it
+    can ship as its own commit before the implementation, with TODO/skip
+    until 3.3 lands.
+
+- Atomicity: single commit if the riskiest-test-first principle doesn't
+  apply (i.e., if the implementation can be developed against tests
+  that ship in the same commit). Otherwise split into 3.3a (riskiest
+  test, expected to fail) and 3.3b (implementation, makes test pass).
+
+**Phase 3 exit condition**: Per-tier partial closes fire. Schema accommodates
+them. Realized multiple computes correctly across partial-close scenarios.
+Tests passing.
+
+### Phase 4: RUG_TRIGGER and the floor change
+
+**Purpose**: Implement Gap 7 (RUG_TRIGGER firing logic) and remove the
+non-spec early-tenure protections (Gap 2 partial: RAPID_DUMP_EXIT, EARLY_STOP).
+Validation-data boundary at end of phase.
+
+**Entry condition**: Phase 3 complete.
+
+**Commit 4.1: RUG_TRIGGER detection and emission.**
+
+- Files touched:
+  - New module: `src/ingestion/poolVaultStream.ts` (or similar — module
+    location TBD). Subscribes to pool wSOL vault account, emits an event
+    when `postBalance` drops >40% in a single transaction.
+  - Modify: `src/core/eventBus.ts` (add event type for vault-drain detection)
+  - Modify: `src/position/positionManager.ts` (subscribe to vault-drain
+    event, call `closePosition(tokenCA, 'RUG_TRIGGER: vault drain {pct}%')`
+    when fired for a position the manager holds)
+  - Modify: `src/index.ts:1740` (add `'RUG_TRIGGER': 'RUG_TRIGGER'` to
+    exitModeMap)
+  - Wire the new module into bot startup in `src/index.ts` (similar to
+    poolPriceStream subscription)
+
+- Pre-commit checklist:
+  1. Verify the wSOL vault account is reliably derivable from the pool
+     address (this is the Solana primitive that needs to be confirmed
+     correct).
+  2. Choose subscription mechanism: WebSocket account subscribe vs polling.
+     WebSocket is preferred but may have reliability concerns; document
+     the choice.
+  3. Confirm the 40% threshold semantics: is it `postBalance / preBalance
+     < 0.6` (drop from any pre-state to a 60%-or-less post-state) or
+     something else? Match spec exactly.
+  4. Test the unsubscribe path: when a position closes (for any reason),
+     the vault subscription for that pool must stop. Otherwise the stream
+     leaks subscriptions over time.
+
+- Tests:
+  - Mock vault stream emits a 41% drop: positionManager closes the
+    position with mode `RUG_TRIGGER`
+  - Vault stream emits a 39% drop: positionManager does NOT close (below
+    threshold)
+  - Position closes via TP tier: vault subscription is cleaned up
+  - Position closes via RUG_TRIGGER: appropriate cleanup, single close
+    not double
+
+- Atomicity: single commit, but this is the largest commit in the migration
+  (new module + subscription wiring + close logic). Consider splitting:
+  - 4.1a: New module with tests, no positionManager integration
+  - 4.1b: positionManager integration + exitModeMap entry
+
+**Commit 4.2: Remove RAPID_DUMP_EXIT and EARLY_STOP.**
+
+- Files touched:
+  - Modify: `src/position/positionManager.ts` (delete lines 221-225 and
+    228-232; the close branches and their conditions)
+  - Modify: `src/core/types.ts:21` (remove `RAPID_DUMP_EXIT` and
+    `EARLY_STOP` from ExitMode union)
+  - Modify: `src/index.ts:1741-1742` (remove map entries)
+
+- Pre-commit checklist:
+  1. Confirm Commit 4.1 (RUG_TRIGGER) is live before this commit lands.
+     The validation-data boundary applies even though commits can land
+     at any interval — but landing 4.2 before 4.1 creates a window where
+     a price-drop rug has no detection at all (RAPID_DUMP and EARLY_STOP
+     are gone, RUG_TRIGGER not yet emitting).
+  2. Grep `src/ml/` and `src/replay/` for string literals matching
+     `'RAPID_DUMP_EXIT'` or `'EARLY_STOP'`. Update same-commit per
+     Section 4 Decision 5.
+  3. Audit tests in `tests/positionManager.test.ts` that test
+     RAPID_DUMP_EXIT or EARLY_STOP behavior. Remove these tests — the
+     modes no longer exist.
+
+- Tests: removed (the tests for these modes go away with the modes).
+  No new tests in this commit; HARD_STOP coverage already exists from
+  Phase 1.
+
+- Behavior change note (from Section 4 Decision 4, with the audit-driven
+  magnitude): The current journal shows 46% of all exits firing via
+  RAPID_DUMP_EXIT (107 of 231 records). After this commit, those positions
+  are held to HARD_STOP at 0.40x or recover. This is the dominant
+  behavioral change in the migration.
+
+- Atomicity: single commit.
+
+**Phase 4 exit condition / Validation-data boundary**:
+
+After Commit 4.2 lands and CI is green, the migration is at the
+**validation-data boundary**. From this point forward:
+
+- The bot's exit behavior matches `STRATEGY_V2.md` for all modes the spec
+  defines.
+- Paper trading data generated from this point counts toward the spec's
+  success criteria (50+ closed trades, win rate ≥25%, average winner
+  ≥1.8x, expectancy positive).
+- The 231 existing pre-migration records are archived (preserved on disk
+  for diagnostic reference per Section 4 notes) but do not count toward
+  validation.
+
+The validation-data boundary should be marked explicitly: a tag, a
+log-line, or a documented "we are now collecting validation data" entry.
+This is operator discipline, not code.
+
+### Phase 5: UNKNOWN cleanup (optional, post-validation)
+
+The migration is complete for its stated purpose when Phase 4 lands and
+the validation-data boundary is marked. Phase 5 is technical debt
+remediation — included here because the path is defined, not because it
+gates anything.
+
+**Entry condition**: Phase 4 complete and validation data collection has
+been running for some period (suggested: at least the 50+ trade threshold
+the spec defines, so the UNKNOWN frequency on post-migration data is
+verifiable).
+
+**Commit 5.1: Make positionManager.exitReason non-nullable.**
+
+- Files touched:
+  - Modify: `src/position/positionManager.ts` (audit every code path
+    that creates a position; ensure `exitReason` is initialized to a
+    sentinel like `'NOT_CLOSED'` rather than `undefined`)
+  - Modify: `src/journal/journalTypes.ts:55` (change `exitMode?: string`
+    to `exitMode: string` — but only after Commit 5.2)
+
+- Pre-commit checklist: 
+  1. Audit every `new TradePosition` or equivalent in positionManager.
+  2. Confirm closePosition is the only path that mutates `exitReason`.
+  3. Verify the type narrowing in `src/index.ts:1738` works correctly
+     (the `?? 'UNKNOWN'` defaulting can be removed).
+
+- Tests: positionManager tests verify exitReason is always set.
+
+**Commit 5.2: Type the exitModeMap exhaustively and remove UNKNOWN.**
+
+- Files touched:
+  - Modify: `src/index.ts:1739-1750` (type the map as
+    `Record<PositionManagerReasonPrefix, ExitMode>` where
+    `PositionManagerReasonPrefix` is a new type listing the exact
+    prefix strings positionManager emits)
+  - Modify: `src/core/types.ts:21` (remove `UNKNOWN` from ExitMode union)
+  - Modify: documentation comment block to remove the diagnostic-sentinel
+    paragraph (the bounded cleanup path is now executed)
+
+- Pre-commit checklist:
+  1. Verify Phase 4 validation data shows zero UNKNOWN records. If
+     non-zero, the bug Decision 6 warned about exists and must be fixed
+     before this commit.
+  2. Confirm the new `PositionManagerReasonPrefix` type lists every prefix
+     positionManager actually emits.
+
+- Tests: verify the type system rejects an exhaustive switch on ExitMode
+  that handles UNKNOWN (it should be a compile error since UNKNOWN is
+  removed).
+
+**Phase 5 exit condition**: ExitMode taxonomy is exhaustively typed.
+UNKNOWN no longer appears in the type union. Documentation reflects the
+post-cleanup state.
+
+### Migration summary
+
+| Phase | Purpose | Commits | Atomicity notes |
+|-------|---------|---------|-----------------|
+| 0 | Pre-migration cleanup | 0.1 | Single commit, conditional sub-changes per grep |
+| 1 | Taxonomy rename (non-disruptive) | 1.1, 1.2, 1.3 | Three small commits, no positionManager changes |
+| 2 | Trailing stop fix | 2.1 | Single commit, threshold-only |
+| 3 | Schema + per-tier emission | 3.1, 3.2, 3.3 | Largest coupled work; 3.3 may split if riskiest-test-first applies |
+| 4 | RUG_TRIGGER + floor change | 4.1, 4.2 | Validation-data boundary at end of phase |
+| 5 | UNKNOWN cleanup (optional, post-validation) | 5.1, 5.2 | Technical debt remediation, not migration-gating |
+
+The validation-data boundary is after Commit 4.2. Section 6 defines what
+constitutes "migration complete enough to validate."
