@@ -667,3 +667,364 @@ The migration plan in Section 5 will address gaps 1-11 in a sequenced
 commit order, with not-a-gap items providing the framework on which the
 migration builds (existing slots, existing mechanisms, existing
 structure).
+
+## Out-of-scope decisions
+
+This section makes the decisions Sections 2 and 3 deferred forward. Each
+decision is documented with reasoning, pre-commit verification items where
+applicable, and forward references to Section 5 where sequencing is shaped.
+
+The decisions are stable. Re-litigating them is appropriate only if a Section 5
+pre-commit check produces new information — e.g., the UNKNOWN frequency
+audit (Decision 6) returns non-zero and reshapes the migration sequence.
+
+### Decision 1: ExitEngine disposition — delete
+
+**Decision**: Delete `src/exits/exitEngine.ts` entirely. Remove the import at
+`src/index.ts:17` and the unused instantiation at `src/index.ts:571`. Remove
+the `'exit:triggered'` event type from `src/core/eventBus.ts:38` conditional
+on a clean grep across the codebase.
+
+**Reasoning**: The class is dead code — instantiated, never accessed by
+dot-notation, emitting events with no subscriber. Its `selectExitMode()` returns
+modes outside the spec's 8-mode taxonomy (`PANIC`, `HARVEST`, `DRIP`) based on
+round-1 smart-money signals (`manipulationRisk`, `smartWalletsSelling`,
+`volumeAccelerating`) explicitly listed as non-goals in `STRATEGY_V2.md`. Unlike
+the `checkHoneypot` decision (kept for test coverage value), ExitEngine has no
+test coverage of shared logic to preserve. The archaeological-value argument
+for keeping the file fails: `git log` preserves the round-1 design forever;
+`git show <commit>:src/exits/exitEngine.ts` retrieves any historical version.
+Deletion removes a build-surface concern (one less file to typecheck) and a
+confusion risk (future readers seeing instantiated-but-unused code).
+
+**Pre-commit checklist** for the deletion commit:
+
+1. Grep `src/` for `ExitTier` references. If ExitEngine is the only consumer,
+   `ExitTier` becomes dead and is removed in the same commit. If other modules
+   reference it, it stays.
+2. Inspect `exitEngine.ts` module scope for top-level executable code outside
+   the class definition (registrations, initializers, IIFEs, side-effecting
+   imports). Confirm the file is class-definition-only before deletion.
+3. Grep the entire codebase (not just `src/index.ts`) for `'exit:triggered'`.
+   If grep returns zero results after ExitEngine deletion, the event type
+   declaration at `eventBus.ts:38` goes in the same commit. If there is a
+   stray subscriber (test infrastructure, monitoring, anything), the event
+   declaration stays until that's resolved.
+
+**Section 5 reference**: This is a single atomic commit. Sequencing: any time
+in the migration phase. Recommend early (Phase 1) to clear dead code before
+the taxonomy work begins.
+
+### Decision 2: Schema for Gap 11 — hybrid (positions table + new partial_closes table)
+
+**Decision**: The journal schema gains a new `partial_closes` table. The
+existing `positions` table schema is unchanged. Each tier hit during a
+position's hold generates one `partial_closes` row. The position's row writes
+once at close-time, with `exitMode` set to the terminal mode (the close event
+that retired the residual position).
+
+**Schema shape**:
+
+```
+positions table (existing, unchanged):
+  id, tokenCA, strategy, edgesFired, entryTimestamp,
+  entryPriceLamports, exitTimestamp, exitPriceLamports,
+  exitMode, realizedMultiple, realizedPnLUSD, ...
+
+partial_closes table (new):
+  position_id (FK → positions.id)
+  tier_n (1..4)
+  pct_closed (e.g. 0.30 for 30%)
+  exit_price_lamports
+  exit_timestamp
+  exit_mode (TP_TIER_1..4)
+  PRIMARY KEY (position_id, tier_n)
+```
+
+**Reasoning**: Validation gate metrics (win rate, average winner, expectancy)
+are position-level, computed against the positions row directly. Option A
+(multi-row representation) requires a GROUP BY pass before every validation
+query. Option B (nested closes array as JSON column) is a known anti-pattern
+for SQL — querying within the JSON is awkward and breaks the query plan. The
+hybrid keeps validation queries fast and clean while preserving per-tier
+detail in the partial_closes table for analytical queries that want it. Old
+positions (pre-migration) have zero partial_closes rows — queries left-join
+and treat NULL as "no partial closes." No data migration required.
+
+The "two write paths" cost is appropriate because the position close and the
+tier hits represent distinct events.
+
+**Terminal mode semantics**: `TP_TIER_4` is both a `partial_closes` row (for
+the final tier hit) and the `positions.exitMode` (since tier 4 closes the
+residual 20%). No separate `ALL_TIERS_HIT` concept needed.
+
+**Pre-commit checklist** for the per-tier emission + schema commit (Gap 4 +
+Gap 11, structurally bound):
+
+1. Verify the current write path for positions is once-at-close, not
+   incremental. If positions are written incrementally, the "unchanged write
+   path" framing breaks down and the migration scope expands.
+2. `realizedMultiple` is computed from in-memory tier state, not from a DB
+   query. positionManager already tracks tier hits in-memory as `triggered`
+   flags (Section 2: positionManager.ts:241-253) and can record close-price
+   at each tier hit in the same state. At close-time, the weighted average
+   computes from this running in-memory data — no read-before-write. Write
+   the positions row and all partial_closes rows in the same transaction.
+3. Verify no other module computes `realizedMultiple` independently and would
+   get out of sync.
+4. Constrain `partial_closes.exit_mode` to TP_TIER_1..4 (or whichever subset
+   of ExitMode is valid for partial close events). Application-layer
+   enforcement or DB CHECK constraint — call to make during implementation.
+
+**Section 5 reference**: Gap 4 (per-tier emission) and Gap 11 (schema) are
+structurally bound. They land in the same commit or paired sequence within
+the same phase. The schema decision precedes the emission code because
+emission shape depends on schema target.
+
+### Decision 3: STALE_EXIT and EMERGENCY as operational modes — single union with documented categories
+
+**Decision**: The `ExitMode` type remains a single union containing trading
+modes, operational modes, and a diagnostic sentinel. The distinction is
+documented in a comment block above the type definition, not enforced by
+separate types.
+
+**Comment block to ship with the type definition**:
+
+```typescript
+/**
+ * Exit modes for trade records.
+ * 
+ * Trading modes (per STRATEGY_V2.md): TP_TIER_1..4, TRAILING_STOP, HARD_STOP,
+ * MAX_HOLD, RUG_TRIGGER. These represent strategy decisions and are included
+ * in validation gate metrics.
+ * 
+ * Operational modes: STALE_EXIT (data feed loss), EMERGENCY (system shutdown,
+ * black-swan circuit breaker). These represent expected infrastructure events
+ * by design — they fire on predictable conditions.
+ * 
+ * Diagnostic sentinel: UNKNOWN. Indicates a position closed without a 
+ * recognized exit reason — a "should never happen" canary. Non-zero frequency
+ * in journal data signals a bug.
+ * 
+ * Validation metrics (win rate, average winner, expectancy) MUST exclude all
+ * three non-trading categories via:
+ *   WHERE exit_mode NOT IN ('STALE_EXIT', 'EMERGENCY', 'UNKNOWN')
+ * 
+ * UNKNOWN's presence in the type union is intentional for this migration but
+ * represents technical debt. The bounded cleanup path: make 
+ * positionManager.exitReason non-nullable, type the serialization map 
+ * exhaustively as Record<PositionManagerReasonPrefix, ExitMode>, then UNKNOWN
+ * can be removed from the type union entirely. Document timing of this 
+ * follow-up in EXIT_SUBSYSTEM_MIGRATION.md after migration validation.
+ * 
+ * Adding new modes: classify as trading, operational, or diagnostic. If 
+ * operational, update the exclusion list in all validation queries. If 
+ * diagnostic, treat as a bug signal. If trading, this constitutes a spec 
+ * deviation from STRATEGY_V2.md — document the rationale in 
+ * EXIT_SUBSYSTEM_MIGRATION.md Section 4 before shipping.
+ */
+export type ExitMode = ...
+```
+
+**Reasoning**: Single union is simplest. Type-system enforcement via separate
+`TradingExitMode` / `OperationalExitMode` types only pays off if TypeScript
+code processes modes at dispatch-time and needs compile-time guarantees about
+which branch handles what. The validation gate is SQL, not TypeScript
+dispatch — there's no consumer where the type discrimination would catch a
+real bug. A stored category field would be redundant (mode → category is
+1:1) and creates the risk of mode/category drift over time. Comment block
+plus disciplined exclusion filter in validation queries is the right level
+of formalization.
+
+**Why STALE_EXIT and EMERGENCY survive as operational modes**: Both fire on
+infrastructure conditions, not strategy decisions. STALE_EXIT fires when the
+price feed goes silent for a threshold time (data quality, not "we held long
+enough"). EMERGENCY fires from `emergencyCloseAll` called externally
+(`src/index.ts:1590` bot-shutdown, `src/index.ts:1911` black-swan FATAL
+severity). Conflating either with strategy modes (e.g. mapping STALE_EXIT to
+MAX_HOLD) would attribute infrastructure failures to deliberate strategy
+decisions and contaminate validation metrics. The success criteria need to
+be computable on strategy executions only.
+
+**Spec deviation acknowledgment**: STRATEGY_V2.md specifies 8 trading modes.
+This migration ships 10 ExitMode values (8 trading + 2 operational). The
+deviation is principled and documented in the type's comment block. Future
+modes that don't fit the existing categories require a Section 4 update with
+rationale before shipping.
+
+### Decision 4: Drop RAPID_DUMP_EXIT and EARLY_STOP — explicit behavior change
+
+**Decision**: Both round-1 time-windowed early-tenure protections are removed.
+HARD_STOP at 0.40x becomes the sole loss-side floor for normal volatility.
+RUG_TRIGGER (Gap 7) handles the catastrophic case (wSOL vault drain >40% in
+single tx).
+
+**Behavioral walkthrough**:
+
+- Position drops 20% in first minute: was closed under EARLY_STOP at 0.80x;
+  now held, awaiting either HARD_STOP at 0.40x or recovery to a TP tier.
+- Position drops 30% over 2 minutes: was closed under EARLY_STOP at 0.70x;
+  now held.
+- Position drops 50% in first 30 seconds: was closed under RAPID_DUMP_EXIT
+  at 0.50x; now held until HARD_STOP at 0.40x triggers or RUG_TRIGGER fires
+  on the underlying vault drain.
+
+**Maximum unrealized loss before forced close**: 60% (HARD_STOP at 0.40x),
+versus 15-20% under round-1 logic.
+
+**The replacement framing**: The spec replaces the time-windowed approximation
+with two purpose-built mechanisms. Rugs are caught by RUG_TRIGGER (deterministic
+signal: pool wSOL vault postBalance drop >40% in a single transaction). Normal
+volatility is caught by HARD_STOP (pure drawdown threshold). The round-1
+time-windowed stops were crudely approximating both — exiting fast on
+catastrophic drops (which RUG_TRIGGER now catches better) and also exiting on
+normal volatility (which HARD_STOP now catches with a wider floor).
+
+**The bet**: Spec accepts wider drawdowns in exchange for not getting shaken
+out of recoverable positions early. The validation gate (50+ trades) measures
+whether this tradeoff produces edge.
+
+**Validation-data boundary** (sequencing constraint for Section 5):
+
+Validation data collection cannot begin until **both** of the following are
+shipped:
+
+1. RUG_TRIGGER emission (Gap 7 closed) — positionManager subscribes to pool
+   wSOL vault, detects postBalance drop >40% in single tx, emits 
+   `'RUG_TRIGGER'` reason string; map adds matching key.
+2. RAPID_DUMP_EXIT and EARLY_STOP removal — both close branches deleted from
+   positionManager (lines 221-225 and 228-232); both keys removed from
+   exitModeMap; both values removed from ExitMode union.
+
+The commits can land at any interval. The hard constraint is the validation
+gate boundary: data collected in an interim window where RAPID_DUMP/EARLY_STOP
+are gone but RUG_TRIGGER isn't live yet would attribute rugged tokens to
+HARD_STOP rather than RUG_TRIGGER, contaminating the exit-mode distribution
+which is one of the success criteria. Section 5 marks this boundary
+explicitly.
+
+**Section 5 reference**: Recommend grouping the two changes in the same
+migration phase, with RAPID_DUMP/EARLY_STOP removal landing after RUG_TRIGGER
+emission within the phase. This minimizes the window where the interim state
+even exists. The hard constraint is the phase boundary, not the commit order
+within the phase.
+
+### Decision 5: ml/ and replay/ coupling — tolerate, update same-commit, classify as dormant
+
+**Decision**: When the taxonomy rename commits land, string literals in 
+`src/replay/replaySimulator.ts:72` (and any other locations surfaced by 
+pre-commit grep) are updated in the same commit. The mlTypes.ts import 
+remains untouched unless exhaustive ExitMode patterns are found there
+(pre-commit verification item).
+
+**Reasoning**: These modules are non-goals per `STRATEGY_V2.md`. Engineering
+effort to decouple them from ExitMode (Option B) is scope creep — real work
+on modules the spec explicitly defers. Forcing build-breakage as a forcing
+function (Option C) creates friction during commits that are already
+coupled, and risks the kind of "compiles in TypeScript but fails at runtime"
+issue that the inventory caught with the replaySimulator literal in the
+first place. Same-commit string updates are minimal cost — a one-line edit
+per discovered reference.
+
+**Pre-commit verification** before the taxonomy rename commit lands:
+
+1. Grep `src/ml/` and `src/replay/` for all `ExitMode` references, all
+   `exitMode` field accesses, and all string literals matching current
+   ExitMode values. The two surfaced during inventory (mlTypes.ts:11
+   import, replaySimulator.ts:72 literal) may not be exhaustive.
+2. For mlTypes.ts specifically: check for exhaustive patterns
+   (`Record<ExitMode, ...>` or `switch` on a value of type `ExitMode`).
+   Either would produce type errors when union values change, with errors
+   that don't look like string-literal mismatches.
+3. Confirm complete reference list before drafting the rename commit. The
+   "same-commit update" framing assumes you know the complete surface.
+
+**Dormant vs dead distinction**: ml/ and replay/ are *dormant*, not dead.
+ExitEngine (Decision 1) is dead — instantiated, never called, operating on
+non-goal signals. ml/ and replay/ compile, contain logic, are just not
+wired into v2's live path. Different categories. The dormant modules don't
+get retired in this migration. Their fate is a decision for when they 
+become active goals (decouple properly then) or explicit retirement 
+candidates (coupling disappears with them). Neither path is a current 
+migration decision. Section 4 tolerates the coupling for now.
+
+### Decision 6: UNKNOWN fallback — keep as diagnostic sentinel
+
+**Decision**: `UNKNOWN` remains in the `ExitMode` type union as a "should
+never happen" canary. The serialization boundary's two fallback paths
+(null `position.exitReason` → `'UNKNOWN'`; unrecognized reason → `'UNKNOWN'`)
+are preserved. Validation queries exclude UNKNOWN alongside the operational
+modes via the same WHERE clause filter.
+
+**Reasoning**: Removing UNKNOWN entirely (Option B) requires making
+`position.exitReason` non-nullable across positionManager's full close-path
+audit, and typing the exitModeMap exhaustively as
+`Record<PositionManagerReasonPrefix, ExitMode>`. That's bounded but
+non-trivial work for a "should never happen" guarantee. The defensive value
+of keeping the canary is real — if something goes wrong and a position
+closes without a recognized exit reason, the record persists with diagnostic
+value rather than throwing or producing silent garbage. Option C (drop from
+type, runtime sentinel only) creates type/runtime divergence, which produces
+"but the type says X, why does the data have Y" questions later.
+
+**Categorization distinction**: UNKNOWN is documented as a diagnostic
+sentinel, not as an operational mode. STALE_EXIT and EMERGENCY are *expected*
+infrastructure events that fire by design on predictable conditions. UNKNOWN
+means the close path produced no recognized reason — that's a bug signal,
+not an expected operational event. Same WHERE filter for validation queries,
+different conceptual meaning.
+
+**Future cleanup path** (deferred technical debt):
+
+After migration validation stabilizes, the bounded cleanup is: make
+`positionManager.exitReason` non-nullable, type the serialization map
+exhaustively, then UNKNOWN can be removed from the type union entirely.
+This is Option B from Decision 6's deliberation — correct as a long-term
+state, not appropriate for this migration. Documenting it here prevents
+UNKNOWN from becoming permanent technical debt dressed up as intentional
+design.
+
+**Pre-Section-5 verification** (gates Section 5 drafting):
+
+Query the existing trade journal for UNKNOWN frequency. If 0%, the
+"should never happen" canary framing holds and Section 5 sequences the
+migration without UNKNOWN-related work. If non-zero, the current code
+has a bug producing UNKNOWN values — Section 5 must add a "diagnose and
+fix UNKNOWN source" commit before the taxonomy rename, because a rename
+won't fix logic that's currently producing UNKNOWNs.
+
+This verification must complete before Section 5 is drafted, because the
+result changes Section 5's shape.
+
+### Summary of Section 4 decisions
+
+| # | Decision | Migration impact |
+|---|----------|-----------------|
+| 1 | Delete ExitEngine | One atomic commit, early in migration phase. Removes dead code surface. |
+| 2 | Hybrid schema (positions + partial_closes) | Schema commit lands with or before per-tier emission (Gap 4). Shapes how positionManager writes records at close-time. |
+| 3 | Single ExitMode union, documented categories | Comment block ships with the taxonomy type change. Validation queries filter via documented WHERE clause. |
+| 4 | Drop RAPID_DUMP_EXIT and EARLY_STOP | Behavioral change with documented walkthrough. Validation data collection cannot start until both this change and RUG_TRIGGER emission are live. |
+| 5 | Same-commit string literal updates for ml/replay | Pre-commit grep mandatory to confirm complete reference surface. Modules classified as dormant — fate deferred to when they become active. |
+| 6 | Keep UNKNOWN as diagnostic sentinel | Documented as technical debt with bounded cleanup path. Pre-Section-5 verification: query journal for UNKNOWN frequency; non-zero changes Section 5 shape. |
+
+### Inputs to Section 5
+
+Section 5 (migration plan with commit sequencing) draws from these decisions
+plus the gap analysis in Section 3. Before Section 5 is drafted, the
+following pre-Section-5 verifications must complete:
+
+1. **UNKNOWN frequency audit** (Decision 6). Query existing journal. Non-zero
+   result adds a "fix UNKNOWN source" commit to Section 5's sequence.
+
+2. **Validation-data boundary marker placement** (Decision 4). Section 5 must
+   explicitly mark the phase boundary past which validation data collection
+   is allowed. The marker requires RUG_TRIGGER emission and RAPID_DUMP/
+   EARLY_STOP removal both shipped.
+
+3. **Pre-commit checklists from Decisions 1, 2, and 5** are reference
+   material for Section 5's commits. Section 5 doesn't re-execute the
+   checklists; it sequences the commits that consume them.
+
+Section 5 sequences the migration. Section 6 defines the success gate for
+considering the migration complete enough to begin validation data
+collection.
