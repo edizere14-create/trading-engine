@@ -1493,3 +1493,160 @@ post-cleanup state.
 
 The validation-data boundary is after Commit 4.2. Section 6 defines what
 constitutes "migration complete enough to validate."
+
+## Success gate
+
+This section closes the migration scope. It defines two operationally
+sequenced things in one place: the gate that determines when validation
+data collection can meaningfully begin, and the criteria that determine
+whether v2 is validated. The first must be true before the second can be
+measured.
+
+### Migration completeness gate
+
+The migration is complete in the sense relevant to this document when
+**all** of the following are true:
+
+1. **All Phase 0-4 commits landed**, with each commit's CI build green
+   on the `sniper-v2` branch.
+
+2. **Each pre-commit checklist from Section 4 executed and resolved.**
+   The checklists are not optional. Specifically:
+   - Decision 1's three-item check for the ExitEngine deletion commit
+     (Phase 0)
+   - Decision 2's four-item check for the per-tier emission + schema
+     commit (Phase 3)
+   - Decision 5's reference-grep across `src/ml/` and `src/replay/`
+     ahead of each taxonomy commit (Phase 1, Phase 3, Phase 4)
+
+3. **Validation-data boundary marker placed.** This is operator
+   discipline, not a code artifact. After Commit 4.2 lands and CI is
+   green, the operator records the boundary explicitly: a tag, a
+   timestamped log entry, or a note in operational records. From this
+   marker forward, paper-trading data counts toward validation.
+
+4. **231 pre-migration records archived.** Per Section 4 notes, these
+   records do not count toward validation thresholds. They are preserved
+   on disk (`data/paperTrades.json` + backup) for diagnostic reference,
+   specifically: the STOP_LOSS frequency in these records is indirect
+   evidence for the Gap 6 verification (whether the pre-migration
+   `stopLossPct` config matches the spec's 0.40x). Archive means moved
+   to a clearly-labeled location, not deleted. No data migration
+   transforms the records into post-migration format.
+
+When all four are true, the migration completeness gate is met.
+
+### Validation success criteria
+
+`STRATEGY_V2.md` defines four success criteria. Section 6 names them
+explicitly, adds the watch-list of artifact-level concerns surfaced
+during Day 13's pre-Section-5 audit, and resolves ambiguity the spec's
+language did not anticipate.
+
+**Criterion 1: ≥50 closed positions with `priceBasisInvalid !== true`.**
+
+The spec uses "trade" language that predates per-tier partial closes.
+For this migration, "trade" means a closed position, not a
+`partial_closes` record. A single position that hits three tiers
+contributes one trade to this count, not three. The `partial_closes`
+table is queried for per-tier analytics; the validation count is
+queried against the `trades` table directly.
+
+**Criterion 2: All closed positions correctly labelled `strategy: 'SNIPER'`
+and `edgesFired: ['SNIPER']`.**
+
+This was largely addressed in earlier sessions (Day 4 wiring + Day 4
+fallback fix) but should be verified during validation data collection.
+Records with other strategy labels or missing/wrong edgesFired indicate
+a wiring regression.
+
+**Criterion 3: Realistic exit-mode distribution.**
+
+The spec's framing: "not >50% MAX_HOLD, not >50% ALL_TIERS_HIT" (with
+ALL_TIERS_HIT now replaced by TP_TIER_4 in the post-migration taxonomy).
+The intent is that the strategy isn't degenerate — most positions don't
+just sit until the time limit (MAX_HOLD heavy means weak entry signal
+or wrong hold window), and most positions don't always hit the full TP
+ladder (TP_TIER_4 heavy means the ladder is too easy and the bot is
+under-capturing winners that should run further).
+
+Validation queries exclude operational and diagnostic modes:
+```sql
+WHERE exit_mode NOT IN ('STALE_EXIT', 'EMERGENCY', 'UNKNOWN')
+```
+
+**Watch-list from Day 13 audit**: pre-migration data showed TIME_EXIT at
+49.8% — right at the spec's 50% threshold. After Phase 4, RAPID_DUMP_EXIT
+(46.3% of pre-migration exits) is gone. Some of those positions will
+recover to a TP tier, some will fall to HARD_STOP, and some will drift
+without resolution and eventually hit MAX_HOLD. If the drift-to-MAX_HOLD
+category is large enough, post-migration MAX_HOLD frequency could exceed
+50% and trip this criterion — not because the strategy is bad, but as
+an artifact of the floor-widening from RAPID_DUMP_EXIT removal. If early
+validation data shows MAX_HOLD >50%, investigate the drift category
+before concluding the strategy failed the gate.
+
+**Criterion 4: Computed metrics meet spec thresholds.**
+
+- **Win rate** (positions with `realizedMultiple ≥ 1.05`) **≥ 25%**
+- **Average winner ≥ 1.8x**
+- **Expectancy positive** after slippage and fees
+
+These are computed against the `trades` table directly, with the
+exclusion filter above applied. `realizedMultiple` is the weighted
+average across partial closes plus residual (computed in-memory at
+close-time per Section 4 Decision 2's pre-commit checklist).
+
+The metrics measure strategy executions only. STALE_EXIT and EMERGENCY
+records are infrastructure events and contaminate the metrics if
+included — hence the exclusion filter.
+
+### What "v2 validated" means
+
+The criteria above produce one of two outcomes:
+
+**Outcome A: Thresholds met.** The strategy has positive expectancy under
+the binary filter v2 implements. The next-stage decisions are:
+extend (CPMM detection, scoring engine, live trading infrastructure)
+or hold (continue paper trading with broader fixtures, validate against
+different market regimes). These decisions are out of scope for this
+document.
+
+**Outcome B: Thresholds not met.** The question becomes whether the
+binary filter is structurally too restrictive (extend to scoring,
+factor decomposition, signal weighting) or whether sniper-on-PumpSwap-
+graduations is non-edge entirely (different strategy). These decisions
+are also out of scope for this document.
+
+Section 6 closes the migration scope. The decisions that follow from
+either validation outcome — CPMM detection, scoring engine, live
+infrastructure, alternative strategies — are out of scope for this
+document and are tracked separately.
+
+### Phase 5 timing
+
+Section 5's Phase 5 (UNKNOWN cleanup, optional) becomes appropriate
+**after** validation data collection has run for some period and produced
+post-migration data that confirms UNKNOWN frequency remains zero in
+the new taxonomy.
+
+The suggested threshold is "after Criterion 1 is met" — i.e., once 50+
+closed positions exist post-migration, the UNKNOWN frequency in that
+dataset can be checked. Zero result on a 50+ sample size is sufficient
+evidence to proceed with Commits 5.1 and 5.2 (removing UNKNOWN from
+the type union, making `exitReason` non-nullable, exhaustively typing
+the serialization map).
+
+If the post-migration sample shows non-zero UNKNOWN, Phase 5 is blocked
+until the source bug is diagnosed and fixed. The bug investigation
+would be its own commit prior to Phase 5.
+
+### Section 6 summary
+
+The migration completeness gate has four checks. The validation success
+criteria are four spec-defined thresholds with one explicit ambiguity
+resolution (positions, not records) and one watch-list note
+(MAX_HOLD artifact risk). Validated v2 produces a binary outcome that
+hands off to a separate scope.
+
+This document ends here.
