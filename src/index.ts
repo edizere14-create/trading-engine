@@ -14,7 +14,6 @@ import { MarketStateEngine } from './marketState/marketStateEngine';
 import { SlippageEngine } from './liquidity/slippageEngine';
 import { RiskEngine } from './risk/riskEngine';
 import { SurvivalEngine } from './risk/survivalEngine';
-import { ExitEngine } from './exits/exitEngine';
 import { SignalAggregator } from './signals/signalAggregator';
 import { DEFAULT_WEIGHTS } from './signals/signalVector';
 
@@ -568,7 +567,6 @@ async function boot(): Promise<void> {
     : undefined;
   survivalEngine = new SurvivalEngine(cfg.INITIAL_CAPITAL_USD, survivalThresholds);
   survivalEngine.start();
-  const exitEngine = new ExitEngine();
   const signalAggregator = new SignalAggregator(deployerRegistry, walletRegistry, DEFAULT_WEIGHTS, cfg.MIN_CONSENSUS);
 
   // 5b. Intelligence infrastructure

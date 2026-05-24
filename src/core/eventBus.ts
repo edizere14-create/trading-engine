@@ -35,7 +35,6 @@ export interface EngineEvents {
   'trade:opened':          TradeRecord;
   'trade:closed':          TradeRecord;
   'position:updated':      OpenPosition;
-  'exit:triggered':        { tokenCA: string; mode: ExitMode; reason: string };
   'edge:disabled':         EdgePerformance;
   'survival:stateChanged': SurvivalSnapshot;
   'system:halt':           { reason: string; resumeAt?: Date };
