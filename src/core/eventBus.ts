@@ -8,7 +8,6 @@ import {
   MarketStateSnapshot,
   SignalVector,
   ExitMode,
-  OpenPosition,
   TradeRecord,
   EdgePerformance,
   SurvivalSnapshot,
@@ -34,7 +33,6 @@ export interface EngineEvents {
   'signal:ready':          { tokenCA: string; signal: SignalVector };
   'trade:opened':          TradeRecord;
   'trade:closed':          TradeRecord;
-  'position:updated':      OpenPosition;
   'edge:disabled':         EdgePerformance;
   'survival:stateChanged': SurvivalSnapshot;
   'system:halt':           { reason: string; resumeAt?: Date };

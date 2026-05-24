@@ -190,28 +190,6 @@ export interface TradeRecord {
   safetyChecks?: SafetyCheckTrace;
 }
 
-// ── EXIT TIER ─────────────────────────────────────────────
-
-export interface ExitTier {
-  pct: number;                  // % of position to exit
-  multiple: number;             // e.g. 2.0 = 2x
-  priceLamports: bigint;
-  reached: boolean;
-  reachedAt?: Date;
-}
-
-// ── OPEN POSITION ─────────────────────────────────────────
-
-export interface OpenPosition {
-  trade: TradeRecord;
-  tiers: ExitTier[];
-  remainingPct: number;         // % of original position still held
-  unrealizedPnL: number;
-  edgeExpiresAt: Date;          // entry + maxHoldMs
-  narrativeCluster: string;     // e.g. 'dog_meta', 'ai_meta'
-  exitMode: ExitMode;
-}
-
 // ── PERFORMANCE METRICS PER EDGE ──────────────────────────
 
 export interface EdgePerformance {
