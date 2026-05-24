@@ -1735,7 +1735,7 @@ async function boot(): Promise<void> {
     // Map positionManager exitReason → ExitMode
     const exitReason = position.exitReason ?? 'UNKNOWN';
     const exitModeMap: Record<string, ExitMode> = {
-      'STOP_LOSS': 'STOP_LOSS',
+      'STOP_LOSS': 'HARD_STOP',
       'RAPID_DUMP_EXIT': 'RAPID_DUMP_EXIT',
       'EARLY_STOP': 'EARLY_STOP',
       'TRAILING_STOP': 'TRAILING_STOP',
