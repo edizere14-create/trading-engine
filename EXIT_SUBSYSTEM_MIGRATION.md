@@ -471,6 +471,14 @@ criteria from `STRATEGY_V2.md`.
   surfaces during the taxonomy commit, since both are affected when
   ExitMode values change.
 
+- **Resolved by Commit 0.2** (`29a7017`): `OpenPosition.exitMode` was the
+  required declaration at the old line :212. Commit 0.2 deleted the
+  entire OpenPosition interface, eliminating the second declaration.
+  Only `TradeRecord.exitMode?` at `types.ts:175` remains. The dual-
+  declaration audit became moot before Commit 1.1 ran; the planning
+  prediction at Section 5 Phase 1 (audit in 1.1) is preserved but did
+  not execute in practice.
+
 **Gap 2: 7 round-1 mode names present in `ExitMode` union that the
 spec doesn't include.**
 
@@ -533,6 +541,11 @@ spec doesn't include.**
 - Validation impact: if `stopLossPct === 0.60`, the rename to HARD_STOP
   is taxonomy-only. If it differs, threshold migration is also required.
   Cannot decide without verifying config.
+- **Verified Day 14** (Commit 1.1 pre-commit diagnostic):
+  `src/core/config.ts:85` default is `0.30` (30% drawdown). Spec requires
+  `0.60` (60% drawdown). Gap is real and characterized as a 30-point
+  threshold mismatch. Resolution: Commit 1.1a (Phase 1) aligns the
+  config default to `0.60` ahead of the validation-data boundary.
 
 **Gap 7: RUG_TRIGGER firing logic absent.**
 
@@ -1074,7 +1087,7 @@ Five principles shape commit ordering:
 the change-set per subsequent commit and removes potential confusion about
 which code paths are live.
 
-**Commit 0.1: Delete ExitEngine and associated dead code.**
+**Commit 0.1: Delete ExitEngine and associated dead code.** [LANDED 13d79e5]
 
 - Files touched:
   - Delete: `src/exits/exitEngine.ts`
@@ -1096,6 +1109,21 @@ which code paths are live.
 - Atomicity: single commit, all conditional changes resolved per pre-commit
   grep results.
 
+**Phase 0 execution note.** This work landed as two commits, not one.
+Commit 0.1 (`13d79e5`) removed ExitEngine and the `'exit:triggered'`
+event type as planned. Commit 0.2 (`29a7017`) followed, removing the
+OpenPosition + ExitTier + `'position:updated'` dead-type cluster
+surfaced by 0.1's diagnostics. This commit was not predicted in the
+original plan because Section 5 anticipated ExitTier removal as a
+conditional sub-change within 0.1, not as a separate cluster commit.
+0.1's pre-commit grep showed ExitTier had a second consumer
+(`OpenPosition.tiers`), which meant ExitTier could not be removed in
+0.1. Investigation of that consumer revealed OpenPosition itself was
+dead (ExitEngine was its only constructor), which surfaced the full
+dead-type cluster. The cluster removal became 0.2. Phase 0 closed
+clean — two commits, both CI-green, all originally-planned scope plus
+the cluster cleanup.
+
 ### Phase 1: Taxonomy rename (non-disruptive)
 
 **Purpose**: Bring the ExitMode taxonomy into spec compliance for the modes
@@ -1104,7 +1132,7 @@ positionManager unchanged.
 
 **Entry condition**: Phase 0 commits landed.
 
-**Commit 1.1: STOP_LOSS → HARD_STOP rename.**
+**Commit 1.1: STOP_LOSS → HARD_STOP rename.** [LANDED 9919a59]
 
 - Files touched:
   - Modify: `src/core/types.ts:21` (ExitMode union: replace `STOP_LOSS`
@@ -1136,6 +1164,46 @@ positionManager unchanged.
 
 - Atomicity: single commit.
 
+**Commit 1.1a: Align stopLossPct config default to spec.**
+
+- Files touched:
+  - Modify: `src/core/config.ts:85` (default `0.30` → `0.60`; inline
+    comment `// -30%` updated to `// -60% (HARD_STOP spec)`)
+  - No other code changes; no logic changes; no test fixture changes
+
+- Pre-commit checklist:
+  1. Confirm `src/core/config.ts:85` still references
+     `TRADE_STOP_LOSS_PCT` with default `0.30`. If line shifted (a
+     subsequent commit may have modified config.ts), re-locate before
+     editing.
+  2. Confirm no `.env` or `.env.example` override sets
+     `TRADE_STOP_LOSS_PCT` to a different value that would shadow the
+     default change. Day 14 verification showed both files empty of
+     STOP_LOSS overrides; re-verify if more time has passed.
+  3. Confirm no test assertion depends on the `0.30` default value.
+     Day 14 verification showed `tests/positionManager.test.ts:19` has
+     a fixture value `stopLossPct: 0.40` (midpoint, not the production
+     default) — this fixture is intentional and stays untouched. Other
+     test files were not surveyed for this dependency; spot-check
+     before editing.
+
+- Tests: no test changes. The test fixture at `:19` exercises the
+  mechanism at a test-chosen threshold; it does not assert against the
+  production default.
+
+- Atomicity: single commit. Mechanical edit, no logic change, no
+  taxonomy change. Pairs conceptually with Commit 1.1 (the rename) but
+  ships separately because taxonomy and threshold are different
+  concerns and Section 4 Decision 1's checklist item 2 surfaced the
+  threshold as a deferred sub-decision.
+
+- Why separate from 1.1: Section 4 Decision 1 explicitly framed the
+  threshold value as "a separate decision — either align config in
+  this commit or document the deviation." The taxonomy rename (1.1)
+  carries no behavior change; the threshold change (1.1a) is a real
+  behavior change in production paper-trading. Splitting the commits
+  isolates the signal if CI catches any regression.
+
 **Commit 1.2: TIME_EXIT → MAX_HOLD rename.**
 
 - Files touched:
@@ -1157,6 +1225,41 @@ positionManager unchanged.
   `'TIME_EXIT'` need updating. Same commit.
 
 - Atomicity: single commit.
+
+**Commit 1.2a (conditional): Align maxHoldMs config default to spec.**
+
+_Conditional on `TRADE_MAX_HOLD_MS` mismatch being confirmed as
+in-scope before the validation-data boundary._
+
+- Files touched:
+  - Modify: `src/core/config.ts:84` (default `300_000` → `180_000`;
+    inline comment `// 5 min default` updated to `// 3 min (MAX_HOLD
+    spec)`)
+  - No other code changes; no logic changes
+
+- Pre-commit checklist:
+  1. Confirm spec value is `180_000` ms (3 minutes). Day 14
+     verification noted this as the spec value; re-verify against
+     `STRATEGY_V2.md` before editing in case of intervening spec
+     changes.
+  2. Confirm `src/core/config.ts:84` still references
+     `TRADE_MAX_HOLD_MS` with default `300_000`. Same line-shift check
+     as 1.1a.
+  3. Confirm no `.env` or `.env.example` override sets
+     `TRADE_MAX_HOLD_MS`.
+  4. Confirm `tests/positionManager.test.ts:18` shows
+     `maxHoldMs: 180_000` — Day 14 verified this fixture already
+     matches the new default, so no test update needed. Re-verify.
+
+- Tests: no test changes (per pre-commit item 4).
+
+- Atomicity: single commit. Mechanical, same shape as 1.1a.
+
+- Condition for skipping: if the mismatch is documented as an
+  acceptable deviation from spec (analogous to a tracked follow-up
+  post-v2), this commit is deferred and Section 6's gate checklist is
+  updated to note the deviation explicitly. As of Day 15 the mismatch
+  is in-scope; the commit lands.
 
 **Commit 1.3: Add ExitMode documentation comment block.**
 
@@ -1482,14 +1585,14 @@ post-cleanup state.
 
 ### Migration summary
 
-| Phase | Purpose | Commits | Atomicity notes |
-|-------|---------|---------|-----------------|
-| 0 | Pre-migration cleanup | 0.1 | Single commit, conditional sub-changes per grep |
-| 1 | Taxonomy rename (non-disruptive) | 1.1, 1.2, 1.3 | Three small commits, no positionManager changes |
-| 2 | Trailing stop fix | 2.1 | Single commit, threshold-only |
-| 3 | Schema + per-tier emission | 3.1, 3.2, 3.3 | Largest coupled work; 3.3 may split if riskiest-test-first applies |
-| 4 | RUG_TRIGGER + floor change | 4.1, 4.2 | Validation-data boundary at end of phase |
-| 5 | UNKNOWN cleanup (optional, post-validation) | 5.1, 5.2 | Technical debt remediation, not migration-gating |
+| Phase | Purpose | Commits | Atomicity notes | Status |
+|-------|---------|---------|-----------------|--------|
+| 0 | Pre-migration cleanup | 0.1, 0.2 | Single commit per the original plan; landed as two commits — see Phase 0 execution note above | LANDED |
+| 1 | Taxonomy rename (non-disruptive) | 1.1, 1.1a, 1.2, 1.2a, 1.3 | Three small commits per the original plan; expanded to five with threshold-alignment slots 1.1a and 1.2a | PARTIAL (1.1 landed; 1.1a, 1.2, 1.2a, 1.3 pending) |
+| 2 | Trailing stop fix | 2.1 | Single commit, threshold-only | PENDING |
+| 3 | Schema + per-tier emission | 3.1, 3.2, 3.3 | Largest coupled work; 3.3 may split if riskiest-test-first applies | PENDING |
+| 4 | RUG_TRIGGER + floor change | 4.1, 4.2 | Validation-data boundary at end of phase | PENDING |
+| 5 | UNKNOWN cleanup (optional, post-validation) | 5.1, 5.2 | Technical debt remediation, not migration-gating | PENDING |
 
 The validation-data boundary is after Commit 4.2. Section 6 defines what
 constitutes "migration complete enough to validate."
