@@ -18,6 +18,38 @@ export type EdgeName      =
   | 'AUTONOMOUS';
 
 export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
+/**
+ * Exit modes for trade records.
+ * 
+ * Trading modes (per STRATEGY_V2.md): TP_TIER_1..4, TRAILING_STOP, HARD_STOP,
+ * MAX_HOLD, RUG_TRIGGER. These represent strategy decisions and are included
+ * in validation gate metrics.
+ * 
+ * Operational modes: STALE_EXIT (data feed loss), EMERGENCY (system shutdown,
+ * black-swan circuit breaker). These represent expected infrastructure events
+ * by design — they fire on predictable conditions.
+ * 
+ * Diagnostic sentinel: UNKNOWN. Indicates a position closed without a 
+ * recognized exit reason — a "should never happen" canary. Non-zero frequency
+ * in journal data signals a bug.
+ * 
+ * Validation metrics (win rate, average winner, expectancy) MUST exclude all
+ * three non-trading categories via:
+ *   WHERE exit_mode NOT IN ('STALE_EXIT', 'EMERGENCY', 'UNKNOWN')
+ * 
+ * UNKNOWN's presence in the type union is intentional for this migration but
+ * represents technical debt. The bounded cleanup path: make 
+ * positionManager.exitReason non-nullable, type the serialization map 
+ * exhaustively as Record<PositionManagerReasonPrefix, ExitMode>, then UNKNOWN
+ * can be removed from the type union entirely. Document timing of this 
+ * follow-up in EXIT_SUBSYSTEM_MIGRATION.md after migration validation.
+ * 
+ * Adding new modes: classify as trading, operational, or diagnostic. If 
+ * operational, update the exclusion list in all validation queries. If 
+ * diagnostic, treat as a bug signal. If trading, this constitutes a spec 
+ * deviation from STRATEGY_V2.md — document the rationale in 
+ * EXIT_SUBSYSTEM_MIGRATION.md Section 4 before shipping.
+ */
 export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'RAPID_DUMP_EXIT' | 'EARLY_STOP' | 'TRAILING_STOP' | 'ALL_TIERS_HIT' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
