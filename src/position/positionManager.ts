@@ -370,9 +370,9 @@ export class PositionManager {
 
         const holdMs = now - position.entryTimestamp.getTime();
 
-        // Time exit: edge expired — pass last known price so we don't fallback to 0.7x
+        // Max hold: edge expired — pass last known price so we don't fallback to 0.7x
         if (holdMs > position.maxHoldMs) {
-          this.closePosition(tokenCA, `TIME_EXIT (held ${Math.round(holdMs / 1000)}s)`, position.lastPriceSOL);
+          this.closePosition(tokenCA, `MAX_HOLD (held ${Math.round(holdMs / 1000)}s)`, position.lastPriceSOL);
           continue;
         }
 

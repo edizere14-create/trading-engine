@@ -69,7 +69,7 @@ export class ReplaySimulator {
       );
     }
 
-    if (entry.outcome === 'LOSS' && entry.exitMode === 'TIME_EXIT') {
+    if (entry.outcome === 'LOSS' && entry.exitMode === 'MAX_HOLD') {
       lessons.push(
         'Edge expired before price moved — maxHoldMs may be too short for this setup',
       );
