@@ -266,7 +266,7 @@ export interface TradePosition {
   sourceWallets: string[];      // wallets that triggered this entry
   reBuyCount: number;           // how many re-buys from tracked wallets
   maxHoldMs: number;
-  stopLossPct: number;          // e.g. 0.30 = -30%
+  stopLossPct: number;          // e.g. 0.60 for 60% stop loss
   takeProfitTiers: TakeProfitTier[];
   peakPriceSOL: number;
   lastPriceSOL: number;            // most recent price we saw (for stale/time exits)

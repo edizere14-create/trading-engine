@@ -15,7 +15,7 @@ interface PositionConfig {
   sizePct: number;           // fraction of capital per trade
   maxConcurrent: number;
   maxTradesPerDay: number;
-  stopLossPct: number;       // e.g. 0.30 = -30%
+  stopLossPct: number;       // e.g. 0.60 for 60% stop loss
   maxHoldMs: number;
   solPriceUSD: number;       // current SOL price (updated externally)
 }
