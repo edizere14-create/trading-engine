@@ -1735,7 +1735,7 @@ async function boot(): Promise<void> {
     // Map positionManager exitReason → ExitMode
     const exitReason = position.exitReason ?? 'UNKNOWN';
     const exitModeMap: Record<string, ExitMode> = {
-      'STOP_LOSS': 'HARD_STOP',
+      'HARD_STOP': 'HARD_STOP',
       'RAPID_DUMP_EXIT': 'RAPID_DUMP_EXIT',
       'EARLY_STOP': 'EARLY_STOP',
       'TRAILING_STOP': 'TRAILING_STOP',
@@ -2004,7 +2004,7 @@ async function boot(): Promise<void> {
   logger.info(`  SIMULATOR: ${simulator ? 'ACTIVE' : 'DISABLED'}`);
   logger.info('  ── TRADE CONFIG ──');
   logger.info(`  POSITION SIZE: ${(cfg.TRADE_SIZE_PCT * 100).toFixed(0)}% of capital`);
-  logger.info(`  STOP LOSS: -${(cfg.TRADE_STOP_LOSS_PCT * 100).toFixed(0)}%`);
+  logger.info(`  HARD STOP: -${(cfg.TRADE_STOP_LOSS_PCT * 100).toFixed(0)}%`);
   logger.info(`  MAX HOLD: ${Math.round(cfg.TRADE_MAX_HOLD_MS / 1000)}s`);
   logger.info(`  MAX CONCURRENT: ${cfg.MAX_CONCURRENT_POSITIONS}`);
   logger.info(`  MAX DAILY: ${cfg.MAX_TRADES_PER_DAY}`);

@@ -231,9 +231,9 @@ export class PositionManager {
       return;
     }
 
-    // Stop loss
+    // Hard stop
     if (multiple <= (1 - position.stopLossPct)) {
-      this.closePosition(tokenCA, `STOP_LOSS (${((1 - multiple) * 100).toFixed(1)}% loss)`, currentPriceSOL);
+      this.closePosition(tokenCA, `HARD_STOP (${((1 - multiple) * 100).toFixed(1)}% loss)`, currentPriceSOL);
       return;
     }
 
