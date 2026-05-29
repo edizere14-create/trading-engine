@@ -119,4 +119,49 @@ describe('PositionManager — entry price invariants', () => {
       expect(pos!.lastPriceSOL).toBe(0.000005);
     });
   });
+
+  describe('trailing stop', () => {
+    it('triggers at 25% retrace from peak when peak >= 1.15x (regression: would not have triggered under old logic)', () => {
+      const signal = makeSignal(0);
+      pm.openTrade(signal, healthySurvival);
+      const { tokenCA } = signal;
+      pm.updatePrice(tokenCA, 0.000001);   // anchor: entry = 1.0x
+      pm.updatePrice(tokenCA, 0.0000014);  // peak: 1.4x (above 1.15x activation; old logic required > 1.5x)
+      pm.updatePrice(tokenCA, 0.000001);   // retrace to 1.0x; trail floor = 1.4 * 0.75 = 1.05x, so 1.0 <= 1.05 triggers
+      const closed = pm.getClosedPositions();
+      expect(closed.length).toBe(1);
+      expect(closed[0].tokenCA).toBe(tokenCA);
+      expect(closed[0].exitReason).toContain('TRAILING_STOP');
+      expect(closed[0].exitReason).toContain('peak 1.40x');
+      expect(closed[0].exitReason).toContain('trail floor 1.05x');
+    });
+
+    it('triggers at 25% retrace from a higher peak (peak 3x retrace to 1.4x; new triggers, old would not)', () => {
+      const signal = makeSignal(0);
+      pm.openTrade(signal, healthySurvival);
+      const { tokenCA } = signal;
+      pm.updatePrice(tokenCA, 0.000001);   // anchor: entry = 1.0x
+      pm.updatePrice(tokenCA, 0.000003);   // peak: 3.0x (triggers tier markers but does not close)
+      pm.updatePrice(tokenCA, 0.0000014);  // retrace to 1.4x; trail floor = 3.0 * 0.75 = 2.25x, so 1.4 <= 2.25 triggers
+      const closed = pm.getClosedPositions();
+      expect(closed.length).toBe(1);
+      expect(closed[0].tokenCA).toBe(tokenCA);
+      expect(closed[0].exitReason).toContain('TRAILING_STOP');
+      expect(closed[0].exitReason).toContain('peak 3.00x');
+      expect(closed[0].exitReason).toContain('trail floor 2.25x');
+    });
+
+    it('does not trigger when peak below 1.15x activation threshold', () => {
+      const signal = makeSignal(0);
+      pm.openTrade(signal, healthySurvival);
+      const { tokenCA } = signal;
+      pm.updatePrice(tokenCA, 0.000001);    // anchor: entry = 1.0x
+      pm.updatePrice(tokenCA, 0.00000114);  // peak: 1.14x (below 1.15x activation)
+      pm.updatePrice(tokenCA, 0.0000008);   // retrace to 0.8x (well below peak * 0.75 = 0.855x, but activation not crossed)
+      const closed = pm.getClosedPositions();
+      expect(closed.length).toBe(0);
+      const open = pm.getOpenPositions().find(p => p.tokenCA === tokenCA);
+      expect(open).toBeDefined();
+    });
+  });
 });

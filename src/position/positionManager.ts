@@ -259,10 +259,11 @@ export class PositionManager {
       return;
     }
 
-    // Trailing stop: if we've been above 1.5x and drop back to 1.1x, exit
+    // Trailing stop: activate at 1.15x peak, trail at -25% from peak
     const peakMultiple = position.peakPriceSOL / position.entryPriceSOL;
-    if (peakMultiple > 1.5 && multiple < 1.1) {
-      this.closePosition(tokenCA, `TRAILING_STOP (peak ${peakMultiple.toFixed(1)}x, now ${multiple.toFixed(2)}x)`, currentPriceSOL);
+    if (peakMultiple >= 1.15 && multiple <= peakMultiple * 0.75) {
+      const trailFloor = peakMultiple * 0.75;
+      this.closePosition(tokenCA, `TRAILING_STOP (peak ${peakMultiple.toFixed(2)}x, trail floor ${trailFloor.toFixed(2)}x, now ${multiple.toFixed(2)}x)`, currentPriceSOL);
       return;
     }
   }
