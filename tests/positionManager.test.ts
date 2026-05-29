@@ -157,7 +157,7 @@ describe('PositionManager — entry price invariants', () => {
       const { tokenCA } = signal;
       pm.updatePrice(tokenCA, 0.000001);    // anchor: entry = 1.0x
       pm.updatePrice(tokenCA, 0.00000114);  // peak: 1.14x (below 1.15x activation)
-      pm.updatePrice(tokenCA, 0.0000008);   // retrace to 0.8x (well below peak * 0.75 = 0.855x, but activation not crossed)
+      pm.updatePrice(tokenCA, 0.00000086);  // retrace to 0.86x (above RAPID_DUMP threshold 0.85x and EARLY_STOP 0.80x; trailing activation not crossed)
       const closed = pm.getClosedPositions();
       expect(closed.length).toBe(0);
       const open = pm.getOpenPositions().find(p => p.tokenCA === tokenCA);
