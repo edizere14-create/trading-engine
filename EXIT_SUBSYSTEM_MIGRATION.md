@@ -288,6 +288,30 @@ mode: ExitMode; reason: string }` — event type declared.
 with `mode: 'HARVEST'`. **No subscriber exists in `src/index.ts`.**
 The event fires into the void.
 
+**`src/core/eventBus.ts`** — `'trade:opened'` and `'trade:closed'`, both
+typed `TradeRecord` — event types declared. **`src/index.ts`** subscribes to
+both via `bus.on('trade:opened', ...)` and `bus.on('trade:closed', ...)`
+(around index.ts:~1410 and ~1420). **No emitter exists anywhere in `src/`.**
+This is the inverse of the `exit:triggered` dead path above: there, an emitter
+fired to no subscriber; here, subscribers wait for an event nothing emits. The
+handlers never run.
+
+**`src/index.ts`** — the `trade:closed` handler is the sole call site for
+`perfEngine.recordTrade()` and `onlineLearner.update()`, so the performance
+engine and the online learner receive no trade outcomes in the current build —
+they are starved, not merely dormant. `survivalEngine.recordTrade()` and
+`antifragileEngine.recordTradeOutcome()` also appear in the dead handler but are
+independently called from the live `position:closed` handler, so those two
+subsystems are unaffected.
+
+This finding surfaced during Phase 3 diagnostics (Day 19, execution phase), not
+in the original Section 3 gap analysis. It is out of scope for the exit subsystem
+migration: the journal write path that feeds the validation gate runs through the
+live `position:closed` handler, which is unaffected. It is recorded here so the
+dead handler and its starved consumers are not lost. Resolving it — wiring the
+trade lifecycle to emit these events, or removing the handlers and relocating the
+`perfEngine`/`onlineLearner` calls into the live path — is separate engineering work.
+
 ### Dead/inert code
 
 **`src/exits/exitEngine.ts`** — the entire `ExitEngine` class.
@@ -1329,6 +1353,37 @@ closes) as the structurally bound work they are. Adds TP_TIER_1..4 to the
 taxonomy. Largest coupled change in the migration.
 
 **Entry condition**: Phase 2 complete.
+
+**Phase 3 diagnostic note (Day 18-19).** Before any Phase 3 code work, the
+Decision 2 pre-commit checklist items were run as read-only diagnostics and all
+confirmed:
+
+1. The live write path for positions is once-at-close, not incremental: the
+   `position:closed` handler calls `journal.insert` exactly once with the full
+   row via `INSERT OR REPLACE`. The apparent second write path (the `trade:closed`
+   handler's own `journal.insert`) is dead — see the Event bus finding in
+   Section 2. Only one write path is live.
+
+2. `realizedMultiple` is computed in exactly one place — `positionManager`
+   (`position.realizedMultiple = multiple`, with a defensive fallback). No other
+   module computes it independently; all consumers (performanceEngine, factorEngine,
+   paperTrader, journalQuery, replaySimulator, equityCurveController, onlineLearner)
+   read it. The Commit 3.3 weighted-average rewrite changes the value's computation
+   at this single site, and consumers inherit the new value without code changes.
+   The semantic shift (single-exit multiple → blended weighted multiple) is
+   type-narrow (stays `number`) but propagates to every consumer, including the
+   validation gate's win-rate and average-winner metrics.
+
+3. All trades-table readers use `SELECT * FROM trades` via `getAll()`, `getById()`,
+   or `getByOutcome()`. A sibling `partial_closes` table is invisible to them. The
+   hybrid-schema design (Decision 2) is confirmed safe: adding the table disturbs
+   no existing reader.
+
+One caveat for Commit 3.1: `deserialize()` casts rows via
+`...(row as unknown as JournalEntry)`, so the SQL `COLUMNS` array, the CREATE TABLE
+DDL, and the `JournalEntry` type are coupled only by runtime convention, not the
+type system. Any field added in Phase 3 must update all three in lockstep by hand —
+TypeScript won't catch drift.
 
 **Commit 3.1: Add partial_closes table schema.**
 
