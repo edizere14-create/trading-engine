@@ -50,7 +50,7 @@ export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
  * deviation from STRATEGY_V2.md — document the rationale in 
  * EXIT_SUBSYSTEM_MIGRATION.md Section 4 before shipping.
  */
-export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'RAPID_DUMP_EXIT' | 'EARLY_STOP' | 'TRAILING_STOP' | 'ALL_TIERS_HIT' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
+export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'RAPID_DUMP_EXIT' | 'EARLY_STOP' | 'TRAILING_STOP' | 'TP_TIER_1' | 'TP_TIER_2' | 'TP_TIER_3' | 'TP_TIER_4' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
 
