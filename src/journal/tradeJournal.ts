@@ -1,6 +1,6 @@
 // @ts-ignore sql.js has no bundled types
 import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
-import { JournalEntry } from './journalTypes';
+import { JournalEntry, PartialClose } from './journalTypes';
 import { logger } from '../core/logger';
 import path from 'path';
 import fs from 'fs';
@@ -126,6 +126,18 @@ export class TradeJournal {
     this.db.run('CREATE INDEX IF NOT EXISTS idx_signal_score ON trades(signalTotalScore)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_entry_time ON trades(entryTimestamp)');
     this.db.run('CREATE INDEX IF NOT EXISTS idx_primary_edge ON trades(primaryEdge)');
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS partial_closes (
+        positionId TEXT NOT NULL,
+        tier INTEGER NOT NULL,
+        pctClosed REAL NOT NULL,
+        exitPriceSOL REAL,
+        exitTimestamp TEXT,
+        exitMode TEXT,
+        PRIMARY KEY (positionId, tier),
+        FOREIGN KEY (positionId) REFERENCES trades(id)
+      )
+    `);
   }
 
   private save(): void {
@@ -217,6 +229,38 @@ export class TradeJournal {
   count(): number {
     const rows = this.queryAll('SELECT COUNT(*) as n FROM trades');
     return (rows[0]?.n as number) ?? 0;
+  }
+
+  recordPartialClose(pc: PartialClose): void {
+    this.db.run(
+      `INSERT OR REPLACE INTO partial_closes
+        (positionId, tier, pctClosed, exitPriceSOL, exitTimestamp, exitMode)
+        VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        pc.positionId,
+        pc.tier,
+        pc.pctClosed,
+        pc.exitPriceSOL ?? null,
+        pc.exitTimestamp?.toISOString() ?? null,
+        pc.exitMode ?? null,
+      ],
+    );
+    this.save();
+  }
+
+  getPartialCloses(positionId: string): PartialClose[] {
+    const rows = this.queryAll(
+      'SELECT * FROM partial_closes WHERE positionId = ? ORDER BY tier ASC',
+      [positionId],
+    );
+    return rows.map((r) => ({
+      positionId: r.positionId as string,
+      tier: r.tier as number,
+      pctClosed: r.pctClosed as number,
+      exitPriceSOL: r.exitPriceSOL as number | undefined,
+      exitTimestamp: r.exitTimestamp ? new Date(r.exitTimestamp as string) : undefined,
+      exitMode: r.exitMode as string | undefined,
+    }));
   }
 
   close(): void {

@@ -80,3 +80,12 @@ export interface JournalEntry {
   whichEdgeFailed?: string;
   detectionLagMs?: number;
 }
+
+export interface PartialClose {
+  positionId: string;   // FK → trades.id
+  tier: number;         // 1..4
+  pctClosed: number;    // fraction of position closed at this tier, e.g. 0.30
+  exitPriceSOL?: number;
+  exitTimestamp?: Date;
+  exitMode?: string;    // TP_TIER_1..4 (constrained at emission in Phase 3 Commit 3.3)
+}
