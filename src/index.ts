@@ -1676,6 +1676,10 @@ async function boot(): Promise<void> {
     }
   });
 
+  bus.on('position:tierClosed', (pc) => {
+    journal?.recordPartialClose(pc);
+  });
+
   bus.on('position:closed', (position) => {
     // Unsubscribe from pool price stream
     if (poolPriceStream) {

@@ -21,6 +21,7 @@ import type { RegimeSnapshot } from '../ml/regimeHMM';
 import type { PortfolioState, SizingRecommendation } from '../portfolio/portfolioOptimizer';
 import type { SystemHealth, BlackSwanEvent } from '../antifragile/antifragileEngine';
 import type { DeployerProfile } from '../intelligence/deployerIntelligence';
+import type { PartialClose } from '../journal/journalTypes';
 
 // Typed event map — no string event names anywhere in the codebase
 export interface EngineEvents {
@@ -41,6 +42,7 @@ export interface EngineEvents {
   'trade:signal':          TradeSignal;
   'position:opened':       TradePosition;
   'position:closed':       TradePosition;
+  'position:tierClosed':   PartialClose;
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────
