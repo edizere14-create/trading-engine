@@ -1743,6 +1743,7 @@ async function boot(): Promise<void> {
       'RAPID_DUMP_EXIT': 'RAPID_DUMP_EXIT',
       'EARLY_STOP': 'EARLY_STOP',
       'TRAILING_STOP': 'TRAILING_STOP',
+      'TP_TIER_4': 'TP_TIER_4',
       'MAX_HOLD': 'MAX_HOLD',
       'STALE_EXIT': 'STALE_EXIT',
       'EMERGENCY': 'EMERGENCY',

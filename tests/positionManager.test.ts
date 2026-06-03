@@ -165,3 +165,56 @@ describe('PositionManager — entry price invariants', () => {
     });
   });
 });
+
+describe('PositionManager — weighted realizedMultiple (tiered exits)', () => {
+  let pm: PositionManager;
+
+  beforeEach(() => {
+    pm = new PositionManager(baseConfig);
+  });
+
+  const ENTRY = 0.000001;
+
+  it('all four tiers trigger → weighted realizedMultiple 2.65x', () => {
+    const signal = makeSignal(0);
+    pm.openTrade(signal, healthySurvival);
+    const { tokenCA } = signal;
+    pm.updatePrice(tokenCA, ENTRY);          // anchor
+    pm.updatePrice(tokenCA, ENTRY * 1.5);    // tier 1
+    pm.updatePrice(tokenCA, ENTRY * 2.0);    // tier 2
+    pm.updatePrice(tokenCA, ENTRY * 3.0);    // tier 3
+    pm.updatePrice(tokenCA, ENTRY * 5.0);    // tier 4 → terminal TP_TIER_4
+    const closed = pm.getClosedPositions();
+    expect(closed.length).toBe(1);
+    expect(closed[0].realizedMultiple).toBeCloseTo(2.65, 4);
+    expect(closed[0].exitReason).toContain('TP_TIER_4');
+  });
+
+  it('1 tier then trailing stop at 1.2x → weighted realizedMultiple 1.29x', () => {
+    const signal = makeSignal(0);
+    pm.openTrade(signal, healthySurvival);
+    const { tokenCA } = signal;
+    pm.updatePrice(tokenCA, ENTRY);          // anchor
+    pm.updatePrice(tokenCA, ENTRY * 1.6);    // tier 1 triggers, peak = 1.6x
+    pm.updatePrice(tokenCA, ENTRY * 1.2);    // trailing stop: 1.2 <= 1.6*0.75
+    const closed = pm.getClosedPositions();
+    expect(closed.length).toBe(1);
+    expect(closed[0].realizedMultiple).toBeCloseTo(1.29, 4);
+    expect(closed[0].exitReason).toContain('TRAILING_STOP');
+  });
+
+  it('2 tiers then terminal exit at 0.40x → weighted realizedMultiple 1.21x', () => {
+    const signal = makeSignal(0);
+    pm.openTrade(signal, healthySurvival);
+    const { tokenCA } = signal;
+    pm.updatePrice(tokenCA, ENTRY);          // anchor
+    pm.updatePrice(tokenCA, ENTRY * 2.0);    // tiers 1 and 2 trigger, peak = 2.0x
+    pm.updatePrice(tokenCA, ENTRY * 0.4);    // terminal exit at 0.40x (a low-tenure stop)
+    const closed = pm.getClosedPositions();
+    expect(closed.length).toBe(1);
+    expect(closed[0].realizedMultiple).toBeCloseTo(1.21, 4);
+    // Note: at holdMs≈0 the 0.40x tick trips RAPID_DUMP_EXIT before HARD_STOP.
+    // The weighted multiple is indifferent to which stop fires (terminal
+    // multiple is 0.40x either way), so we assert the multiple, not the reason.
+  });
+});

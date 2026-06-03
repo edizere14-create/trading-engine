@@ -238,11 +238,20 @@ export class PositionManager {
     }
 
     // Check take-profit tiers
-    for (const tier of position.takeProfitTiers) {
+    for (const [i, tier] of position.takeProfitTiers.entries()) {
       if (tier.triggered) continue;
       if (multiple >= tier.multiple) {
         tier.triggered = true;
         tier.triggeredAt = new Date();
+        const tierNum = i + 1;
+        bus.emit('position:tierClosed', {
+          positionId: position.id,
+          tier: tierNum,
+          pctClosed: tier.pct,
+          exitPriceSOL: currentPriceSOL,
+          exitTimestamp: new Date(),
+          exitMode: `TP_TIER_${tierNum}`,
+        });
         logger.info('Take-profit tier hit', {
           tokenCA,
           multiple: tier.multiple,
@@ -252,10 +261,10 @@ export class PositionManager {
       }
     }
 
-    // If all tiers triggered, close fully
+    // If all tiers triggered, tier 4 retired the residual — terminal close
     const allTriggered = position.takeProfitTiers.every(t => t.triggered);
     if (allTriggered) {
-      this.closePosition(tokenCA, 'ALL_TIERS_HIT', currentPriceSOL);
+      this.closePosition(tokenCA, 'TP_TIER_4', currentPriceSOL);
       return;
     }
 
@@ -323,7 +332,21 @@ export class PositionManager {
     // The 0.7x fallback only fires if effectiveExitPrice is somehow 0 (should never happen).
     const effectiveExitPrice = exitPriceSOL ?? position.lastPriceSOL;
     if (effectiveExitPrice > 0) {
-      const multiple = effectiveExitPrice / position.entryPriceSOL;
+      const terminalMultiple = effectiveExitPrice / position.entryPriceSOL;
+      // Weighted realized multiple: each triggered tier sold its pct at its
+      // target multiple; the residual sold at the terminal exit multiple.
+      // When no tiers triggered, residualPct = 1 and this reduces to the
+      // plain terminal multiple (backward-compatible with non-tier exits).
+      let tierContribution = 0;
+      let triggeredPct = 0;
+      for (const tier of position.takeProfitTiers) {
+        if (tier.triggered) {
+          tierContribution += tier.pct * tier.multiple;
+          triggeredPct += tier.pct;
+        }
+      }
+      const residualPct = 1 - triggeredPct;
+      const multiple = tierContribution + residualPct * terminalMultiple;
       position.realizedMultiple = multiple;
       position.realizedPnLSOL = (multiple - 1) * position.sizeSOL;
       position.outcome = multiple >= 1.02 ? 'WIN' : multiple <= 0.98 ? 'LOSS' : 'BREAKEVEN';
@@ -416,10 +439,10 @@ export class PositionManager {
 
   private buildExitTiers(): TakeProfitTier[] {
     return [
-      { multiple: 1.3, pct: 0.40, triggered: false },  // Take 40% at 1.3x
-      { multiple: 1.6, pct: 0.30, triggered: false },  // Take 30% at 1.6x
-      { multiple: 2.5, pct: 0.20, triggered: false },  // Take 20% at 2.5x
-      { multiple: 5.0, pct: 0.10, triggered: false },  // Moonbag 10% at 5x
+      { multiple: 1.5, pct: 0.30, triggered: false },  // Take 30% at 1.5x
+      { multiple: 2.0, pct: 0.30, triggered: false },  // Take 30% at 2.0x
+      { multiple: 3.0, pct: 0.20, triggered: false },  // Take 20% at 3.0x
+      { multiple: 5.0, pct: 0.20, triggered: false },  // Take 20% at 5.0x
     ];
   }
 }
