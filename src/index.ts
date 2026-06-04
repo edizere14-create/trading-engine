@@ -1740,8 +1740,6 @@ async function boot(): Promise<void> {
     const exitReason = position.exitReason ?? 'UNKNOWN';
     const exitModeMap: Record<string, ExitMode> = {
       'HARD_STOP': 'HARD_STOP',
-      'RAPID_DUMP_EXIT': 'RAPID_DUMP_EXIT',
-      'EARLY_STOP': 'EARLY_STOP',
       'TRAILING_STOP': 'TRAILING_STOP',
       'TP_TIER_4': 'TP_TIER_4',
       'MAX_HOLD': 'MAX_HOLD',

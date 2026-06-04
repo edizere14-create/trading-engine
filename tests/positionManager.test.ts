@@ -157,7 +157,7 @@ describe('PositionManager — entry price invariants', () => {
       const { tokenCA } = signal;
       pm.updatePrice(tokenCA, 0.000001);    // anchor: entry = 1.0x
       pm.updatePrice(tokenCA, 0.00000114);  // peak: 1.14x (below 1.15x activation)
-      pm.updatePrice(tokenCA, 0.00000086);  // retrace to 0.86x (above RAPID_DUMP threshold 0.85x and EARLY_STOP 0.80x; trailing activation not crossed)
+      pm.updatePrice(tokenCA, 0.00000086);  // retrace to 0.86x; trailing not active (peak 1.14x < 1.15x) and above hard stop, so nothing fires
       const closed = pm.getClosedPositions();
       expect(closed.length).toBe(0);
       const open = pm.getOpenPositions().find(p => p.tokenCA === tokenCA);
@@ -213,8 +213,8 @@ describe('PositionManager — weighted realizedMultiple (tiered exits)', () => {
     const closed = pm.getClosedPositions();
     expect(closed.length).toBe(1);
     expect(closed[0].realizedMultiple).toBeCloseTo(1.21, 4);
-    // Note: at holdMs≈0 the 0.40x tick trips RAPID_DUMP_EXIT before HARD_STOP.
-    // The weighted multiple is indifferent to which stop fires (terminal
-    // multiple is 0.40x either way), so we assert the multiple, not the reason.
+    // The 0.40x tick trips HARD_STOP (0.40 <= 1 - stopLossPct). We assert the
+    // weighted multiple rather than the exit reason: the multiple is what this
+    // test verifies, and it's 0.40x at the terminal regardless.
   });
 });
