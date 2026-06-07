@@ -584,6 +584,10 @@ spec doesn't include.**
   TIME_EXIT). Without rug-trigger, rugged trades distort win/loss
   attribution — they look like "strategy got out at the wrong time"
   rather than "system caught a rug and exited cleanly."
+- Resolution note: the vault-address derivation question (the Solana
+  primitive this gap depends on) is resolved in the Commit 4.1 plan
+  (Section 5) — see the "Vault-address resolution (Day 25 investigation)"
+  note there.
 
 ### Gaps in surrounding infrastructure
 
@@ -1516,6 +1520,54 @@ Validation-data boundary at end of phase.
   4. Test the unsubscribe path: when a position closes (for any reason),
      the vault subscription for that pool must stop. Otherwise the stream
      leaks subscriptions over time.
+
+- **Vault-address resolution (Day 25 investigation).** Checklist item 1
+  is resolved. The pool wSOL vault is the PumpSwap Pool account's
+  `pool_quote_token_account` field (when `quote_mint` == wrapped SOL).
+  The Pool account is a PDA from `["pool", index, creator, base_mint,
+  quote_mint]`; canonical migrated pools have `index` 0 and `creator` =
+  the bonding curve account. Two routes to obtain the vault address were
+  identified, with different tradeoffs:
+
+  - **(a) Capture at parse time** in `parsePoolCreation`
+    (`migrationAccountStream.ts`): the function already locates the
+    pool's wSOL balance by owner; the holding account address is
+    `accountKeys[postBalance.accountIndex]`. Feasible and avoids an extra
+    RPC, BUT carries a correctness risk for versioned transactions: the
+    function builds `accountKeys` from `staticAccountKeys` only, while
+    `postTokenBalances[n].accountIndex` indexes the full resolved account
+    list (static + address-lookup-table loaded). If a migrate/create_pool
+    transaction places the vault account in a lookup table, the static
+    index would mis-resolve. Whether real PumpSwap migrate transactions
+    keep these accounts static is unverified (needs a real transaction to
+    confirm).
+
+  - **(b) Read the Pool account** via `getAccountInfo(poolAddress)` and
+    deserialize `pool_quote_token_account` from it using the `pump_amm`
+    IDL. Layout-independent and authoritative (the pool declares its own
+    vault), at the cost of one extra RPC per pool. Not subject to the
+    lookup-table risk in (a). Assumes the `pool_quote_token_account`
+    field is populated at pool init — which the `migrate`/`create_pool`
+    instruction must do, since the pool cannot function without it.
+
+  Recommended route: (b). It is robust regardless of transaction account
+  layout and reads the pool's authoritative stored field. It depends on
+  the real `pump_amm` IDL (`idl/pump_amm.json` in pump-fun/pump-public-docs)
+  for correct deserialization — confirm field layout against the actual
+  IDL before writing deserialization code; today's finding is from a
+  documentation rendering (DeepWiki) of that IDL, a secondary source.
+
+  Note also (checklist item 4 relevance): pool base/quote tokens may use
+  either SPL Token or SPL Token-2022, so any client-side ATA derivation
+  would need the correct token program — another reason to read the
+  stored field rather than derive it.
+
+  Implication for commit structure: this confirms the 4.1a / 4.1b split.
+  4.1a captures/derives the vault address and makes it available to the
+  position (route b: fetch + deserialize on position open, or thread from
+  a pool-account read). 4.1b is the watcher (`poolVaultStream`, modeled on
+  `poolPriceStream`'s per-token subscribe/unsubscribe) plus the
+  RUG_TRIGGER close. 4.1a is the precondition for 4.1b.
 
 - Tests:
   - Mock vault stream emits a 41% drop: positionManager closes the
