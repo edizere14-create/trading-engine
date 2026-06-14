@@ -1680,6 +1680,14 @@ async function boot(): Promise<void> {
     journal?.recordPartialClose(pc);
   });
 
+  bus.on('vault:drained', (e) => {
+    positionManager!.forceClose(
+      e.tokenCA,
+      `RUG_TRIGGER: vault drain ${e.dropPct.toFixed(1)}%`,
+      e.exitPriceSOL,
+    );
+  });
+
   bus.on('position:closed', (position) => {
     // Unsubscribe from pool price stream
     if (poolPriceStream) {
@@ -1745,6 +1753,7 @@ async function boot(): Promise<void> {
       'MAX_HOLD': 'MAX_HOLD',
       'STALE_EXIT': 'STALE_EXIT',
       'EMERGENCY': 'EMERGENCY',
+      'RUG_TRIGGER': 'RUG_TRIGGER',
     };
     const exitModeKey = Object.keys(exitModeMap).find(k => exitReason.startsWith(k));
     const resolvedExitMode: ExitMode = exitModeKey ? exitModeMap[exitModeKey] : 'UNKNOWN';

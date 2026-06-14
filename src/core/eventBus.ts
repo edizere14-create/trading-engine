@@ -43,6 +43,7 @@ export interface EngineEvents {
   'position:opened':       TradePosition;
   'position:closed':       TradePosition;
   'position:tierClosed':   PartialClose;
+  'vault:drained':         { tokenCA: string; dropPct: number; exitPriceSOL?: number };
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────
