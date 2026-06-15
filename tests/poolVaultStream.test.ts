@@ -6,6 +6,9 @@ import { bus } from '../src/core/eventBus';
 const WSOL = 'So11111111111111111111111111111111111111112';
 const BONK = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
 const OWNER = 'HEoY16En8NnfZXZ9qZDHH4B5XsKrL6wpXjScwHWFsr9X';
+// A real base58 pool address so deriveWsolVault runs without throwing.
+// (The mock connection ignores the derived vault; it only needs to be valid.)
+const POOL = 'HEoY16En8NnfZXZ9qZDHH4B5XsKrL6wpXjScwHWFsr9X';
 
 // Build a 165-byte SPL token account buffer (what onAccountChange delivers).
 function buildAcct(mintB58: string, amount: bigint): AccountInfo<Buffer> {
@@ -44,7 +47,6 @@ function makeMockConnection() {
         removed.push(id);
         delete cbs[id];
       },
-      // isWsOpen reads connection internals; the helper tolerates this mock.
       _rpcWebSocket: { _ws: { readyState: 1 } },
     } as any,
   };
@@ -66,7 +68,7 @@ describe('PoolVaultStream', () => {
   it('emits vault:drained on a >40% single-step drop (41%)', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n)); // baseline
     m.fire(1, buildAcct(WSOL, 59n)); // 41% drop
     const calls = drained();
@@ -78,7 +80,7 @@ describe('PoolVaultStream', () => {
   it('does not emit on a 39% drop', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n));
     m.fire(1, buildAcct(WSOL, 61n));
     expect(drained()).toHaveLength(0);
@@ -87,7 +89,7 @@ describe('PoolVaultStream', () => {
   it('does not emit on exactly a 40% drop (boundary: >40% required)', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n));
     m.fire(1, buildAcct(WSOL, 60n));
     expect(drained()).toHaveLength(0);
@@ -96,7 +98,7 @@ describe('PoolVaultStream', () => {
   it('unsubscribes (and never emits) when the vault mint is not wSOL', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(BONK, 100n)); // wrong mint on first callback
     expect(s.isTracking('TKN')).toBe(false);
     expect(m.removed).toContain(1);
@@ -106,7 +108,7 @@ describe('PoolVaultStream', () => {
   it('establishes a baseline on the first callback without emitting', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n));
     expect(drained()).toHaveLength(0);
   });
@@ -114,7 +116,7 @@ describe('PoolVaultStream', () => {
   it('cleans up on unsubscribe', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     s.unsubscribe('TKN');
     expect(s.isTracking('TKN')).toBe(false);
     expect(m.removed).toContain(1);
@@ -123,9 +125,8 @@ describe('PoolVaultStream', () => {
   it('guards against double-subscribe', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
-    s.subscribe('pool', 'TKN');
-    // second subscribe is a no-op; unsubscribing once fully clears tracking
+    s.subscribe(POOL, 'TKN');
+    s.subscribe(POOL, 'TKN');
     s.unsubscribe('TKN');
     expect(s.isTracking('TKN')).toBe(false);
   });
@@ -133,7 +134,7 @@ describe('PoolVaultStream', () => {
   it('emits on a full drain (100%)', () => {
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n));
     m.fire(1, buildAcct(WSOL, 0n));
     const calls = drained();
@@ -147,7 +148,7 @@ describe('PoolVaultStream', () => {
     // TRAILING_STOP catch on price). This boundary is intentional.
     const m = makeMockConnection();
     const s = new PoolVaultStream(m.conn);
-    s.subscribe('pool', 'TKN');
+    s.subscribe(POOL, 'TKN');
     m.fire(1, buildAcct(WSOL, 100n)); // baseline
     m.fire(1, buildAcct(WSOL, 70n)); // 30% drop, baseline -> 70
     m.fire(1, buildAcct(WSOL, 49n)); // 30% drop from 70
