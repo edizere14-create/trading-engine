@@ -55,6 +55,7 @@ import { SmartMoneyTracker } from './intelligence/smartMoneyTracker';
 import { ToxicFlowBackrunner } from './execution/toxicFlowBackrunner';
 import { HybridPowerPlay } from './execution/hybridPowerPlay';
 import { PoolPriceStream } from './ingestion/poolPriceStream';
+import { PoolVaultStream } from './ingestion/poolVaultStream';
 import { PositionPricePoller } from './ingestion/positionPricePoller';
 import { MigrationAccountStream } from './ingestion/migrationAccountStream';
 
@@ -75,6 +76,7 @@ let smartMoneyTracker: SmartMoneyTracker | null = null;
 let toxicFlowBackrunner: ToxicFlowBackrunner | null = null;
 let hybridPowerPlay: HybridPowerPlay | null = null;
 let poolPriceStream: PoolPriceStream | null = null;
+let poolVaultStream: PoolVaultStream | null = null;
 let positionPricePoller: PositionPricePoller | null = null;
 let migrationStream: MigrationAccountStream | null = null;
 let graduationHandler: GraduationHandler | null = null;
@@ -684,6 +686,7 @@ async function boot(): Promise<void> {
 
   // 5k2. Pool Price Stream — reserve-based position price tracking
   poolPriceStream = new PoolPriceStream(cfg.connection, simulator);
+  poolVaultStream = new PoolVaultStream(cfg.connection);
   logger.info('Pool price stream initialized');
 
   // 5k3. Position Price Poller — Jupiter API fallback for tokens without AMM pools
@@ -1001,6 +1004,12 @@ async function boot(): Promise<void> {
       const poolAddr = getTokenPoolAddress(event.tokenCA);
       if (poolAddr) {
         poolPriceStream.subscribe(poolAddr, event.tokenCA);
+      }
+    }
+    if (poolVaultStream && positionManager!.hasPosition(event.tokenCA) && !poolVaultStream.isTracking(event.tokenCA)) {
+      const vaultPoolAddr = getTokenPoolAddress(event.tokenCA);
+      if (vaultPoolAddr) {
+        poolVaultStream.subscribe(vaultPoolAddr, event.tokenCA);
       }
     }
 
@@ -1674,6 +1683,12 @@ async function boot(): Promise<void> {
         });
       }
     }
+    if (poolVaultStream) {
+      const vaultPoolAddr = getTokenPoolAddress(position.tokenCA);
+      if (vaultPoolAddr) {
+        poolVaultStream.subscribe(vaultPoolAddr, position.tokenCA);
+      }
+    }
   });
 
   bus.on('position:tierClosed', (pc) => {
@@ -1692,6 +1707,9 @@ async function boot(): Promise<void> {
     // Unsubscribe from pool price stream
     if (poolPriceStream) {
       poolPriceStream.unsubscribe(position.tokenCA);
+    }
+    if (poolVaultStream) {
+      poolVaultStream.unsubscribe(position.tokenCA);
     }
 
     // Record PnL in survival engine
@@ -2203,6 +2221,7 @@ async function stopAllStreams(): Promise<void> {
     lpStream ? lpStream.stop() : Promise.resolve(),
     walletStream ? walletStream.stop() : Promise.resolve(),
     poolPriceStream ? poolPriceStream.stop() : Promise.resolve(),
+    poolVaultStream ? poolVaultStream.stop() : Promise.resolve(),
     migrationStream ? migrationStream.stop() : Promise.resolve(),
   ]);
 
