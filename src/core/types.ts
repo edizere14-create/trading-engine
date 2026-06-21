@@ -285,6 +285,7 @@ export interface TradeSignal {
   confidence: number;           // 0–1
   overrideSizeUSD?: number;     // optional model/risk-driven size override
   overrideMaxHoldMs?: number;   // optional risk-engine hold override
+  poolAddress?: string;         // pool address when known at signal time (e.g. graduation)
 }
 
 export interface TradePosition {

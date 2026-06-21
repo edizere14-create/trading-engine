@@ -978,6 +978,14 @@ async function boot(): Promise<void> {
    }
   });
 
+  // Graduation tokens never emit pool:created, so rememberTokenPool is never
+  // called for them. Register the pool address here — synchronously, before
+  // GraduationHandler's async safety pipeline finishes and emits trade:signal —
+  // so the trade gate's getTokenPoolAddress() lookup succeeds.
+  bus.on('pool:graduated', (event) => {
+    rememberTokenPool(event.tokenCA, event.poolAddress);
+  });
+
   bus.on('swap:detected', (event) => {
     antifragileEngine?.heartbeat();
 
@@ -1135,7 +1143,7 @@ async function boot(): Promise<void> {
       return;
     }
 
-    const poolAddress = getTokenPoolAddress(signal.tokenCA) ?? '';
+    const poolAddress = signal.poolAddress ?? getTokenPoolAddress(signal.tokenCA) ?? '';
     if (!poolAddress && signal.source !== 'SINGLE_WALLET') {
       bumpGateMetric('tradeBlockedNoPool');
       bumpGateBlockReason('tradeNoPool');
@@ -1346,6 +1354,9 @@ async function boot(): Promise<void> {
     const opened = positionManager!.openTrade(signal, survival);
     if (opened) {
       bumpGateMetric('tradeOpened');
+      if (signal.poolAddress) {
+        rememberTokenPool(signal.tokenCA, signal.poolAddress);
+      }
       // Cache signal context for journal/paper trade records on close
       const marketSnapshot = marketEngine.getSnapshot();
       const regimeSnap = regimeDetector?.getLatestSnapshot();

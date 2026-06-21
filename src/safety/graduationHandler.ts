@@ -145,6 +145,7 @@ function synthesizeSignalFromGraduation(event: PumpSwapGraduationEvent): TradeSi
     slot:            event.slot,
     score:           10,
     confidence:      1,
+    poolAddress:     event.poolAddress,
   };
 }
 
