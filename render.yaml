@@ -1,0 +1,96 @@
+services:
+  - type: web
+    name: eddyi-trading-engine
+    env: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+
+    disk:
+      name: eddyi-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
+
+    envVars:
+      # ── Runtime flags ─────────────────────────────────────────
+      - key: NODE_ENV
+        value: production
+      - key: PAPER_MODE
+        value: "true"
+      - key: LIVE_TRADING_ARMED
+        value: "false"
+      - key: AUTONOMOUS_ONLY
+        value: "true"
+
+      # ── Risk limits ───────────────────────────────────────────
+      - key: INITIAL_CAPITAL_USD
+        value: "1000"
+      - key: MAX_CONCURRENT_POSITIONS
+        value: "5"
+      - key: MAX_TRADES_PER_DAY
+        value: "20"
+      - key: MAX_DAILY_LOSS_PCT
+        value: "20"
+      - key: MAX_WEEKLY_LOSS_PCT
+        value: "40"
+      - key: MIN_LIQUIDITY_SOL
+        value: "100"
+      - key: MIN_HOLDERS
+        value: "50"
+      - key: MIN_TX_COUNT
+        value: "100"
+      - key: MIN_CONSENSUS
+        value: "0.65"
+      - key: MIN_POOL_DEPTH_USD
+        value: "5000"
+
+      # ── Graduation thresholds ─────────────────────────────────
+      - key: GRAD_MIN_TRADES
+        value: "10"
+      - key: GRAD_PROFIT_FACTOR
+        value: "1.5"
+      - key: GRAD_MAX_DRAWDOWN
+        value: "0.05"
+      - key: GRAD_MIN_WIN_RATE
+        value: "0.35"
+      - key: GRAD_CHECK_INTERVAL
+        value: "120"
+
+      # ── Security ──────────────────────────────────────────────
+      - key: SECURITY_FAIL_MODE
+        value: closed
+
+      # ── Public URLs ───────────────────────────────────────────
+      - key: GOPLUS_API_URL
+        value: https://api.gopluslabs.io
+      - key: INTENT_RESOLVER_URL
+        value: https://api.1inch.dev/fusion
+      - key: INTENT_RESOLVER_CONTRACT
+        value: "0x111111125421caae97131560c0d0c32724817a2d"
+      - key: CAMELOT_SUBGRAPH
+        value: https://api.thegraph.com/subgraphs/name/camelotlabs/camelot-amm-v3
+      - key: UNISWAPV3_SUBGRAPH
+        value: https://api.thegraph.com/subgraphs/name/ianlapham/arbitrum-minimal
+      - key: ARB_RPC_URL
+        value: https://arb1.arbitrum.io/rpc
+
+      # ── Secrets: set these manually in the Render dashboard ──
+      - key: HELIUS_API_KEY
+        sync: false
+      - key: PRIMARY_RPC
+        sync: false
+      - key: BACKUP_RPC
+        sync: false
+      - key: SAFETY_RPC_URL
+        sync: false
+      - key: SHYFT_API_KEY
+        sync: false
+      - key: ARB_PRIVATE_KEY
+        sync: false
+      - key: INTENT_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
