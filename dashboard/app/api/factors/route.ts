@@ -88,7 +88,9 @@ const FACTORS = [
 ];
 
 export async function GET() {
-  const ptPath = path.resolve(process.cwd(), DATA_DIR, 'paperTrades.json');
+  const ptPath = process.env.PAPER_TRADES_FILE
+    ? path.resolve(process.env.PAPER_TRADES_FILE)
+    : path.resolve(process.cwd(), DATA_DIR, 'paperTrades.json');
 
   try {
     const raw = fs.readFileSync(ptPath, 'utf-8');

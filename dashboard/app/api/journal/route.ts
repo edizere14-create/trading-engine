@@ -5,7 +5,9 @@ import path from 'path';
 export const dynamic = 'force-dynamic';
 
 const DATA_DIR = process.env.DATA_DIR ?? './data';
-const PAPER_TRADES_PATH = path.resolve(process.cwd(), DATA_DIR, 'paperTrades.json');
+const PAPER_TRADES_PATH = process.env.PAPER_TRADES_FILE
+  ? path.resolve(process.env.PAPER_TRADES_FILE)
+  : path.resolve(process.cwd(), DATA_DIR, 'paperTrades.json');
 
 export async function GET() {
   try {

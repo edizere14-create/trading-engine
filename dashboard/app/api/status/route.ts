@@ -64,7 +64,9 @@ export async function GET() {
 
   // Read paper trade count directly from paperTrades.json (most reliable source)
   try {
-    const ptPath = path.join(ROOT, DATA_DIR, 'paperTrades.json');
+    const ptPath = process.env.PAPER_TRADES_FILE
+      ? path.resolve(process.env.PAPER_TRADES_FILE)
+      : path.join(ROOT, DATA_DIR, 'paperTrades.json');
     const pt = JSON.parse(fs.readFileSync(ptPath, 'utf-8'));
     if (Array.isArray(pt)) {
       const completed = pt.filter((t: { outcome?: string }) => t.outcome !== undefined);
