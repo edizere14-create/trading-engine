@@ -675,6 +675,8 @@ async function boot(): Promise<void> {
   logger.info('Antifragile engine started', {
     health: antifragileEngine.getSystemHealth().overallStatus,
   });
+  bus.on('swap:detected', () => antifragileEngine?.recordIngestion());
+  bus.on('pool:graduated', () => antifragileEngine?.recordIngestion());
 
   // 5j. Social Signal Engine — Twitter/Telegram NLP pipeline
   socialEngine = new SocialSignalEngine();
@@ -1607,34 +1609,23 @@ async function boot(): Promise<void> {
     // Close all positions in emergency
     positionManager?.emergencyCloseAll(event.reason);
     void stopAllStreams().then(() => {
-      // Auto-recover: restart streams after cooldown
-      logger.info(`Halt recovery scheduled in ${HALT_RECOVERY_DELAY_MS / 1000}s`);
-      setTimeout(async () => {
-        try {
-          logger.info('Halt recovery: restarting streams...');
-          lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
-          await lpStream.start();
-          await new Promise((r) => setTimeout(r, 2_000));
-          walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
-          await walletStream.start();
-          await new Promise((r) => setTimeout(r, 2_000));
-          migrationStream = new MigrationAccountStream(cfg.connection, cfg.backupConnection);
-          await migrationStream.start();
-          if (antifragileEngine) {
-            antifragileEngine.heartbeat();
-          }
-          isShuttingDown = false;
-          haltInProgress = false;
-          logger.info('Halt recovery: streams restarted successfully');
-          void telegram.send('SYSTEM RECOVERED\nStreams restarted after halt cooldown');
-        } catch (err) {
-          logger.error('Halt recovery FAILED — streams still down', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-          haltInProgress = false;
-          // Will be retried on next dead man switch cycle
-        }
-      }, HALT_RECOVERY_DELAY_MS);
+      // In-process stream rebuild is unreliable and was observed to hang forever:
+      // lpStream.start() awaits a connection against the same infrastructure that
+      // just failed, has no timeout, and never settles — so neither the success
+      // path nor the catch is reached. haltInProgress stays true, which then
+      // suppresses every future halt, and the process becomes an unrecoverable
+      // corpse (alive, streams dead, nothing detects it). Observed twice: the
+      // engine sat halted-but-running for ~2.5 days.
+      //
+      // A clean exit lets the supervisor (Render) restart the process, which
+      // reliably re-establishes streams, reloads positions from disk, and reopens
+      // the journal. Positions were already emergency-closed above and the journal
+      // flushed by stopAllStreams(), so exiting here is safe.
+      logger.error('Halt complete — exiting for supervisor restart', {
+        reason: event.reason,
+      });
+      void telegram.send(`SYSTEM HALT — EXITING\nReason: ${event.reason}\nSupervisor will restart the process.`);
+      setTimeout(() => process.exit(1), 2_000); // brief delay so logs and telegram flush
     }).catch((err) => {
       logger.error('Failed to stop streams during halt', {
         error: err instanceof Error ? err.message : String(err),
