@@ -675,8 +675,6 @@ async function boot(): Promise<void> {
   logger.info('Antifragile engine started', {
     health: antifragileEngine.getSystemHealth().overallStatus,
   });
-  bus.on('swap:detected', () => antifragileEngine?.recordIngestion());
-  bus.on('pool:graduated', () => antifragileEngine?.recordIngestion());
 
   // 5j. Social Signal Engine — Twitter/Telegram NLP pipeline
   socialEngine = new SocialSignalEngine();
@@ -987,6 +985,12 @@ async function boot(): Promise<void> {
   bus.on('pool:graduated', (event) => {
     rememberTokenPool(event.tokenCA, event.poolAddress);
   });
+
+  // Ingestion watchdog: record every ingestion event so the antifragile engine
+  // can distinguish "quiet market" (timer heartbeat still beating) from
+  // "streams dead" (no swaps or graduations arriving at all).
+  bus.on('swap:detected', () => antifragileEngine?.recordIngestion());
+  bus.on('pool:graduated', () => antifragileEngine?.recordIngestion());
 
   bus.on('swap:detected', (event) => {
     antifragileEngine?.heartbeat();

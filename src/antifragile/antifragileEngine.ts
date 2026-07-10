@@ -155,6 +155,11 @@ export class AntifragileEngine {
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private readonly MAX_HEARTBEAT_GAP_MS = 300_000; // 5 minutes
   private deadManSwitchTriggered = false;
+
+  // Ingestion watchdog
+  private lastIngestionAt: Date = new Date();
+  private readonly MAX_INGESTION_GAP_MS = Number(process.env.STREAM_SILENCE_THRESHOLD_MS ?? 1_800_000); // 30 min
+  private ingestionWatchdogTriggered = false;
   private options: AntifragileOptions;
 
   // System start time
@@ -177,8 +182,11 @@ export class AntifragileEngine {
   }
 
   start(): void {
-    // Heartbeat monitor
-    this.heartbeatInterval = setInterval(() => this.checkHeartbeat(), 30_000);
+    // Heartbeat + ingestion monitors
+    this.heartbeatInterval = setInterval(() => {
+      this.checkHeartbeat();
+      this.checkIngestionLiveness();
+    }, 30_000);
     this.heartbeat();
     this.lastOverallStatus = this.getSystemHealth().overallStatus;
     logger.info('AntifragileEngine started', { options: this.options });
@@ -194,6 +202,11 @@ export class AntifragileEngine {
   heartbeat(): void {
     this.lastHeartbeat = new Date();
     this.deadManSwitchTriggered = false;
+  }
+
+  recordIngestion(): void {
+    this.lastIngestionAt = new Date();
+    this.ingestionWatchdogTriggered = false;
   }
 
   // ── CIRCUIT BREAKER API ─────────────────────────────────
@@ -449,6 +462,21 @@ export class AntifragileEngine {
 
     bus.emit('system:halt', {
       reason: `DEAD_MAN_SWITCH: No heartbeat for ${(gap / 1000).toFixed(0)}s`,
+    });
+  }
+
+  private checkIngestionLiveness(): void {
+    const gap = Date.now() - this.lastIngestionAt.getTime();
+    if (gap <= this.MAX_INGESTION_GAP_MS || this.ingestionWatchdogTriggered) return;
+
+    this.ingestionWatchdogTriggered = true;
+    logger.error('STREAM WATCHDOG: No ingestion events detected — streams likely dead', {
+      lastIngestionAt: this.lastIngestionAt.toISOString(),
+      gapMs: gap,
+    });
+
+    bus.emit('system:halt', {
+      reason: `STREAM_SILENCE: No swap/graduation events for ${(gap / 1000).toFixed(0)}s`,
     });
   }
 
