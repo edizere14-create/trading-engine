@@ -39,6 +39,8 @@ interface Trade {
   edgesFired?: string;
   deployerTier?: string;
   initialLiquiditySOL?: number;
+  exitMode?: string;
+  priceBasisInvalid?: boolean;
 }
 
 interface LogEntry {
@@ -107,6 +109,9 @@ export default function Dashboard() {
       {/* Status Banner */}
       {status && <StatusBanner status={status} />}
       {status?.lastHaltReason && <HaltBanner status={status} />}
+
+      {/* Section 6 — Soak-C Verdict */}
+      <Section6Panel trades={trades} />
 
       {/* Two-column: Trades table + Live feed */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -201,6 +206,124 @@ function HaltBanner({ status }: { status: Status }) {
       <div className="text-terminal-dim text-[10px] mt-1">
         recent 10m: {status.haltCount10m ?? 0}
       </div>
+    </div>
+  );
+}
+
+/* ── Section 6: Soak-C Verdict ────────────────────────────────────
+ * Pre-registered rule: on ≥50 valid trades, PASS requires all of:
+ *   win rate (RM≥1.05) ≥ 25%, top exit mode ≤ 50% of trades,
+ *   avg multiple ≥ 1.05. Below 50 valid trades the verdict is PENDING.
+ * ────────────────────────────────────────────────────────────────── */
+
+const SOAK_C_MIN_SAMPLE = 50;
+const SOAK_C_WIN_THRESHOLD = 1.05;
+const SOAK_C_MIN_WIN_RATE = 0.25;
+const SOAK_C_MAX_CONCENTRATION = 0.5;
+const SOAK_C_MIN_AVG_MULTIPLE = 1.05;
+
+interface Section6Result {
+  validCount: number;
+  sampleSizeOk: boolean;
+  winRate: number;
+  winRateOk: boolean;
+  exitModeDist: { mode: string; count: number; pct: number }[];
+  topExitModePct: number;
+  concentrationOk: boolean;
+  avgMultiple: number;
+  avgMultipleOk: boolean;
+  overallPass: boolean;
+}
+
+function computeSection6(trades: Trade[]): Section6Result {
+  const valid = trades.filter((t) => t.priceBasisInvalid !== true && t.exitMode);
+  const validCount = valid.length;
+  const sampleSizeOk = validCount >= SOAK_C_MIN_SAMPLE;
+
+  const wins = valid.filter((t) => (t.realizedMultiple ?? 0) >= SOAK_C_WIN_THRESHOLD).length;
+  const winRate = validCount > 0 ? wins / validCount : 0;
+  const winRateOk = winRate >= SOAK_C_MIN_WIN_RATE;
+
+  const counts = new Map<string, number>();
+  for (const t of valid) {
+    const mode = t.exitMode as string;
+    counts.set(mode, (counts.get(mode) ?? 0) + 1);
+  }
+  const exitModeDist = [...counts.entries()]
+    .map(([mode, count]) => ({ mode, count, pct: validCount > 0 ? count / validCount : 0 }))
+    .sort((a, b) => b.count - a.count);
+  const topExitModePct = exitModeDist[0]?.pct ?? 0;
+  const concentrationOk = topExitModePct <= SOAK_C_MAX_CONCENTRATION;
+
+  const avgMultiple = validCount > 0
+    ? valid.reduce((sum, t) => sum + (t.realizedMultiple ?? 0), 0) / validCount
+    : 0;
+  const avgMultipleOk = avgMultiple >= SOAK_C_MIN_AVG_MULTIPLE;
+
+  return {
+    validCount,
+    sampleSizeOk,
+    winRate,
+    winRateOk,
+    exitModeDist,
+    topExitModePct,
+    concentrationOk,
+    avgMultiple,
+    avgMultipleOk,
+    overallPass: sampleSizeOk && winRateOk && concentrationOk && avgMultipleOk,
+  };
+}
+
+function Section6Panel({ trades }: { trades: Trade[] }) {
+  const r = computeSection6(trades);
+
+  const verdict = !r.sampleSizeOk ? 'PENDING' : r.overallPass ? 'PASS' : 'FAIL';
+  const verdictColor = verdict === 'PASS'
+    ? 'text-terminal-green bg-terminal-green/10 border-terminal-green'
+    : verdict === 'FAIL'
+      ? 'text-terminal-red bg-terminal-red/10 border-terminal-red'
+      : 'text-terminal-yellow bg-terminal-yellow/10 border-terminal-yellow';
+
+  return (
+    <div className="bg-terminal-surface border border-terminal-border rounded">
+      <div className="px-3 py-2 border-b border-terminal-border flex items-center justify-between">
+        <span className="text-terminal-cyan text-xs font-bold tracking-wider">SOAK-C VERDICT</span>
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${verdictColor}`}>
+          {verdict}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
+        <StatusCell
+          label="SAMPLE"
+          value={`${r.validCount}/${SOAK_C_MIN_SAMPLE}`}
+          color={r.sampleSizeOk ? 'green' : 'yellow'}
+        />
+        <StatusCell
+          label={`WIN RATE (≥${SOAK_C_WIN_THRESHOLD}x)`}
+          value={`${(r.winRate * 100).toFixed(1)}%`}
+          color={r.winRateOk ? 'green' : 'red'}
+        />
+        <StatusCell
+          label="TOP EXIT MODE"
+          value={`${r.exitModeDist[0]?.mode ?? '—'} ${(r.topExitModePct * 100).toFixed(0)}%`}
+          color={r.concentrationOk ? 'green' : 'red'}
+        />
+        <StatusCell
+          label="AVG MULTIPLE"
+          value={`${r.avgMultiple.toFixed(3)}x`}
+          color={r.avgMultipleOk ? 'green' : 'red'}
+        />
+      </div>
+      {r.exitModeDist.length > 0 && (
+        <div className="px-3 pb-3 flex flex-wrap gap-2">
+          {r.exitModeDist.map((e) => (
+            <span key={e.mode} className="text-[10px] text-terminal-dim">
+              {e.mode}: <span className="text-terminal-text">{e.count}</span>{' '}
+              ({(e.pct * 100).toFixed(0)}%)
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
