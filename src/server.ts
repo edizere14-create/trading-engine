@@ -17,8 +17,12 @@ app.prepare().then(() => {
   createServer((req: IncomingMessage, res: ServerResponse) => {
     // Health endpoint for Render
     if (req.url === '/health') {
+      const disabled = (process as any).__engineDisabledReason as string | undefined;
+      const body = disabled
+        ? { status: 'ENGINE_DISABLED', reason: disabled, uptime: process.uptime() }
+        : { status: 'ok', uptime: process.uptime() };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+      res.end(JSON.stringify(body));
       return;
     }
     // Everything else → Next.js dashboard
@@ -33,8 +37,12 @@ app.prepare().then(() => {
   console.error('Failed to start Next.js dashboard:', err);
   // Fall back to health-only server + engine
   createServer((_req: IncomingMessage, res: ServerResponse) => {
+    const _disabled = (process as any).__engineDisabledReason as string | undefined;
+    const _body = _disabled
+      ? { status: 'ENGINE_DISABLED', reason: _disabled, uptime: process.uptime(), dashboard: 'failed' }
+      : { status: 'ok', uptime: process.uptime(), dashboard: 'failed' };
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), dashboard: 'failed' }));
+    res.end(JSON.stringify(_body));
   }).listen(PORT, () => {
     console.log(`Health-only server listening on port ${PORT} (dashboard failed)`);
     require('./index');

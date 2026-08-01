@@ -91,6 +91,28 @@ const envSchema = z.object({
 
   // Logging
   LOG_LEVEL:               z.enum(['error', 'warn', 'info', 'debug']).default('info'),
+}).superRefine((env, ctx) => {
+  const host = (u: string): string | null => {
+    try { return new URL(u).hostname.toLowerCase(); } catch { return null; }
+  };
+  const primary = host(env.PRIMARY_RPC);
+  const backup  = host(env.BACKUP_RPC);
+  const safety  = env.SAFETY_RPC_URL ? host(env.SAFETY_RPC_URL) : null;
+
+  if (primary && backup && primary === backup) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['BACKUP_RPC'],
+      message: `must be a different provider than PRIMARY_RPC (both ${primary}) — shared quota means no redundancy`,
+    });
+  }
+  if (primary && safety && primary === safety) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SAFETY_RPC_URL'],
+      message: `must be a different provider than PRIMARY_RPC (both ${primary})`,
+    });
+  }
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

@@ -488,7 +488,13 @@ async function boot(): Promise<void> {
   ]);
 
   if (!primaryProbe.ok) {
-    throw new Error(`STARTUP ASSERTION FAILED: primary RPC unreachable (${primaryProbe.error ?? 'unknown'}).`);
+    const _rpcDetail = `primary RPC unreachable (${primaryProbe.error ?? 'unknown'})`;
+    if (cfg.isPaperMode) {
+      logger.error('RPC UNREACHABLE — engine disabled, dashboard remains up', { detail: _rpcDetail });
+      (process as any).__engineDisabledReason = _rpcDetail;
+      return;
+    }
+    throw new Error(`STARTUP ASSERTION FAILED: ${_rpcDetail}`);
   }
 
   // 3. Load calibration + performance
