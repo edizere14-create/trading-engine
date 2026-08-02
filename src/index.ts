@@ -30,7 +30,7 @@ import { EquityCurveController } from './equity/equityCurveController';
 import { MicrostructureFeatureExtractor } from './microstructure/featureExtractor';
 import { ReplaySimulator } from './replay/replaySimulator';
 import { JournalEntry } from './journal/journalTypes';
-import { TradeRecord, ExitMode } from './core/types';
+import { TradeRecord, ExitMode, TokenSafetyResult, EdgeName, DeployerTier } from './core/types';
 import { DataSync } from './core/dataSync';
 import * as fs from 'fs';
 
@@ -136,13 +136,14 @@ interface TradeEntryContext {
   signal: { timingEdge: number; deployerQuality: number; organicFlow: number; manipulationRisk: number; coordinationStrength: number; socialVelocity: number; totalScore: number; confidence: number };
   poolAddress: string;
   deployerAddress: string;
-  deployerTier: string;
+  deployerTier: DeployerTier;
   predictedWP: number;
   predictedEV: number;
   entryMarketState: string;
   entryRegime: string;
   executionMode: string;
   source: string;
+  safetyResult?: TokenSafetyResult;
 }
 const tradeEntryCache: Map<string, TradeEntryContext> = new Map();
 
@@ -1385,13 +1386,14 @@ async function boot(): Promise<void> {
         },
         poolAddress,
         deployerAddress: '',
-        deployerTier: signal.walletTier ?? 'B',
+        deployerTier: (signal.walletTier ?? 'B') as DeployerTier,
         predictedWP: signal.score ? signal.score / 10 : 0,
         predictedEV: 0,
         entryMarketState: marketSnapshot?.state ?? 'NORMAL',
         entryRegime: regimeSnap?.currentRegime ?? 'NORMAL',
         executionMode: 'SAFE',
         source: signal.source ?? 'UNKNOWN',
+        safetyResult: safety,
       });
 
       // Record heartbeat for antifragile dead-man's switch
@@ -1449,121 +1451,6 @@ async function boot(): Promise<void> {
     });
   });
 
-  bus.on('trade:closed', (trade) => {
-    // Record in survival engine
-    survivalEngine!.recordTrade(trade.realizedPnLUSD ?? 0, cfg.INITIAL_CAPITAL_USD);
-
-    // Record in paper gate (only accepts PAPER trades)
-    if (trade.mode === 'PAPER') {
-      paperGate.addTrade(trade);
-    }
-
-    // Record in performance engine
-    perfEngine.recordTrade(trade);
-
-    // ── ML FEEDBACK LOOP: update model with trade outcome ──
-    if (onlineLearner) {
-      const marketSnapshot = marketEngine.getSnapshot();
-      const survival = survivalEngine!.getSnapshot();
-      if (marketSnapshot) {
-        const outcome = trade.outcome === 'WIN' ? 1 : 0;
-        const features = onlineLearner.extractFeatures(
-          trade.signal,
-          null,
-          marketSnapshot.score ?? 0,
-          marketSnapshot.state === 'HOT' ? 1 : marketSnapshot.state === 'NORMAL' ? 0.5 : 0,
-          survival.sizeMultiplier
-        );
-        onlineLearner.update(features, outcome, trade.realizedMultiple ?? 1);
-      }
-    }
-
-    // ── Update deployer intelligence with trade outcome ──
-    // ── Record antifragile heartbeat ──
-    if (antifragileEngine) {
-      antifragileEngine.heartbeat();
-      // Check for black swan pattern from trade outcomes
-      if (trade.outcome === 'LOSS') {
-        const pnlPct = trade.realizedPnLUSD && trade.sizeUSD > 0
-          ? (trade.realizedPnLUSD / trade.sizeUSD) * 100
-          : 0;
-        antifragileEngine.recordTradeOutcome(trade.tokenCA, pnlPct);
-      }
-    }
-
-    logger.info('Trade closed', {
-      id: trade.id,
-      tokenCA: trade.tokenCA,
-      outcome: trade.outcome,
-      multiple: trade.realizedMultiple,
-      pnlUSD: trade.realizedPnLUSD,
-      exitMode: trade.exitMode,
-    });
-
-    // Journal the trade
-    const journalEntry: JournalEntry = {
-      id: trade.id,
-      mode: trade.mode,
-      tokenCA: trade.tokenCA,
-      ticker: trade.ticker,
-      chain: 'SOLANA',
-      poolAddress: trade.poolAddress,
-      entryTimestamp: trade.entryTimestamp,
-      entryPriceSOL: 0,
-      entryPriceUSD: 0,
-      entryLiquiditySOL: 0,
-      entryVolumeSOL: 0,
-      entryHolderCount: 0,
-      entrySmartWalletCount: 0,
-      entryBuyPressure: 0,
-      entrySlippage1K: 0,
-      entryMarketState: trade.marketState,
-      entryRegime: trade.regime,
-      entryEMALayer: '',
-      signalTimingEdge: trade.signal.timingEdge,
-      signalDeployerQuality: trade.signal.deployerQuality,
-      signalOrganicFlow: trade.signal.organicFlow,
-      signalManipulationRisk: trade.signal.manipulationRisk,
-      signalCoordinationStrength: trade.signal.coordinationStrength,
-      signalSocialVelocity: trade.signal.socialVelocity,
-      signalTotalScore: trade.signal.totalScore,
-      signalConfidence: trade.signal.confidence,
-      predictedWP: trade.predictedWP,
-      predictedEV: trade.predictedEV,
-      predictedMultiple: 0,
-      sizeR: trade.sizeR,
-      sizeUSD: trade.sizeUSD,
-      stopPriceSOL: 0,
-      maxHoldMs: trade.maxHoldMs,
-      executionMode: trade.executionMode,
-      deployerAddress: '',
-      deployerTier: trade.deployerTier,
-      rugScore: 0,
-      sniperBlock0Pct: 0,
-      topHolderPct: 0,
-      lpLockDuration: 0,
-      exitTimestamp: trade.exitTimestamp,
-      exitPriceSOL: 0,
-      exitMode: trade.exitMode,
-      exitReason: trade.exitMode,
-      holdDurationMs: trade.exitTimestamp && trade.entryTimestamp
-        ? trade.exitTimestamp.getTime() - trade.entryTimestamp.getTime()
-        : undefined,
-      realizedMultiple: trade.realizedMultiple,
-      realizedPnLUSD: trade.realizedPnLUSD,
-      realizedPnLR: trade.sizeR > 0 ? (trade.realizedPnLUSD ?? 0) / trade.sizeUSD : 0,
-      outcome: trade.outcome,
-      peakMultiple: undefined,
-      edgesFired: trade.edgesFired,
-      primaryEdge: trade.edgesFired[0] ?? 'UNKNOWN',
-    };
-    journal?.insert(journalEntry);
-
-    // Log equity state
-    const aggression = equityCtrl.getAggressionLevel();
-    const sizeMulti = equityCtrl.getSizeMultiplier();
-    logger.info('Equity state', { aggression, sizeMulti });
-  });
 
   bus.on('edge:disabled', (edge) => {
     logger.warn('Edge auto-disabled', {
@@ -1818,7 +1705,7 @@ async function boot(): Promise<void> {
       predictedWP: ctx?.predictedWP ?? 0,
       predictedEV: ctx?.predictedEV ?? 0,
       predictedMultiple: 0,
-      sizeR: 0,
+      sizeR: position.sizeUSD / cfg.INITIAL_CAPITAL_USD,
       sizeUSD: position.sizeUSD,
       stopPriceSOL: position.entryPriceSOL * (1 - position.stopLossPct),
       maxHoldMs: position.maxHoldMs,
@@ -1863,7 +1750,7 @@ async function boot(): Promise<void> {
         realizedPnLUSD: pnlUSD,
         predictedWP: ctx?.predictedWP ?? 0,
         predictedEV: ctx?.predictedEV ?? 0,
-        sizeR: 0,
+        sizeR: position.sizeUSD / cfg.INITIAL_CAPITAL_USD,
         sizeUSD: position.sizeUSD,
         stopPriceLamports: BigInt(Math.round(position.entryPriceSOL * (1 - position.stopLossPct) * 1e9)),
         signal: ctx?.signal ?? {
@@ -1876,15 +1763,46 @@ async function boot(): Promise<void> {
           totalScore: 0,
           confidence: 0,
         },
-        rugRisk: 'LOW',
-        edgesFired: ['AUTONOMOUS' as const],
+        rugRisk: ctx?.safetyResult
+          ? (ctx.safetyResult.rugScore >= 7 ? 'HIGH' : ctx.safetyResult.rugScore >= 4 ? 'MEDIUM' : 'LOW')
+          : 'LOW',
+        edgesFired: [(ctx?.source ?? 'AUTONOMOUS') as EdgeName],
         marketState: (ctx?.entryMarketState as any) ?? 'NORMAL',
         regime: (ctx?.entryRegime as any) ?? 'NORMAL',
-        deployerTier: (ctx?.deployerTier as any) ?? 'B',
+        deployerTier: ctx?.deployerTier ?? 'UNKNOWN',
         maxHoldMs: position.maxHoldMs,
         executionMode: (ctx?.executionMode as any) ?? 'SAFE',
+        safetyChecks: ctx?.safetyResult && !ctx.safetyResult.safetyUnavailable ? {
+          liquidity:           { passed: true, valueSOL: 0 },
+          mintAuthority:       { passed: ctx.safetyResult.mintAuthRevoked, revoked: ctx.safetyResult.mintAuthRevoked },
+          freezeAuthority:     { passed: ctx.safetyResult.freezeAuthRevoked, revoked: ctx.safetyResult.freezeAuthRevoked },
+          lpLock:              { passed: ctx.safetyResult.lpLocked, locked: ctx.safetyResult.lpLocked },
+          holderConcentration: { passed: ctx.safetyResult.holderConcentrationOk, topPct: ctx.safetyResult.topHolderPct * 100 },
+          scammyName:          { passed: true },
+          deployerBlacklist:   { passed: true },
+          honeypot:            { passed: !ctx.safetyResult.isHoneypot, classification: ctx.safetyResult.isHoneypot ? 'NOT_ROUTABLE' : 'CLEAN' },
+        } : undefined,
       };
       paperGate.addTrade(tradeRecord);
+
+      // ── ML FEEDBACK LOOP: update model with trade outcome ──
+      if (onlineLearner) {
+        const mlMarketSnapshot = marketEngine.getSnapshot();
+        const mlSurvival = survivalEngine!.getSnapshot();
+        if (mlMarketSnapshot) {
+          const mlOutcome = position.outcome === 'WIN' ? 1 : 0;
+          const mlFeatures = onlineLearner.extractFeatures(
+            tradeRecord.signal,
+            null,
+            mlMarketSnapshot.score ?? 0,
+            mlMarketSnapshot.state === 'HOT' ? 1 : mlMarketSnapshot.state === 'NORMAL' ? 0.5 : 0,
+            mlSurvival.sizeMultiplier
+          );
+          onlineLearner.update(mlFeatures, mlOutcome, position.realizedMultiple ?? 1);
+        }
+      }
+
+      perfEngine.recordTrade(tradeRecord);
 
       // Log updated paper gate status
       const gateStatus = paperGate.getStatus();
@@ -1893,6 +1811,11 @@ async function boot(): Promise<void> {
         ev: gateStatus.actualEV.toFixed(3),
       });
     }
+
+    // Log equity state
+    const aggression = equityCtrl.getAggressionLevel();
+    const sizeMulti = equityCtrl.getSizeMultiplier();
+    logger.info('Equity state', { aggression, sizeMulti });
 
     // Clean up entry context cache
     tradeEntryCache.delete(position.tokenCA);

@@ -334,6 +334,7 @@ export interface TokenSafetyResult {
   mintAuthRevoked: boolean;
   freezeAuthRevoked: boolean;
   isHoneypot: boolean;
+  safetyUnavailable?: boolean;  // true when check failed — result is a blind pass
   checkedAt: Date;
 }
 

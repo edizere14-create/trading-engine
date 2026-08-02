@@ -106,6 +106,7 @@ export class TokenSafetyChecker {
         mintAuthRevoked: false,
         freezeAuthRevoked: false,
         isHoneypot: false,
+        safetyUnavailable: true,
         checkedAt: new Date(),
       };
 
