@@ -79,7 +79,7 @@ export interface SafetyCheckTrace {
   freezeAuthority:      { passed: boolean; revoked: boolean };
   lpLock:               { passed: boolean; locked: boolean; lockDurationDays?: number };
   /** Top holder share is tracked as a percentage (0-100), not a fraction. */
-  holderConcentration:  { passed: boolean; topPct: number };
+  holderConcentration:  { passed: boolean; topPct: number; unavailable?: boolean };
   scammyName:           { passed: boolean };
   deployerBlacklist:    { passed: boolean };
   honeypot:             { passed: boolean; classification: HoneypotClassification; sellQuoteSlippagePct?: number };
@@ -335,6 +335,7 @@ export interface TokenSafetyResult {
   freezeAuthRevoked: boolean;
   isHoneypot: boolean;
   safetyUnavailable?: boolean;  // true when check failed — result is a blind pass
+  topHolderCheckUnavailable?: boolean;  // true when holder scan failed — concentration not measured
   checkedAt: Date;
 }
 

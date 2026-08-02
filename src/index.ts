@@ -1777,7 +1777,11 @@ async function boot(): Promise<void> {
           mintAuthority:       { passed: ctx.safetyResult.mintAuthRevoked, revoked: ctx.safetyResult.mintAuthRevoked },
           freezeAuthority:     { passed: ctx.safetyResult.freezeAuthRevoked, revoked: ctx.safetyResult.freezeAuthRevoked },
           lpLock:              { passed: ctx.safetyResult.lpLocked, locked: ctx.safetyResult.lpLocked },
-          holderConcentration: { passed: ctx.safetyResult.holderConcentrationOk, topPct: ctx.safetyResult.topHolderPct * 100 },
+          holderConcentration: {
+            passed: !ctx.safetyResult.topHolderCheckUnavailable && ctx.safetyResult.topHolderPct <= 0.30,
+            topPct: ctx.safetyResult.topHolderPct * 100,
+            unavailable: ctx.safetyResult.topHolderCheckUnavailable ?? false,
+          },
           scammyName:          { passed: true },
           deployerBlacklist:   { passed: true },
           honeypot:            { passed: !ctx.safetyResult.isHoneypot, classification: ctx.safetyResult.isHoneypot ? 'NOT_ROUTABLE' : 'CLEAN' },
