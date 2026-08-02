@@ -74,10 +74,10 @@ export interface SignalVector {
 export type HoneypotClassification = 'CLEAN' | 'INDEX_LAG' | 'NOT_ROUTABLE' | 'UNCONFIRMED';
 
 export interface SafetyCheckTrace {
-  liquidity:            { passed: boolean; valueSOL: number };
+  liquidity:            { passed: boolean; valueSOL: number; unavailable?: boolean };
   mintAuthority:        { passed: boolean; revoked: boolean };
   freezeAuthority:      { passed: boolean; revoked: boolean };
-  lpLock:               { passed: boolean; locked: boolean; lockDurationDays?: number };
+  lpLock:               { passed: boolean; locked: boolean; lockDurationDays?: number; unavailable?: boolean };
   /** Top holder share is tracked as a percentage (0-100), not a fraction. */
   holderConcentration:  { passed: boolean; topPct: number; unavailable?: boolean };
   scammyName:           { passed: boolean };
@@ -330,7 +330,7 @@ export interface TokenSafetyResult {
   topHolderPct: number;         // fraction (0-1), not percentage
   /** Atomic per-check signal: true if topHolderPct <= 0.30 (matches the 'high' band threshold). */
   holderConcentrationOk: boolean;
-  lpLocked: boolean;
+  lpLocked?: boolean;
   mintAuthRevoked: boolean;
   freezeAuthRevoked: boolean;
   isHoneypot: boolean;

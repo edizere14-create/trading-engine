@@ -86,20 +86,25 @@ let isShuttingDown = false;
 // tokenCA -> poolAddress mapping (populated from pool:created events)
 interface TokenPoolEntry {
   poolAddress: string;
+  initialLiquiditySOL?: number;
   lastSeenMs: number;
 }
 const tokenPoolMap: Map<string, TokenPoolEntry> = new Map();
 const TOKEN_POOL_TTL_MS = Math.max(Number(process.env.TOKEN_POOL_TTL_MS ?? 6 * 60 * 60 * 1000), 60_000);
 const TOKEN_POOL_MAX_ENTRIES = Math.max(Number(process.env.TOKEN_POOL_MAX_ENTRIES ?? 20_000), 1_000);
 
-function rememberTokenPool(tokenCA: string, poolAddress: string): void {
+function rememberTokenPool(tokenCA: string, poolAddress: string, initialLiquiditySOL?: number): void {
   const now = Date.now();
   const prev = tokenPoolMap.get(tokenCA);
   if (prev) {
     // Refresh insertion order for LRU-style eviction.
     tokenPoolMap.delete(tokenCA);
   }
-  tokenPoolMap.set(tokenCA, { poolAddress, lastSeenMs: now });
+  tokenPoolMap.set(tokenCA, {
+    poolAddress,
+    initialLiquiditySOL: initialLiquiditySOL ?? prev?.initialLiquiditySOL,
+    lastSeenMs: now,
+  });
   pruneTokenPoolMap(now);
 }
 
@@ -144,6 +149,7 @@ interface TradeEntryContext {
   executionMode: string;
   source: string;
   safetyResult?: TokenSafetyResult;
+  initialLiquiditySOL?: number;
 }
 const tradeEntryCache: Map<string, TradeEntryContext> = new Map();
 
@@ -739,7 +745,7 @@ async function boot(): Promise<void> {
     // Always store tokenCA -> poolAddress for reserve-based price tracking,
     // even if the pool is filtered out for trading. Positions opened via
     // smart wallet signals still need price feeds from the pool.
-    rememberTokenPool(event.tokenCA, event.poolAddress);
+    rememberTokenPool(event.tokenCA, event.poolAddress, event.initialLiquiditySOL);
 
     // Filter out micro-liquidity pools
     if (event.initialLiquiditySOL < cfg.MIN_LIQUIDITY_SOL) return;
@@ -990,7 +996,7 @@ async function boot(): Promise<void> {
   // GraduationHandler's async safety pipeline finishes and emits trade:signal —
   // so the trade gate's getTokenPoolAddress() lookup succeeds.
   bus.on('pool:graduated', (event) => {
-    rememberTokenPool(event.tokenCA, event.poolAddress);
+    rememberTokenPool(event.tokenCA, event.poolAddress, event.initialLiquiditySOL);
   });
 
   // Ingestion watchdog: record every ingestion event so the antifragile engine
@@ -1394,6 +1400,7 @@ async function boot(): Promise<void> {
         executionMode: 'SAFE',
         source: signal.source ?? 'UNKNOWN',
         safetyResult: safety,
+        initialLiquiditySOL: tokenPoolMap.get(signal.tokenCA)?.initialLiquiditySOL,
       });
 
       // Record heartbeat for antifragile dead-man's switch
@@ -1773,10 +1780,18 @@ async function boot(): Promise<void> {
         maxHoldMs: position.maxHoldMs,
         executionMode: (ctx?.executionMode as any) ?? 'SAFE',
         safetyChecks: ctx?.safetyResult && !ctx.safetyResult.safetyUnavailable ? {
-          liquidity:           { passed: true, valueSOL: 0 },
+          liquidity: {
+            passed: ctx.initialLiquiditySOL !== undefined && ctx.initialLiquiditySOL >= cfg.MIN_LIQUIDITY_SOL,
+            valueSOL: ctx.initialLiquiditySOL ?? 0,
+            unavailable: ctx.initialLiquiditySOL === undefined,
+          },
           mintAuthority:       { passed: ctx.safetyResult.mintAuthRevoked, revoked: ctx.safetyResult.mintAuthRevoked },
           freezeAuthority:     { passed: ctx.safetyResult.freezeAuthRevoked, revoked: ctx.safetyResult.freezeAuthRevoked },
-          lpLock:              { passed: ctx.safetyResult.lpLocked, locked: ctx.safetyResult.lpLocked },
+          lpLock: {
+            passed: ctx.safetyResult.lpLocked === true,
+            locked: ctx.safetyResult.lpLocked === true,
+            unavailable: ctx.safetyResult.lpLocked === undefined,
+          },
           holderConcentration: {
             passed: ctx.safetyResult.holderConcentrationOk,
             topPct: ctx.safetyResult.topHolderPct * 100,
@@ -1957,7 +1972,8 @@ async function boot(): Promise<void> {
   logger.info(`  DEPLOYER INTEL: ${deployerIntel ? 'ACTIVE' : 'N/A'}`);
   logger.info(`  PAPER TRADES: ${gateStatus.completedTrades}/${gateStatus.requiredTrades}`);
   logger.info(`  GATE: ${gateStatus.gateUnlocked ? 'UNLOCKED' : 'LOCKED'}`);
-  logger.info(`  EDGES ENABLED: ${perfEngine.getReport().filter((e) => e.isEnabled).length}/7`);
+  const edgeReport = perfEngine.getReport();
+  logger.info(`  EDGES ENABLED: ${edgeReport.filter((e) => e.isEnabled).length}/${edgeReport.length}`);
   logger.info(`  AGGRESSION: ${equityCtrl.getAggressionLevel()}`);
   logger.info(`  EQUITY DD: ${equityCtrl.getMetrics().drawdownPct.toFixed(1)}%`);
   logger.info(`  JOURNAL: ${journal.count()} trades`);

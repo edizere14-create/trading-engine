@@ -96,7 +96,7 @@ export class TokenSafetyChecker {
         rugScore: 5,
         topHolderPct: 0,
         holderConcentrationOk: true,
-        lpLocked: false,
+        lpLocked: undefined,
         mintAuthRevoked: false,
         freezeAuthRevoked: false,
         isHoneypot: false,
@@ -147,7 +147,7 @@ export class TokenSafetyChecker {
     // graduated pools are locked-by-construction. Revisit if the engine ever
     // subscribes to additional DEX programs (Raydium, Meteora, Orca CPMM)
     // where LP locking varies per-pool.
-    const lpLocked = true;
+    const lpLocked: boolean | undefined = undefined;
     let mintAuthRevoked = false;
     let freezeAuthRevoked = false;
     const isHoneypot = false;
