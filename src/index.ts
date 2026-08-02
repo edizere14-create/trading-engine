@@ -1778,7 +1778,7 @@ async function boot(): Promise<void> {
           freezeAuthority:     { passed: ctx.safetyResult.freezeAuthRevoked, revoked: ctx.safetyResult.freezeAuthRevoked },
           lpLock:              { passed: ctx.safetyResult.lpLocked, locked: ctx.safetyResult.lpLocked },
           holderConcentration: {
-            passed: !ctx.safetyResult.topHolderCheckUnavailable && ctx.safetyResult.topHolderPct <= 0.30,
+            passed: ctx.safetyResult.holderConcentrationOk,
             topPct: ctx.safetyResult.topHolderPct * 100,
             unavailable: ctx.safetyResult.topHolderCheckUnavailable ?? false,
           },

@@ -192,8 +192,8 @@ export class TokenSafetyChecker {
       });
     }
 
-    const holderConcentrationOk = topHolderPct <= 0.30;
-    const isSafe = rugScore <= 5 && !isHoneypot;
+    const holderConcentrationOk = !topHolderCheckUnavailable && topHolderPct <= 0.30;
+    const isSafe = rugScore <= 5 && !isHoneypot && !topHolderCheckUnavailable;
 
     if (topHolderCheckUnavailable) {
       reasons.push('TOP_HOLDER_CHECK_UNAVAILABLE — provider plan/rate limit prevented concentration scan');
