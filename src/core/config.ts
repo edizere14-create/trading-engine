@@ -77,6 +77,7 @@ const envSchema = z.object({
   MIN_POOL_DEPTH_USD:      z.coerce.number().min(0).default(5000), // $5k USD minimum pool depth
 
   // Signal quality
+  MIN_SIGNAL_SCORE:        z.coerce.number().min(0).max(10).default(4),      // minimum score to pass signal/trade gates
   MIN_CONSENSUS:           z.coerce.number().min(0).max(1).default(0.65), // minimum signal confidence to trade
 
   // Position parameters

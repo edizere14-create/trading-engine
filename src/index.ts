@@ -842,11 +842,11 @@ async function boot(): Promise<void> {
 
     if (!signal) return; // data:blind was emitted
 
-    if (signal.totalScore < 4) {
+    if (signal.totalScore < cfg.MIN_SIGNAL_SCORE) {
       logger.info('Pool BLOCKED — low autonomous score', {
         tokenCA: event.tokenCA,
         totalScore: signal.totalScore.toFixed(2),
-        minScore: 4,
+        minScore: cfg.MIN_SIGNAL_SCORE,
       });
       return;
     }
@@ -1075,7 +1075,7 @@ async function boot(): Promise<void> {
       confidence: 0.6,
     };
 
-    if (signal.score < 4) {
+    if (signal.score < cfg.MIN_SIGNAL_SCORE) {
       bumpGateMetric('signalsBlockedLowScore');
       bumpGateBlockReason('signalLowScore');
       logger.info('Signal BLOCKED — low single-wallet score', {
@@ -1083,7 +1083,7 @@ async function boot(): Promise<void> {
         wallet: signal.triggerWallet,
         tier: signal.walletTier,
         score: signal.score.toFixed(2),
-        minScore: 4,
+        minScore: cfg.MIN_SIGNAL_SCORE,
       });
       return;
     }
@@ -1145,13 +1145,13 @@ async function boot(): Promise<void> {
 
     bumpGateMetric('tradeSignalsReceived');
 
-    if (signal.source === 'SINGLE_WALLET' && signal.score < 4) {
+    if (signal.source === 'SINGLE_WALLET' && signal.score < cfg.MIN_SIGNAL_SCORE) {
       bumpGateMetric('tradeBlockedLowScore');
       bumpGateBlockReason('tradeLowScore');
       logger.info('Trade BLOCKED — low single-wallet score', {
         tokenCA: signal.tokenCA,
         score: signal.score.toFixed(2),
-        minScore: 4,
+        minScore: cfg.MIN_SIGNAL_SCORE,
       });
       return;
     }
