@@ -8,12 +8,6 @@ import { logger } from '../core/logger';
 const CACHE_TTL_MS = 300_000; // 5 minutes
 const SAFETY_TIMEOUT_MS = 3_000;
 const SAFETY_MAX_ATTEMPTS = 2;
-const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-const TOKEN_ACCOUNT_SIZE = 165;
-
-function readU64LE(data: Buffer, offset: number): bigint {
-  return data.readBigUInt64LE(offset);
-}
 
 export class TokenSafetyChecker {
   private connections: Connection[];
@@ -252,30 +246,14 @@ export class TokenSafetyChecker {
   }
 
   private async getTopHolderConcentration(connection: Connection, tokenCA: string, totalSupply: bigint): Promise<number> {
-    const mintPubkey = new PublicKey(tokenCA);
     if (totalSupply === 0n) return 0;
+    const mintPubkey = new PublicKey(tokenCA);
 
-    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
-      filters: [
-        { dataSize: TOKEN_ACCOUNT_SIZE },
-        { memcmp: { offset: 0, bytes: mintPubkey.toBase58() } },
-      ],
-    });
+    const largest = await connection.getTokenLargestAccounts(mintPubkey);
+    const top = largest.value[0];
+    if (!top) return 0;
 
-    if (tokenAccounts.length === 0) return 0;
-
-    const top5Total = tokenAccounts
-      .map(({ account }) => {
-        const data = account.data;
-        if (!Buffer.isBuffer(data) || data.length < 72) return 0n;
-        return readU64LE(data, 64);
-      })
-      .filter((amount) => amount > 0n)
-      .sort((a, b) => (a > b ? -1 : a < b ? 1 : 0))
-      .slice(0, 5)
-      .reduce((sum, amount) => sum + amount, 0n);
-
-    return Number(top5Total) / Number(totalSupply);
+    return Number(BigInt(top.amount) * 10000n / totalSupply) / 10000;
   }
 
   private cleanupCache(): void {
