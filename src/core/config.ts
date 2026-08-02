@@ -68,6 +68,7 @@ const envSchema = z.object({
   PAPER_TRADES_FILE:       z.string().default('./data/paperTrades.json'),
   DEPLOYERS_FILE:          z.string().default('./data/deployers.json'),
   WALLETS_FILE:            z.string().default('./data/wallets.json'),
+  WALLET_PERF_FILE:        z.string().default('./data/walletPerformance.json'),
   EDGE_STATS_FILE:         z.string().default('./data/edgeStats.json'),
   JOURNAL_FILE:            z.string().default('./data/journal.db'),
   GRADUATION_FILE:         z.string().default('./data/graduation.json'),

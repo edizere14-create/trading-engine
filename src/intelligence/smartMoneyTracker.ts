@@ -18,6 +18,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
+import * as fs from 'fs';
 
 // ── TYPES ─────────────────────────────────────────────────
 
@@ -80,12 +81,14 @@ export class SmartMoneyTracker {
   private trackedWallets: Map<string, TrackedWallet> = new Map();
   private buyWindows: Map<string, TokenBuyWindow> = new Map();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  private perfPath: string = './data/walletPerformance.json';
   private signalHistory: SmartMoneySignal[] = [];
   private totalSignals = 0;
   private totalBuysProcessed = 0;
 
-  constructor(walletRegistry: WalletRegistry) {
+  constructor(walletRegistry: WalletRegistry, perfPath: string) {
     this.walletRegistry = walletRegistry;
+    this.perfPath = perfPath;
     this.initializeFromRegistry();
   }
 
@@ -138,6 +141,31 @@ export class SmartMoneyTracker {
         totalTrades: w.tradeCount,
         recentBuys: [],
         score,
+      });
+    }
+    // Merge observed performance over registry defaults
+    try {
+      if (fs.existsSync(this.perfPath)) {
+        const saved = JSON.parse(fs.readFileSync(this.perfPath, 'utf-8')) as Array<{
+          address: string; tier: 'S' | 'A' | 'B'; winRate: number;
+          avgMultiple: number; totalTrades: number; score: number;
+        }>;
+        for (const p of saved) {
+          const w = this.trackedWallets.get(p.address);
+          if (w) {
+            w.tier = p.tier;
+            w.winRate = p.winRate;
+            w.avgMultiple = p.avgMultiple;
+            w.totalTrades = p.totalTrades;
+            w.score = p.score;
+          }
+        }
+        logger.info('SmartMoneyTracker: loaded wallet performance', { count: saved.length, path: this.perfPath });
+      }
+    } catch (err) {
+      logger.warn('SmartMoneyTracker: could not load wallet performance', {
+        path: this.perfPath,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   }
@@ -348,6 +376,24 @@ export class SmartMoneyTracker {
     } else if (wallet.tier === 'A' && wallet.score < 35) {
       wallet.tier = 'B';
       logger.info('SmartMoney wallet demoted A→B', { address: walletAddress, score: wallet.score });
+    }
+    this.savePerformance();
+  }
+
+  // ── PERSIST ───────────────────────────────────
+
+  private savePerformance(): void {
+    try {
+      const out = Array.from(this.trackedWallets.values()).map(w => ({
+        address: w.address, tier: w.tier, winRate: w.winRate,
+        avgMultiple: w.avgMultiple, totalTrades: w.totalTrades, score: w.score,
+      }));
+      fs.writeFileSync(this.perfPath, JSON.stringify(out, null, 2), 'utf-8');
+    } catch (err) {
+      logger.warn('SmartMoneyTracker: could not save wallet performance', {
+        path: this.perfPath,
+        error: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

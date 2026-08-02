@@ -713,7 +713,7 @@ async function boot(): Promise<void> {
   logger.info('StatArb engine started');
 
   // 5m. Smart Money Tracker — behavioral wallet clustering (10s window)
-  smartMoneyTracker = new SmartMoneyTracker(walletRegistry);
+  smartMoneyTracker = new SmartMoneyTracker(walletRegistry, cfg.WALLET_PERF_FILE);
   smartMoneyTracker.start();
   logger.info('Smart money tracker started', { trackedWallets: walletRegistry.count() });
 
