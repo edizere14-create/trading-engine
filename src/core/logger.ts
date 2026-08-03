@@ -8,7 +8,27 @@ if (!fs.existsSync(LOG_DIR)) {
   fs.mkdirSync(LOG_DIR, { recursive: true });
 }
 
+// Scrub api-key query params from all logged strings (URLs like ?api-key=xxx)
+const redactSecrets = winston.format((info) => {
+  const scrub = (s: string) =>
+    s.replace(/([?&]api[-_]key=)[^&"'\s)]+/gi, '$1REDACTED');
+  const deep = (v: unknown): unknown => {
+    if (typeof v === 'string') return scrub(v);
+    if (Array.isArray(v))       return v.map(deep);
+    if (v && typeof v === 'object')
+      return Object.fromEntries(Object.entries(v as Record<string,unknown>).map(([k,u]) => [k, deep(u)]));
+    return v;
+  };
+  if (typeof info.message === 'string') info.message = scrub(info.message);
+  for (const key of Object.keys(info)) {
+    if (key !== 'level' && key !== 'message' && key !== 'timestamp' && key !== 'service')
+      (info as Record<string,unknown>)[key] = deep(info[key as keyof typeof info]);
+  }
+  return info;
+})();
+
 const consoleFormat = winston.format.combine(
+  redactSecrets,
   winston.format.timestamp({ format: 'HH:mm:ss.SSS' }),
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
@@ -18,6 +38,7 @@ const consoleFormat = winston.format.combine(
 );
 
 const fileFormat = winston.format.combine(
+  redactSecrets,
   winston.format.timestamp({ format: 'YYYY-MM-DDTHH:mm:ss.SSSZ' }),
   winston.format.json()
 );

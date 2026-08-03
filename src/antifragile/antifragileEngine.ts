@@ -470,6 +470,9 @@ export class AntifragileEngine {
     if (gap <= this.MAX_INGESTION_GAP_MS || this.ingestionWatchdogTriggered) return;
 
     this.ingestionWatchdogTriggered = true;
+    // Trip heliusWS circuit so getSystemHealth() reports DEGRADED rather than HEALTHY
+    // while streams are dead. Threshold is 3 — record 3 failures to open it immediately.
+    for (let i = 0; i < 3; i++) this.heliusWS.recordFailure();
     logger.error('STREAM WATCHDOG: No ingestion events detected — streams likely dead', {
       lastIngestionAt: this.lastIngestionAt.toISOString(),
       gapMs: gap,
