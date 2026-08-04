@@ -217,10 +217,11 @@ describe('runPhaseB', () => {
       expect(result.trace.holderConcentration.topPct).toBe(0);
     });
 
-    it('failedCheck = lpLock on timeout (declared order)', async () => {
+    it('failedCheck = timeout on tokenSafety timeout, not lpLock', async () => {
       const checker = makeChecker(new Promise<TokenSafetyResult>(() => { /* hang */ }));
       const result = await runPhaseB(baseEvent, checker, 50);
-      expect(result.failedCheck).toBe('lpLock');
+      expect(result.failedCheck).toBe('timeout');
+      expect(result.trace.lpLock.unavailable).toBe(true);
     });
 
     it('still includes honeypot and deployer in trace even when tokenSafety times out', async () => {

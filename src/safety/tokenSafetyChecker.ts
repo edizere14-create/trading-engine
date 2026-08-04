@@ -6,7 +6,7 @@ import { logger } from '../core/logger';
 
 // Cache results to avoid duplicate RPC calls
 const CACHE_TTL_MS = 300_000; // 5 minutes
-const SAFETY_TIMEOUT_MS = 3_000;
+const SAFETY_TIMEOUT_MS = 6_000;
 const SAFETY_MAX_ATTEMPTS = 2;
 
 export class TokenSafetyChecker {
@@ -147,7 +147,7 @@ export class TokenSafetyChecker {
     // graduated pools are locked-by-construction. Revisit if the engine ever
     // subscribes to additional DEX programs (Raydium, Meteora, Orca CPMM)
     // where LP locking varies per-pool.
-    const lpLocked: boolean | undefined = undefined;
+    const lpLocked = true;
     let mintAuthRevoked = false;
     let freezeAuthRevoked = false;
     const isHoneypot = false;

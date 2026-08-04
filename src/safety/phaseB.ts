@@ -17,7 +17,10 @@
  * when individual checks time out.
  *
  * failedCheck resolution: declared order. When multiple checks fail
- * simultaneously, the first in this order wins:
+ * simultaneously, the first in this order wins. A tokenSafetyChecker
+ * timeout takes precedence over all four of its derived checks (they
+ * collapse to false together and are not independently informative) and
+ * is reported as 'timeout' rather than 'lpLock':
  *   lpLock → mintAuthority → freezeAuthority → holderConcentration →
  *   honeypot → deployerBlacklist
  *
@@ -35,6 +38,7 @@ import { AntifragileEngine } from '../antifragile/antifragileEngine';
 const HONEYPOT_TEST_AMOUNT_LAMPORTS = 1_000_000n;
 
 export type PhaseBFailedCheck =
+  | 'timeout'
   | 'lpLock'
   | 'mintAuthority'
   | 'freezeAuthority'
@@ -111,6 +115,7 @@ export async function runPhaseB(
     lpLock: {
       passed: ts?.lpLocked ?? false,
       locked: ts?.lpLocked ?? false,
+      unavailable: tokenSafetyTimedOut,
     },
     mintAuthority: {
       passed: ts?.mintAuthRevoked ?? false,
@@ -134,9 +139,12 @@ export async function runPhaseB(
     },
   };
 
-  // failedCheck resolution: declared order.
+  // failedCheck resolution: declared order. A tokenSafetyChecker timeout
+  // masks all four of its derived checks simultaneously — attribute it to
+  // 'timeout', not whichever check happens to be first in the order.
   let failedCheck: PhaseBFailedCheck | undefined;
-  if (!trace.lpLock.passed)              failedCheck = 'lpLock';
+  if (tokenSafetyTimedOut)                     failedCheck = 'timeout';
+  else if (!trace.lpLock.passed)              failedCheck = 'lpLock';
   else if (!trace.mintAuthority.passed)        failedCheck = 'mintAuthority';
   else if (!trace.freezeAuthority.passed)      failedCheck = 'freezeAuthority';
   else if (!trace.holderConcentration.passed)  failedCheck = 'holderConcentration';
