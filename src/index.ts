@@ -1379,6 +1379,32 @@ async function boot(): Promise<void> {
       // Cache signal context for journal/paper trade records on close
       const marketSnapshot = marketEngine.getSnapshot();
       const regimeSnap = regimeDetector?.getLatestSnapshot();
+
+      // ── ML prediction for predictedWP (mirrors the pool path at ~872) ──
+      let mlWP = signal.score ? signal.score / 10 : 0;
+      let mlEV = 0;
+      if (onlineLearner && marketSnapshot) {
+        const mlSurvival = survivalEngine!.getSnapshot();
+        const features = onlineLearner.extractFeatures(
+          {
+            timingEdge: signal.score ?? 0,
+            deployerQuality: 0, organicFlow: 0, manipulationRisk: 0,
+            coordinationStrength: 0, socialVelocity: 0,
+            totalScore: signal.score ?? 0,
+            confidence: signal.confidence ?? 0,
+          },
+          null,
+          marketSnapshot.score ?? 0,
+          marketSnapshot.state === 'HOT' ? 1 : marketSnapshot.state === 'NORMAL' ? 0.5 : 0,
+          mlSurvival.sizeMultiplier
+        );
+        const prediction = onlineLearner.getPrediction(features);
+        if (prediction) {
+          mlWP = prediction.winProbability;
+          mlEV = prediction.expectedValue;
+        }
+      }
+
       tradeEntryCache.set(signal.tokenCA, {
         signal: {
           timingEdge: signal.score ?? 0,
@@ -1393,8 +1419,8 @@ async function boot(): Promise<void> {
         poolAddress,
         deployerAddress: '',
         deployerTier: (signal.walletTier ?? 'B') as DeployerTier,
-        predictedWP: signal.score ? signal.score / 10 : 0,
-        predictedEV: 0,
+        predictedWP: mlWP,
+        predictedEV: mlEV,
         entryMarketState: marketSnapshot?.state ?? 'NORMAL',
         entryRegime: regimeSnap?.currentRegime ?? 'NORMAL',
         executionMode: 'SAFE',
