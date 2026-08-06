@@ -1163,7 +1163,7 @@ async function boot(): Promise<void> {
     }
 
     const poolAddress = signal.poolAddress ?? getTokenPoolAddress(signal.tokenCA) ?? '';
-    if (!poolAddress && signal.source !== 'SINGLE_WALLET') {
+    if (!poolAddress && cfg.ALLOW_NO_POOL_TRADES !== 'true') {
       bumpGateMetric('tradeBlockedNoPool');
       bumpGateBlockReason('tradeNoPool');
       logger.info('Trade BLOCKED — no pool context', {
@@ -1171,14 +1171,6 @@ async function boot(): Promise<void> {
         source: signal.source,
       });
       return;
-    }
-    if (!poolAddress && signal.source === 'SINGLE_WALLET') {
-      bumpGateMetric('tradeProceedNoPool');
-      logger.info('Trade proceeding without pool context', {
-        tokenCA: signal.tokenCA,
-        source: signal.source,
-        reason: 'fallback-pricing-enabled',
-      });
     }
 
     // Token safety check (async — uses RPC)
