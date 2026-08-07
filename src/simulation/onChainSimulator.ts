@@ -17,13 +17,16 @@ import { logger } from '../core/logger';
 
 // ── AMM PROGRAMS ──────────────────────────────────────────
 
-type AMMType = 'raydium_v4' | 'raydium_clmm' | 'orca_whirlpool' | 'unknown';
+type AMMType = 'raydium_v4' | 'raydium_clmm' | 'orca_whirlpool' | 'pumpswap' | 'unknown';
 
 const AMM_PROGRAMS: Record<string, AMMType> = {
   '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8': 'raydium_v4',
   'CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK': 'raydium_clmm',
   'whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc':   'orca_whirlpool',
+  'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA':   'pumpswap',
 };
+
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
 // ── POOL RESERVES (real on-chain data) ────────────────────
 
@@ -146,13 +149,15 @@ export class OnChainSimulator {
       case 'raydium_clmm':
       case 'orca_whirlpool':
         return this.fetchCLMMReserves(poolAddress, accountInfo, ammType);
+      case 'pumpswap':
+        return this.fetchPumpSwapReserves(poolAddress, accountInfo);
       default:
         // Unknown AMM — try to read vault balances from common layout patterns
         logger.warn('[Simulator] Unknown AMM program — using fallback vault read', {
           poolAddress,
           owner,
         });
-        return this.fetchFallbackReserves(poolAddress, accountInfo);
+        return this.fetchFallbackReserves(poolAddress);
     }
   }
 
@@ -243,25 +248,41 @@ export class OnChainSimulator {
     return { reserveA, reserveB, decimalsA, decimalsB, ammType, fetchedAt: Date.now() };
   }
 
-  private async fetchFallbackReserves(
+  private async fetchPumpSwapReserves(
     poolAddress: string,
     accountInfo: AccountInfo<Buffer>
   ): Promise<PoolReserves> {
-    // Fallback: try to get SOL balance of the pool account itself
-    // and largest token accounts as a rough approximation
-    const balance = await this.connection.getBalance(new PublicKey(poolAddress));
-    if (balance === 0) throw new Error(`Pool ${poolAddress} has zero SOL balance`);
+    const data = accountInfo.data as Buffer;
+    if (data.length < 203) {
+      throw new Error(`PumpSwap pool data too short: ${data.length} bytes`);
+    }
 
-    // Since we can't decode the layout, return SOL balance as reserveB
-    // and mark it so downstream knows this is a rough estimate
+    const baseMint   = new PublicKey(data.subarray(43, 75));
+    const quoteMint  = new PublicKey(data.subarray(75, 107));
+    const baseVault  = new PublicKey(data.subarray(139, 171));
+    const quoteVault = new PublicKey(data.subarray(171, 203));
+
+    if (quoteMint.toString() !== WSOL_MINT) {
+      throw new Error(`PumpSwap pool ${poolAddress} has non-wSOL quote mint ${quoteMint.toString()} — decode assumption invalid`);
+    }
+
+    const [baseAcc, quoteAcc] = await this.connection.getMultipleAccountsInfo(
+      [baseVault, quoteVault],
+      { commitment: 'confirmed' }
+    );
+
     return {
-      reserveA: 0n,
-      reserveB: BigInt(balance),
-      decimalsA: 0,
-      decimalsB: 9, // SOL decimals
-      ammType: 'unknown',
+      reserveA: this.parseTokenAccountBalance(baseAcc),
+      reserveB: this.parseTokenAccountBalance(quoteAcc),
+      decimalsA: await this.getTokenDecimals(baseMint.toString()),
+      decimalsB: 9,                    // wSOL
+      ammType: 'pumpswap',
       fetchedAt: Date.now(),
     };
+  }
+
+  private async fetchFallbackReserves(poolAddress: string): Promise<PoolReserves> {
+    throw new Error(`Cannot decode AMM layout for pool ${poolAddress} — no reserve data`);
   }
 
   private parseTokenAccountBalance(accountInfo: AccountInfo<Buffer> | null): bigint {
