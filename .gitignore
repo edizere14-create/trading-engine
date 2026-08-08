@@ -2,6 +2,7 @@ node_modules/
 .next/
 dashboard/.next/
 dist/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
