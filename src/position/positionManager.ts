@@ -18,6 +18,8 @@ interface PositionConfig {
   stopLossPct: number;       // e.g. 0.60 for 60% stop loss
   maxHoldMs: number;
   solPriceUSD: number;       // current SOL price (updated externally)
+  tightStopWindowMs: number; // early-hold window where tightStopPct applies
+  tightStopPct: number;      // tighter stop used within tightStopWindowMs of entry
 }
 
 export class PositionManager {
@@ -177,6 +179,12 @@ export class PositionManager {
     return true;
   }
 
+  private effectiveStopPct(position: TradePosition): number {
+    const ageMs = Date.now() - position.entryTimestamp.getTime();
+    if (ageMs < this.config.tightStopWindowMs) return this.config.tightStopPct;
+    return position.stopLossPct;
+  }
+
   /**
    * Update price for a token and check exit conditions.
    */
@@ -219,8 +227,14 @@ export class PositionManager {
     });
 
     // Hard stop
-    if (multiple <= (1 - position.stopLossPct)) {
-      this.closePosition(tokenCA, `HARD_STOP (${((1 - multiple) * 100).toFixed(1)}% loss)`, currentPriceSOL);
+    const effectiveStopPct = this.effectiveStopPct(position);
+    if (multiple <= (1 - effectiveStopPct)) {
+      const pct = (1 - multiple) * 100;
+      if (effectiveStopPct === this.config.tightStopPct && holdMs < this.config.tightStopWindowMs) {
+        this.closePosition(tokenCA, `EARLY_STOP (${pct.toFixed(1)}% loss, ${holdMs}ms)`, currentPriceSOL);
+      } else {
+        this.closePosition(tokenCA, `HARD_STOP (${pct.toFixed(1)}% loss)`, currentPriceSOL);
+      }
       return;
     }
 

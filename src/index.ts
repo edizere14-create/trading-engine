@@ -615,6 +615,8 @@ async function boot(): Promise<void> {
       stopLossPct: cfg.TRADE_STOP_LOSS_PCT,
       maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
       solPriceUSD: currentSOLPrice!,
+      tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
+      tightStopPct: cfg.TIGHT_STOP_PCT,
     }
   );
   positionManager.start();
@@ -623,6 +625,8 @@ async function boot(): Promise<void> {
     sizePct: cfg.TRADE_SIZE_PCT,
     stopLossPct: cfg.TRADE_STOP_LOSS_PCT,
     maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
+    tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
+    tightStopPct: cfg.TIGHT_STOP_PCT,
   });
 
   // ═══════════════════════════════════════════════════════════

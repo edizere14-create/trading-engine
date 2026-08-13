@@ -17,6 +17,8 @@ const baseConfig = {
   solPriceUSD: 150,
   maxHoldMs: 180_000,
   stopLossPct: 0.40,
+  tightStopWindowMs: 10_000,
+  tightStopPct: 0.25,
 };
 
 const healthySurvival: SurvivalSnapshot = {

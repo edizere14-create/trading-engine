@@ -86,6 +86,8 @@ const envSchema = z.object({
   TRADE_SIZE_PCT:          z.coerce.number().min(0.01).max(1).default(0.10), // % of capital per trade
   TRADE_MAX_HOLD_MS:       z.coerce.number().int().min(10000).default(180_000), // 3 min (MAX_HOLD spec)
   TRADE_STOP_LOSS_PCT:     z.coerce.number().min(0.05).max(0.90).default(0.60), // -60% (HARD_STOP spec)
+  TIGHT_STOP_WINDOW_MS:    z.coerce.number().int().min(0).default(10_000),
+  TIGHT_STOP_PCT:          z.coerce.number().min(0.05).max(0.9).default(0.25),
   TOKEN_MAX_AGE_MS:        z.coerce.number().int().min(0).default(3_600_000), // skip tokens >1hr old
 
   // Calibration
