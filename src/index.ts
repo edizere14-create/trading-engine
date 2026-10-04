@@ -711,10 +711,12 @@ async function boot(): Promise<void> {
   positionPricePoller.start();
   logger.info('Position price poller started');
 
-  // 5l. Statistical Arbitrage Engine — cross-DEX spread capture
-  statArbEngine = new StatArbEngine(cfg.connection);
-  statArbEngine.start();
-  logger.info('StatArb engine started');
+  // 5l. Statistical Arbitrage Engine — DISABLED: never logged an opportunity
+  // across all local runs, burns Jupiter quote calls, and its signals are
+  // stamped AUTONOMOUS (indistinguishable from the pool evaluator's).
+  // statArbEngine = new StatArbEngine(cfg.connection);
+  // statArbEngine.start();
+  // logger.info('StatArb engine started');
 
   // 5m. Smart Money Tracker — behavioral wallet clustering (10s window)
   smartMoneyTracker = new SmartMoneyTracker(walletRegistry, cfg.WALLET_PERF_FILE);
