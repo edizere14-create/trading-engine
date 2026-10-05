@@ -14,6 +14,7 @@
 
 import { Connection, PublicKey, AccountInfo } from '@solana/web3.js';
 import { logger } from '../core/logger';
+import { RpcFallback } from '../core/rpcFallback';
 
 // ── AMM PROGRAMS ──────────────────────────────────────────
 
@@ -103,8 +104,12 @@ export class OnChainSimulator {
   private decimalsCache: Map<string, number> = new Map();
   private readonly CACHE_TTL_MS = 30_000; // 30s cache for full simulation
 
-  constructor(connection: Connection) {
+  private rpc: RpcFallback;
+
+  /** With a backup, read-only RPC calls fall back to it on transport errors. */
+  constructor(connection: Connection, backupConnection?: Connection) {
     this.connection = connection;
+    this.rpc = new RpcFallback('Simulator', connection, backupConnection ?? null);
   }
 
   // ── REAL RESERVE FETCHING ─────────────────────────────────
@@ -137,7 +142,7 @@ export class OnChainSimulator {
   }
 
   private async fetchReserves(poolAddress: string): Promise<PoolReserves> {
-    const accountInfo = await this.connection.getAccountInfo(new PublicKey(poolAddress));
+    const accountInfo = await this.rpc.call((c) => c.getAccountInfo(new PublicKey(poolAddress)));
     if (!accountInfo) throw new Error(`Pool not found: ${poolAddress}`);
 
     const owner = accountInfo.owner.toString();
@@ -178,9 +183,8 @@ export class OnChainSimulator {
     const coinMint  = new PublicKey(data.subarray(400, 432));
     const pcMint    = new PublicKey(data.subarray(432, 464));
 
-    const [coinAccount, pcAccount] = await this.connection.getMultipleAccountsInfo(
-      [coinVault, pcVault],
-      { commitment: 'confirmed' }
+    const [coinAccount, pcAccount] = await this.rpc.call((c) =>
+      c.getMultipleAccountsInfo([coinVault, pcVault], { commitment: 'confirmed' })
     );
 
     const reserveA = this.parseTokenAccountBalance(coinAccount);
@@ -237,9 +241,8 @@ export class OnChainSimulator {
       ]);
     }
 
-    const [vaultA, vaultB] = await this.connection.getMultipleAccountsInfo(
-      [tokenVaultA, tokenVaultB],
-      { commitment: 'confirmed' }
+    const [vaultA, vaultB] = await this.rpc.call((c) =>
+      c.getMultipleAccountsInfo([tokenVaultA, tokenVaultB], { commitment: 'confirmed' })
     );
 
     const reserveA = this.parseTokenAccountBalance(vaultA);
@@ -266,9 +269,8 @@ export class OnChainSimulator {
       throw new Error(`PumpSwap pool ${poolAddress} has non-wSOL quote mint ${quoteMint.toString()} — decode assumption invalid`);
     }
 
-    const [baseAcc, quoteAcc] = await this.connection.getMultipleAccountsInfo(
-      [baseVault, quoteVault],
-      { commitment: 'confirmed' }
+    const [baseAcc, quoteAcc] = await this.rpc.call((c) =>
+      c.getMultipleAccountsInfo([baseVault, quoteVault], { commitment: 'confirmed' })
     );
 
     return {
@@ -298,7 +300,7 @@ export class OnChainSimulator {
     if (cached !== undefined) return cached;
 
     const mintPubkey = new PublicKey(mint);
-    const info = await this.connection.getParsedAccountInfo(mintPubkey);
+    const info = await this.rpc.call((c) => c.getParsedAccountInfo(mintPubkey));
 
     if (!info.value) throw new Error(`Mint not found: ${mint}`);
     const data = info.value.data;
@@ -674,7 +676,7 @@ export class OnChainSimulator {
   }> {
     try {
       const mint = new PublicKey(tokenCA);
-      const tokenAccounts = await this.connection.getTokenLargestAccounts(mint);
+      const tokenAccounts = await this.rpc.call((c) => c.getTokenLargestAccounts(mint));
       const accounts = tokenAccounts.value;
 
       const totalSupply = accounts.reduce((s, a) => s + Number(a.amount), 0);

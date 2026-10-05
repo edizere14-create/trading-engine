@@ -698,7 +698,7 @@ async function boot(): Promise<void> {
   logger.info('Social signal engine initialized');
 
   // 5k. On-Chain Simulator — pre-trade pool analysis
-  simulator = new OnChainSimulator(cfg.connection);
+  simulator = new OnChainSimulator(cfg.connection, cfg.backupConnection);
   logger.info('On-chain simulator initialized');
 
   // 5k2. Pool Price Stream — reserve-based position price tracking

@@ -24,6 +24,7 @@ import {
   VersionedTransaction,
 } from '@solana/web3.js';
 import { logger } from '../core/logger';
+import { RpcFallback } from '../core/rpcFallback';
 import axios from 'axios';
 import bs58 from 'bs58';
 
@@ -246,6 +247,7 @@ const JUPITER_API = 'https://lite-api.jup.ag/swap/v1';
 export class ExecutionEngine {
   private connection: Connection;
   private backupConnection: Connection;
+  private rpcFallback: RpcFallback;
   private jitoEndpoint: string | null;
   private strictFillVerification: boolean;
   private minFillRatio: number;
@@ -267,6 +269,7 @@ export class ExecutionEngine {
   ) {
     this.connection = connection;
     this.backupConnection = backupConnection;
+    this.rpcFallback = new RpcFallback('ExecutionEngine', connection, backupConnection);
     this.jitoEndpoint = jitoEndpoint ?? null;
     this.strictFillVerification = options?.strictFillVerification ?? true;
     this.minFillRatio = options?.minFillRatio ?? 0.7;
@@ -695,7 +698,7 @@ export class ExecutionEngine {
   ): Promise<VersionedTransaction> {
     const tipAccount = JITO_TIP_ACCOUNTS[Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length)];
 
-    const { blockhash } = await this.connection.getLatestBlockhash('confirmed');
+    const { blockhash } = await this.rpcFallback.call((c) => c.getLatestBlockhash('confirmed'));
 
     const message = new TransactionMessage({
       payerKey: wallet.publicKey,
