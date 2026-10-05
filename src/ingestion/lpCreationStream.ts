@@ -18,6 +18,11 @@ const RECONNECT_BASE_DELAY_MS = 2_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_COOLDOWN_MS = 120_000; // Suppress health-check reconnects for 120s after a reconnect
+const LIVENESS_INTERVAL_MS = 10_000;       // transport liveness probe cadence (independent of event flow)
+const LIVENESS_TIMEOUT_MS = 4_000;         // a probe slower than this counts as failed
+const LIVENESS_FAILS_BEFORE_FAILOVER = 3;  // consecutive failed probes (~30s) before swapping RPC
+const PRIMARY_PROBES_BEFORE_FAILBACK = 6;  // consecutive healthy primary probes (~60s) before swapping back
+const MIN_BACKUP_DWELL_MS = 90_000;        // stay on backup at least this long before failing back (anti-flap)
 const LP_SILENCE_THRESHOLD_MS = 30 * 60_000; // New LP events are bursty; 90s causes false positives
 
 export class LPCreationStream {
@@ -27,6 +32,11 @@ export class LPCreationStream {
   private subscriptions: number[] = [];
   private subscriptionConnection: Connection | null = null; // track which connection owns subscriptions
   private healthInterval: ReturnType<typeof setInterval> | null = null;
+  private livenessInterval: ReturnType<typeof setInterval> | null = null;
+  private livenessFails = 0;
+  private primaryProbeOk = 0;
+  private failbackCount = 0;
+  private isSwitching = false;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
@@ -74,6 +84,7 @@ export class LPCreationStream {
 
     await this.subscribe();
     this.startHealthCheck();
+    this.startLivenessWatchdog();
   }
 
   /** Try primary, then backup. Returns the first connection where getSlot() succeeds, or null. */
@@ -168,8 +179,146 @@ export class LPCreationStream {
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
+  /** getSlot() with a hard timeout. True only if the RPC answered in time. */
+  private async probe(conn: Connection): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), LIVENESS_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([conn.getSlot().then(() => true, () => false), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Transport-level watchdog. Unlike the 30-min silence check (LP events are
+   * bursty), this probes the active line every 10s: the socket must be OPEN and
+   * getSlot() must answer. Three consecutive failures swap to the other RPC. While
+   * on the backup, the primary is probed in the background and restored once it
+   * has been healthy for several consecutive probes.
+   */
+  private startLivenessWatchdog(): void {
+    if (this.livenessInterval) clearInterval(this.livenessInterval);
+    this.livenessInterval = setInterval(() => {
+      this.checkLiveness().catch((err) => {
+        logger.warn('LP liveness check error', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, LIVENESS_INTERVAL_MS);
+  }
+
+  private async checkLiveness(): Promise<void> {
+    if (this.isStopped || this.isReconnecting || this.isSwitching) return;
+
+    const active = this.activeConnection;
+    const alive = isWsOpen(active) && (await this.probe(active));
+
+    // State may have changed while the probe was in flight
+    if (active !== this.activeConnection || this.isStopped || this.isReconnecting || this.isSwitching) return;
+
+    if (alive) {
+      this.wsHeartbeatOk++;
+      this.livenessFails = 0;
+    } else {
+      this.wsHeartbeatFail++;
+      this.livenessFails++;
+      logger.warn('LP stream liveness probe failed', {
+        consecutive: this.livenessFails,
+        threshold: LIVENESS_FAILS_BEFORE_FAILOVER,
+        rpcRole: this.rpcRole,
+        endpoint: getConnectionEndpoint(active),
+      });
+      if (this.livenessFails >= LIVENESS_FAILS_BEFORE_FAILOVER) {
+        const other = this.rpcRole === 'primary' ? this.backupConnection : this.primaryConnection;
+        if (other) {
+          await this.switchTo(other, 'liveness');
+        } else {
+          logger.warn('LP stream liveness failing but no alternate RPC configured');
+        }
+        return;
+      }
+    }
+
+    // Background failback: only while on backup, after a minimum dwell time
+    if (
+      this.rpcRole === 'backup' &&
+      supportsLogsSubscribe(this.primaryConnection) &&
+      Date.now() - (this.lastFailoverAtMs ?? 0) >= MIN_BACKUP_DWELL_MS
+    ) {
+      if (await this.probe(this.primaryConnection)) {
+        this.primaryProbeOk++;
+        if (this.primaryProbeOk >= PRIMARY_PROBES_BEFORE_FAILBACK) {
+          await this.switchTo(this.primaryConnection, 'failback');
+        }
+      } else {
+        this.primaryProbeOk = 0;
+      }
+    }
+  }
+
+  /** Hot-swap all LP subscriptions to `target`. Verifies the target answers first. */
+  private async switchTo(target: Connection, reason: 'liveness' | 'failback'): Promise<void> {
+    if (this.isStopped || this.isReconnecting || this.isSwitching || target === this.activeConnection) return;
+    if (!supportsLogsSubscribe(target)) {
+      logger.warn('LP stream switch skipped — logsSubscribe unsupported', {
+        reason,
+        endpoint: getConnectionEndpoint(target),
+      });
+      return;
+    }
+
+    this.isSwitching = true;
+    try {
+      // Don't abandon the current line for one that is also down
+      if (!(await this.probe(target))) {
+        logger.warn('LP stream switch aborted — target RPC not responding', {
+          reason,
+          endpoint: getConnectionEndpoint(target),
+        });
+        this.primaryProbeOk = 0;
+        return;
+      }
+
+      const prevRole = this.rpcRole;
+      const toPrimary = target === this.primaryConnection;
+      disableWsReconnect(this.activeConnection);
+      this.activeConnection = target;
+      this.rpcRole = toPrimary ? 'primary' : 'backup';
+      if (toPrimary) {
+        this.failbackCount++;
+        if (this.lastFailoverAtMs) {
+          this.lastRecoveryMs = Date.now() - this.lastFailoverAtMs;
+          this.totalRecoveryMs += this.lastRecoveryMs;
+          this.recoverySamples++;
+        }
+      } else {
+        this.failoverCount++;
+        this.lastFailoverAtMs = Date.now();
+      }
+      enableWsReconnect(target, 3);
+      await this.subscribe();
+
+      this.lastEventTime = Date.now();
+      this.livenessFails = 0;
+      this.primaryProbeOk = 0;
+      this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+      resetWsReconnectCount(target);
+      logger.info('LP stream RPC role changed', {
+        from: prevRole,
+        to: this.rpcRole,
+        reason,
+        endpoint: getConnectionEndpoint(target),
+      });
+    } finally {
+      this.isSwitching = false;
+    }
+  }
+
   private async reconnect(): Promise<void> {
-    if (this.isStopped || this.isReconnecting) return;
+    if (this.isStopped || this.isReconnecting || this.isSwitching) return;
     this.isReconnecting = true;
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -387,6 +536,7 @@ export class LPCreationStream {
     reconnectBudget: string;
     rpcRole: 'primary' | 'backup';
     failoverCount: number;
+    failbackCount: number;
     lastRecoveryMs: number | null;
     avgRecoveryMs: number;
     wsHeartbeatOk: number;
@@ -399,6 +549,7 @@ export class LPCreationStream {
       reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
       rpcRole: this.rpcRole,
       failoverCount: this.failoverCount,
+      failbackCount: this.failbackCount,
       lastRecoveryMs: this.lastRecoveryMs,
       avgRecoveryMs: this.recoverySamples > 0 ? this.totalRecoveryMs / this.recoverySamples : 0,
       wsHeartbeatOk: this.wsHeartbeatOk,
@@ -412,6 +563,10 @@ export class LPCreationStream {
     if (this.healthInterval) {
       clearInterval(this.healthInterval);
       this.healthInterval = null;
+    }
+    if (this.livenessInterval) {
+      clearInterval(this.livenessInterval);
+      this.livenessInterval = null;
     }
     await this.clearSubscriptions();
     disableWsReconnect(this.primaryConnection);
