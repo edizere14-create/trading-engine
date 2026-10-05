@@ -2,7 +2,7 @@ import { Connection, PublicKey, Logs, Context, VersionedTransactionResponse } fr
 import { bus } from '../core/eventBus';
 import { PumpSwapGraduationEvent } from '../core/types';
 import { logger } from '../core/logger';
-import { isWsOpen, enableWsReconnect, disableWsReconnect, getConnectionEndpoint, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
+import { isWsOpen, enableWsReconnect, disableWsReconnect, getConnectionEndpoint, removeLogsListenerBounded, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 const MIGRATION_ACCOUNT = new PublicKey('39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg');
 const PUMPSWAP_PROGRAM  = new PublicKey('pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA');
@@ -158,13 +158,8 @@ export class MigrationAccountStream {
     const subId = this.subscriptionId;
     this.subscriptionId         = null;
     this.subscriptionConnection = null;
-    try {
-      if (isWsOpen(conn)) {
-        await conn.removeOnLogsListener(subId);
-      }
-    } catch {
-      // Socket may be CLOSING/CLOSED — safe to ignore
-    }
+    // Always detach (bounded): a closed socket must not keep stale listeners
+    await removeLogsListenerBounded(conn, subId);
   }
 
   // ── LOG HANDLER ────────────────────────────────────────────────────────────
@@ -334,7 +329,8 @@ export class MigrationAccountStream {
 
       const prevRole = this.rpcRole;
       const toPrimary = target === this.primaryConnection;
-      disableWsReconnect(this.activeConnection);
+      // Don't close the old connection: other streams share it, and an explicit
+      // close would leave their subscriptions silently dead.
       this.activeConnection = target;
       this.rpcRole = toPrimary ? 'primary' : 'backup';
       if (toPrimary) {
@@ -393,7 +389,6 @@ export class MigrationAccountStream {
     // Alternate primary/backup on each attempt
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       if (supportsLogsSubscribe(this.backupConnection)) {
-        disableWsReconnect(this.activeConnection);
         this.activeConnection = this.backupConnection;
         this.rpcRole = 'backup';
         this.failoverCount++;
@@ -402,7 +397,6 @@ export class MigrationAccountStream {
         logger.info('MigrationAccountStream failed over to backup RPC');
       }
     } else if (this.reconnectAttempts > 1) {
-      disableWsReconnect(this.activeConnection);
       this.activeConnection = this.primaryConnection;
       this.rpcRole = 'primary';
       enableWsReconnect(this.activeConnection, 3);

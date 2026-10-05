@@ -164,6 +164,30 @@ export function getWsErrorSuppressionStats(): {
 }
 
 
+/**
+ * Detach a logs listener without ever hanging. web3.js drops the local callback
+ * synchronously, so this is safe even when the socket is down (no stale listener
+ * can fire after the connection reconnects). Only the server-side unsubscribe is
+ * network-bound, and that can stall forever on a half-open socket, so it is capped.
+ */
+export async function removeLogsListenerBounded(
+  conn: Connection,
+  subId: number,
+  timeoutMs = 3_000
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, timeoutMs);
+  });
+  try {
+    await Promise.race([conn.removeOnLogsListener(subId).catch(() => {}), timeout]);
+  } catch {
+    // listener already gone or socket closing — nothing to clean up
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /** Stop a Connection's internal WS from auto-reconnecting (kills retry loop). */
 export function disableWsReconnect(conn: Connection): void {
   const ws = getInternalWs(conn);

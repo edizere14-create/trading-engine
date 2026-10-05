@@ -3,7 +3,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent, ClusterAlert } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, removeLogsListenerBounded, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
 const USDC_MINT   = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -422,13 +422,8 @@ export class SmartWalletStream {
     const sub = this.subscriptions.get(address);
     if (!sub) return;
 
-    try {
-      if (isWsOpen(sub.connection)) {
-        await sub.connection.removeOnLogsListener(sub.subId);
-      }
-    } catch {
-      // Socket may be closing/closed — safe to ignore
-    }
+    // Always detach (bounded): a closed socket must not keep stale listeners
+    await removeLogsListenerBounded(sub.connection, sub.subId);
 
     this.connectionSubCounts.set(
       sub.connection,
@@ -685,7 +680,8 @@ export class SmartWalletStream {
 
       const prevRole = this.rpcRole;
       const toPrimary = target === this.primaryConnection;
-      disableWsReconnect(this.activeConnection);
+      // Don't close the old connection: other streams share it, and an explicit
+      // close would leave their subscriptions silently dead.
       this.activeConnection = target;
       this.rpcRole = toPrimary ? 'primary' : 'backup';
       if (toPrimary) {
@@ -759,7 +755,6 @@ export class SmartWalletStream {
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       if (supportsLogsSubscribe(this.backupConnection)) {
         const prevRole = this.rpcRole;
-        disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
         this.activeConnection = this.backupConnection;
         this.rpcRole = 'backup';
         this.failoverCount++;
@@ -779,7 +774,6 @@ export class SmartWalletStream {
       }
     } else if (this.reconnectAttempts > 1) {
       const prevRole = this.rpcRole;
-      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
       this.rpcRole = 'primary';
       if (this.lastFailoverAtMs) {
@@ -998,20 +992,16 @@ export class SmartWalletStream {
       const subs = new Map(this.subscriptions);
       this.subscriptions.clear();
 
-      for (const [, sub] of subs) {
-        try {
-          if (isWsOpen(sub.connection)) {
-            await sub.connection.removeOnLogsListener(sub.subId);
-          }
-        } catch {
-          // Socket may be CLOSING/CLOSED — safe to ignore
-        }
-      }
+      // Always detach (bounded, in parallel): a closed or half-open socket must
+      // neither keep stale listeners nor stall the swap.
+      await Promise.all(
+        [...subs.values()].map((sub) => removeLogsListenerBounded(sub.connection, sub.subId))
+      );
 
-      // Reset sub counts and disable WS retry on all pool connections
+      // Reset sub counts. WS retry is NOT disabled here: pool connections are
+      // shared with other streams (see stop() for shutdown).
       for (const conn of this.connectionPool) {
         this.connectionSubCounts.set(conn, 0);
-        disableWsReconnect(conn);
       }
     } finally {
       this.isClearing = false;
@@ -1070,6 +1060,9 @@ export class SmartWalletStream {
     }
 
     await this.clearSubscriptions();
+    for (const conn of this.connectionPool) {
+      disableWsReconnect(conn);
+    }
     logger.info('SmartWalletStream stopped');
   }
 }

@@ -2,7 +2,7 @@ import { Connection, PublicKey, Logs, Context } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { NewPoolEvent } from '../core/types';
 import { logger } from '../core/logger';
-import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
+import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, removeLogsListenerBounded, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 export const POOL_PROGRAMS = {
   RAYDIUM_AMM_V4: new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8'),
@@ -284,7 +284,8 @@ export class LPCreationStream {
 
       const prevRole = this.rpcRole;
       const toPrimary = target === this.primaryConnection;
-      disableWsReconnect(this.activeConnection);
+      // Don't close the old connection: other streams share it, and an explicit
+      // close would leave their subscriptions silently dead.
       this.activeConnection = target;
       this.rpcRole = toPrimary ? 'primary' : 'backup';
       if (toPrimary) {
@@ -353,7 +354,6 @@ export class LPCreationStream {
     if (this.backupConnection && this.reconnectAttempts % 2 === 1) {
       if (supportsLogsSubscribe(this.backupConnection)) {
         const prevRole = this.rpcRole;
-        disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
         this.activeConnection = this.backupConnection;
         this.rpcRole = 'backup';
         this.failoverCount++;
@@ -373,7 +373,6 @@ export class LPCreationStream {
       }
     } else if (this.reconnectAttempts > 1) {
       const prevRole = this.rpcRole;
-      disableWsReconnect(this.activeConnection); // Stop old connection's WS retry loop
       this.activeConnection = this.primaryConnection;
       this.rpcRole = 'primary';
       if (this.lastFailoverAtMs) {
@@ -508,23 +507,10 @@ export class LPCreationStream {
       const conn = this.subscriptionConnection ?? this.activeConnection;
       const subIds = [...this.subscriptions];
       this.subscriptions = [];
-      const oldSubConn = this.subscriptionConnection;
       this.subscriptionConnection = null;
 
-      for (const subId of subIds) {
-        try {
-          if (isWsOpen(conn)) {
-            await conn.removeOnLogsListener(subId);
-          }
-        } catch {
-          // Socket may be CLOSING/CLOSED — safe to ignore
-        }
-      }
-
-      // Stop the old connection's WS retry if it's not the active one
-      if (oldSubConn && oldSubConn !== this.activeConnection) {
-        disableWsReconnect(oldSubConn);
-      }
+      // Always detach (bounded): a closed socket must not keep stale listeners
+      await Promise.all(subIds.map((subId) => removeLogsListenerBounded(conn, subId)));
     } finally {
       this.isClearing = false;
     }
