@@ -1,6 +1,7 @@
 import { Connection } from '@solana/web3.js';
 import { logger } from '../core/logger';
 import { enableWsReconnect, getConnectionEndpoint, supportsLogsSubscribe } from './wsControl';
+import { acquireSlotWatch, isConnectionLive } from './wsLiveness';
 
 // Same thresholds as the LP / migration / wallet stream watchdogs.
 const LIVENESS_INTERVAL_MS = 10_000;       // transport liveness probe cadence
@@ -48,6 +49,8 @@ export class RpcFailover {
   private failoverCount = 0;
   private failbackCount = 0;
   private lastFailoverAtMs: number | null = null;
+  private watchedConn: Connection | null = null;
+  private releaseWatch: (() => void) | null = null;
 
   constructor(private readonly opts: RpcFailoverOptions) {
     this.active = opts.primary;
@@ -83,6 +86,19 @@ export class RpcFailover {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.syncWatch(null);
+  }
+
+  /** Hold a slot watch on `wanted` (or none), releasing any previous one. */
+  private syncWatch(wanted: Connection | null): void {
+    if (this.watchedConn === wanted) return;
+    this.releaseWatch?.();
+    this.releaseWatch = null;
+    this.watchedConn = null;
+    if (wanted) {
+      this.releaseWatch = acquireSlotWatch(wanted);
+      this.watchedConn = wanted;
+    }
   }
 
   getTelemetry(): { rpcRole: 'primary' | 'backup'; failoverCount: number; failbackCount: number } {
@@ -111,7 +127,8 @@ export class RpcFailover {
     const active = this.active;
 
     if (this.opts.hasSubscriptions()) {
-      const alive = this.opts.socketsOpen() && (await this.probe(active));
+      this.syncWatch(active);
+      const alive = this.opts.socketsOpen() && (await isConnectionLive(active, (c) => this.probe(c)));
 
       // State may have changed while the probe was in flight
       if (active !== this.active || this.stopped || this.isSwitching) return;
@@ -133,8 +150,10 @@ export class RpcFailover {
         }
       }
     } else {
-      // Nothing subscribed (no sockets open), so there is nothing to protect yet
+      // Nothing subscribed (no sockets open), so there is nothing to protect yet.
+      // Drop the slot watch too so an idle stream doesn't hold a socket open.
       this.fails = 0;
+      this.syncWatch(null);
     }
 
     // Background failback: only while on backup, after a minimum dwell time

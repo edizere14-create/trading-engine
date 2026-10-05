@@ -19,7 +19,7 @@ import { DEFAULT_WEIGHTS } from './signals/signalVector';
 
 import { LPCreationStream } from './ingestion/lpCreationStream';
 import { SmartWalletStream } from './ingestion/smartWalletStream';
-import { cloneConnection, getWsErrorSuppressionStats, installWsErrorSuppression } from './ingestion/wsControl';
+import { cloneConnection, getWsErrorSuppressionStats, installWsErrorSuppression, rpcHost, supportsLogsSubscribe } from './ingestion/wsControl';
 
 // Suppress @solana/web3.js WS error spam before any Connection objects are created
 installWsErrorSuppression();
@@ -502,6 +502,20 @@ async function boot(): Promise<void> {
       return;
     }
     throw new Error(`STARTUP ASSERTION FAILED: ${_rpcDetail}`);
+  }
+
+  // RPC failover readiness: log it at boot so a disabled failover is visible
+  // now, not discovered mid-outage.
+  if (supportsLogsSubscribe(cfg.backupConnection)) {
+    logger.info('[Startup] RPC failover enabled', {
+      primaryHost: rpcHost(cfg.connection),
+      backupHost: rpcHost(cfg.backupConnection),
+    });
+  } else {
+    logger.error('[Startup] RPC FAILOVER DISABLED — backup RPC does not support logsSubscribe', {
+      primaryHost: rpcHost(cfg.connection),
+      backupHost: rpcHost(cfg.backupConnection),
+    });
   }
 
   // 3. Load calibration + performance

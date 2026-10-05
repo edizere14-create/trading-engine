@@ -3,6 +3,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent, ClusterAlert } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
+import { acquireSlotWatch, isConnectionLive } from './wsLiveness';
 import { disableWsReconnect, enableWsReconnect, getConnectionEndpoint, isWsOpen, removeLogsListenerBounded, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 const WRAPPED_SOL = 'So11111111111111111111111111111111111111112';
@@ -132,6 +133,8 @@ export class SmartWalletStream {
   private primaryProbeOk = 0;
   private failbackCount = 0;
   private isSwitching = false;
+  private watchedConn: Connection | null = null;
+  private releaseWatch: (() => void) | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
@@ -558,6 +561,14 @@ export class SmartWalletStream {
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
+  /** Keep exactly one slot-watch reference, on whichever connection is active. */
+  private syncSlotWatch(): void {
+    if (this.watchedConn === this.activeConnection) return;
+    this.releaseWatch?.();
+    this.watchedConn = this.activeConnection;
+    this.releaseWatch = acquireSlotWatch(this.activeConnection);
+  }
+
   /** getSlot() with a hard timeout. True only if the RPC answered in time. */
   private async probe(conn: Connection): Promise<boolean> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -607,7 +618,8 @@ export class SmartWalletStream {
     if (this.isStopped || this.isReconnecting || this.isSwitching) return;
 
     const active = this.activeConnection;
-    const alive = this.activeSocketsOpen() && (await this.probe(active));
+    this.syncSlotWatch();
+    const alive = this.activeSocketsOpen() && (await isConnectionLive(active, (c) => this.probe(c)));
 
     // State may have changed while the probe was in flight
     if (active !== this.activeConnection || this.isStopped || this.isReconnecting || this.isSwitching) return;
@@ -1058,6 +1070,9 @@ export class SmartWalletStream {
       clearInterval(this.livenessInterval);
       this.livenessInterval = null;
     }
+    this.releaseWatch?.();
+    this.releaseWatch = null;
+    this.watchedConn = null;
 
     await this.clearSubscriptions();
     for (const conn of this.connectionPool) {

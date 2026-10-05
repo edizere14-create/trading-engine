@@ -36,6 +36,15 @@ export function getConnectionEndpoint(conn: Connection): string {
   }
 }
 
+/** Hostname of a connection's endpoint (never the path or API key), for logs. */
+export function rpcHost(conn: Connection): string {
+  try {
+    return new URL(getConnectionEndpoint(conn)).hostname;
+  } catch {
+    return 'unknown';
+  }
+}
+
 export function supportsLogsSubscribe(conn: Connection): boolean {
   const endpoint = getConnectionEndpoint(conn).toLowerCase();
   if (!endpoint) return true;

@@ -2,6 +2,7 @@ import { Connection, PublicKey, Logs, Context, VersionedTransactionResponse } fr
 import { bus } from '../core/eventBus';
 import { PumpSwapGraduationEvent } from '../core/types';
 import { logger } from '../core/logger';
+import { acquireSlotWatch, isConnectionLive } from './wsLiveness';
 import { isWsOpen, enableWsReconnect, disableWsReconnect, getConnectionEndpoint, removeLogsListenerBounded, resetWsReconnectCount, supportsLogsSubscribe } from './wsControl';
 
 const MIGRATION_ACCOUNT = new PublicKey('39azUYFWPz3VHgKCf3VChUwbpURdCHRxjWVowf5jUJjg');
@@ -39,6 +40,8 @@ export class MigrationAccountStream {
   private livenessFails = 0;
   private primaryProbeOk = 0;
   private isSwitching = false;
+  private watchedConn: Connection | null = null;
+  private releaseWatch: (() => void) | null = null;
   private lastFailoverAtMs: number | null = null;
   private lastEventTime = Date.now();
   private reconnectAttempts = 0;
@@ -93,6 +96,9 @@ export class MigrationAccountStream {
       clearInterval(this.livenessInterval);
       this.livenessInterval = null;
     }
+    this.releaseWatch?.();
+    this.releaseWatch = null;
+    this.watchedConn = null;
     await this.clearSubscription();
   }
 
@@ -223,6 +229,14 @@ export class MigrationAccountStream {
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
+  /** Keep exactly one slot-watch reference, on whichever connection is active. */
+  private syncSlotWatch(): void {
+    if (this.watchedConn === this.activeConnection) return;
+    this.releaseWatch?.();
+    this.watchedConn = this.activeConnection;
+    this.releaseWatch = acquireSlotWatch(this.activeConnection);
+  }
+
   /** getSlot() with a hard timeout. True only if the RPC answered in time. */
   private async probe(conn: Connection): Promise<boolean> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -259,7 +273,8 @@ export class MigrationAccountStream {
     if (this.isStopped || this.isReconnecting || this.isSwitching) return;
 
     const active = this.activeConnection;
-    const alive = isWsOpen(active) && (await this.probe(active));
+    this.syncSlotWatch();
+    const alive = isWsOpen(active) && (await isConnectionLive(active, (c) => this.probe(c)));
 
     // State may have changed while the probe was in flight
     if (active !== this.activeConnection || this.isStopped || this.isReconnecting || this.isSwitching) return;
