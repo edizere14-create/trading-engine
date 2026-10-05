@@ -18,6 +18,7 @@ import { bus } from '../core/eventBus';
 import { SwapEvent } from '../core/types';
 import { WalletRegistry } from '../registry/walletRegistry';
 import { logger } from '../core/logger';
+import { usableEntryPrice } from '../position/entryPrice';
 import * as fs from 'fs';
 
 // ── TYPES ─────────────────────────────────────────────────
@@ -307,7 +308,7 @@ export class SmartMoneyTracker {
       clusterWallets: Array.from(uniqueWallets),
       clusterSize: uniqueWallets.size,
       totalClusterSOL: totalBuySOL,
-      entryPriceSOL: Math.max(medianPrice, 0.000001),
+      entryPriceSOL: usableEntryPrice(medianPrice),
       timestamp: new Date(),
       slot: 0,
       score: Math.min(10, 5 + confidence * 5),

@@ -36,6 +36,7 @@ import * as fs from 'fs';
 
 // ── Trade infrastructure ──────────────────────────────────
 import { PositionManager } from './position/positionManager';
+import { usableEntryPrice } from './position/entryPrice';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
@@ -826,7 +827,7 @@ async function boot(): Promise<void> {
     }
 
     // ── On-Chain Simulation ──
-    let simulatedEntryPriceSOL = 0.001;
+    let simulatedEntryPriceSOL = 0; // 0 = no usable price; the trade is blocked below, never opened on a made-up number
     let reserveSOLForRisk = event.initialLiquiditySOL;
     if (simulator) {
       const simResult = await simulator.simulatePool(event.poolAddress, event.tokenCA);
@@ -978,6 +979,15 @@ async function boot(): Promise<void> {
       return;
     }
 
+    const autonomousEntryPrice = usableEntryPrice(simulatedEntryPriceSOL);
+    if (autonomousEntryPrice === 0) {
+      logger.info('Autonomous trade blocked: no usable entry price', {
+        tokenCA: event.tokenCA,
+        poolAddress: event.poolAddress,
+      });
+      return;
+    }
+
     const autonomousSignal = {
       tokenCA: event.tokenCA,
       source: 'AUTONOMOUS' as const,
@@ -988,7 +998,7 @@ async function boot(): Promise<void> {
       clusterWallets: [] as string[],
       clusterSize: 0,
       totalClusterSOL: 0,
-      entryPriceSOL: Math.max(simulatedEntryPriceSOL, 0.000001),
+      entryPriceSOL: autonomousEntryPrice,
       timestamp: new Date(),
       slot: event.slot,
       score: Math.max(0, Math.min(10, signal.totalScore)),
@@ -1086,6 +1096,16 @@ async function boot(): Promise<void> {
     }
     smartWalletSignalDedupe.set(dedupeKey, now);
 
+    const walletEntryPrice = usableEntryPrice(event.priceSOL);
+    if (walletEntryPrice === 0) {
+      logger.info('Signal BLOCKED — no usable entry price', {
+        tokenCA: event.tokenCA,
+        source: 'SINGLE_WALLET',
+        priceSOL: event.priceSOL,
+      });
+      return;
+    }
+
     const signal = {
       tokenCA: event.tokenCA,
       source: 'SINGLE_WALLET' as const,
@@ -1096,7 +1116,7 @@ async function boot(): Promise<void> {
       clusterWallets: [],
       clusterSize: 1,
       totalClusterSOL: event.amountSOL,
-      entryPriceSOL: Math.max(event.priceSOL, 0.000001),
+      entryPriceSOL: walletEntryPrice,
       timestamp: event.timestamp,
       slot: event.slot,
       score: getSmartWalletSignalScore(walletStats.tier, event.amountSOL),

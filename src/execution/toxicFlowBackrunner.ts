@@ -20,6 +20,7 @@ import { Connection } from '@solana/web3.js';
 import { bus } from '../core/eventBus';
 import { SwapEvent } from '../core/types';
 import { logger } from '../core/logger';
+import { usableEntryPrice } from '../position/entryPrice';
 
 // ── TYPES ─────────────────────────────────────────────────
 
@@ -321,7 +322,7 @@ export class ToxicFlowBackrunner {
       clusterWallets: [],
       clusterSize: 0,
       totalClusterSOL: 0,
-      entryPriceSOL: Math.max(sandwich.priceAfterAttack, 0.000001),
+      entryPriceSOL: usableEntryPrice(sandwich.priceAfterAttack),
       timestamp: new Date(),
       slot: sandwich.backrunSell.slot,
       score: Math.min(10, 5 + expectedProfitPct * 0.5),

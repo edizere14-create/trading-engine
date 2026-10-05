@@ -21,6 +21,7 @@ import { bus } from '../core/eventBus';
 import { NewPoolEvent, SwapEvent } from '../core/types';
 import { PositionManager } from '../position/positionManager';
 import { logger } from '../core/logger';
+import { usableEntryPrice } from '../position/entryPrice';
 import { enableWsReconnect, isWsOpen, removeLogsListenerBounded } from '../ingestion/wsControl';
 import { RpcFailover } from '../ingestion/rpcFailover';
 
@@ -588,7 +589,7 @@ export class HybridPowerPlay {
       clusterWallets: lifecycle.smartMoneyWallets,
       clusterSize: lifecycle.smartMoneyWallets.length,
       totalClusterSOL: 0,
-      entryPriceSOL: Math.max(postAttackPrice, 0.000001),
+      entryPriceSOL: usableEntryPrice(postAttackPrice),
       timestamp: new Date(),
       slot,
       score: Math.min(10, 6 + expectedProfitPct * 0.4),
