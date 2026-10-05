@@ -2,7 +2,8 @@ import { Connection, AccountInfo, PublicKey } from '@solana/web3.js';
 import { unpackAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
-import { isWsOpen } from './wsControl';
+import { isWsOpen, removeAccountListenerBounded } from './wsControl';
+import { RpcFailover } from './rpcFailover';
 import { deriveWsolVault } from './wsolVault';
 
 // Wrapped SOL mint. Defined locally to match the codebase's per-module
@@ -16,6 +17,7 @@ interface VaultSubscription {
   vaultAddress: string;
   subId: number;
   lastAmount: bigint | null; // null until the first callback establishes a baseline
+  connection: Connection; // the connection currently carrying this subscription
 }
 
 /**
@@ -39,9 +41,22 @@ export class PoolVaultStream {
   private subscriptions: Map<string, VaultSubscription> = new Map(); // tokenCA -> sub
   private vaultToToken: Map<string, string> = new Map(); // vaultAddress -> tokenCA
   private isStopped = false;
+  private failover: RpcFailover;
 
-  constructor(connection: Connection) {
+  /**
+   * Pass this stream its OWN connection pair (see cloneConnection) so a swap
+   * can't disturb other streams. Without a backup no failover is attempted.
+   */
+  constructor(connection: Connection, backupConnection?: Connection) {
     this.connection = connection;
+    this.failover = new RpcFailover({
+      name: 'PoolVaultStream',
+      primary: connection,
+      backup: backupConnection ?? null,
+      hasSubscriptions: () => this.subscriptions.size > 0,
+      socketsOpen: () => isWsOpen(this.failover.activeConnection),
+      moveTo: (target) => this.moveAll(target),
+    });
   }
 
   /**
@@ -57,19 +72,18 @@ export class PoolVaultStream {
     try {
       const vault = deriveWsolVault(poolAddress);
       const vaultAddress = vault.toBase58();
-      const subId = this.connection.onAccountChange(
-        vault,
-        (accountInfo) => this.onVaultChange(tokenCA, vault, accountInfo),
-        'confirmed',
-      );
+      const conn = this.failover.activeConnection;
+      const subId = this.attach(tokenCA, vault, conn);
       this.subscriptions.set(tokenCA, {
         poolAddress,
         tokenCA,
         vaultAddress,
         subId,
         lastAmount: null,
+        connection: conn,
       });
       this.vaultToToken.set(vaultAddress, tokenCA);
+      this.failover.start();
       logger.info('[PoolVaultStream] Subscribed to wSOL vault', {
         tokenCA,
         poolAddress,
@@ -82,6 +96,41 @@ export class PoolVaultStream {
         err: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Create the vault account subscription on `conn`. */
+  private attach(tokenCA: string, vault: PublicKey, conn: Connection): number {
+    return conn.onAccountChange(
+      vault,
+      (accountInfo) => this.onVaultChange(tokenCA, vault, accountInfo),
+      'confirmed',
+    );
+  }
+
+  /**
+   * Failover: replay every vault subscription onto `target`. lastAmount is
+   * kept, so a drain that happened during the gap shows up as a >40% drop on
+   * the first update after the move instead of being absorbed into a new baseline.
+   */
+  private async moveAll(target: Connection): Promise<void> {
+    const subs = [...this.subscriptions.values()];
+    await Promise.all(subs.map((sub) => removeAccountListenerBounded(sub.connection, sub.subId)));
+
+    for (const sub of subs) {
+      // Position may have closed while we were detaching
+      if (this.subscriptions.get(sub.tokenCA) !== sub) continue;
+      try {
+        sub.subId = this.attach(sub.tokenCA, deriveWsolVault(sub.poolAddress), target);
+        sub.connection = target;
+      } catch (err) {
+        logger.error('[PoolVaultStream] Resubscribe failed after RPC switch', {
+          tokenCA: sub.tokenCA,
+          vaultAddress: sub.vaultAddress,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    logger.info('[PoolVaultStream] Subscriptions moved to new RPC', { count: subs.length });
   }
 
   private onVaultChange(
@@ -149,13 +198,8 @@ export class PoolVaultStream {
     const sub = this.subscriptions.get(tokenCA);
     if (!sub) return;
 
-    try {
-      if (isWsOpen(this.connection)) {
-        this.connection.removeAccountChangeListener(sub.subId);
-      }
-    } catch {
-      // Socket may be closing — safe to ignore
-    }
+    // Always detach (bounded): a closed socket must not keep a stale listener
+    void removeAccountListenerBounded(sub.connection, sub.subId);
 
     this.subscriptions.delete(tokenCA);
     this.vaultToToken.delete(sub.vaultAddress);
@@ -171,6 +215,7 @@ export class PoolVaultStream {
 
   async stop(): Promise<void> {
     this.isStopped = true;
+    this.failover.stop();
     for (const [tokenCA] of this.subscriptions) {
       this.unsubscribe(tokenCA);
     }

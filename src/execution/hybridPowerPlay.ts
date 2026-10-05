@@ -21,7 +21,8 @@ import { bus } from '../core/eventBus';
 import { NewPoolEvent, SwapEvent } from '../core/types';
 import { PositionManager } from '../position/positionManager';
 import { logger } from '../core/logger';
-import { enableWsReconnect } from '../ingestion/wsControl';
+import { enableWsReconnect, isWsOpen, removeLogsListenerBounded } from '../ingestion/wsControl';
+import { RpcFailover } from '../ingestion/rpcFailover';
 
 // ── PUMPFUN / PUMPSWAP CONSTANTS ──────────────────────────
 
@@ -90,6 +91,8 @@ export class HybridPowerPlay {
   private tokens: Map<string, TokenLifecycle> = new Map();
   private knownPools: Set<string> = new Set();
   private migrationSubId: number | null = null;
+  private migrationConn: Connection | null = null; // connection carrying the migration subscription
+  private failover: RpcFailover;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private active = false;
   private migrationStageTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -110,9 +113,24 @@ export class HybridPowerPlay {
   private totalStage3Backruns = 0;
   private totalSuppressedSignals = 0;
 
-  constructor(connection: Connection, positionManager: PositionManager) {
+  /**
+   * Pass this engine its OWN connection pair (see cloneConnection) so a swap
+   * can't disturb other streams. Without a backup no failover is attempted.
+   */
+  constructor(connection: Connection, positionManager: PositionManager, backupConnection?: Connection) {
     this.connection = connection;
     this.positionManager = positionManager;
+    this.failover = new RpcFailover({
+      name: 'HybridPowerPlay',
+      primary: connection,
+      backup: backupConnection ?? null,
+      hasSubscriptions: () => this.migrationSubId !== null,
+      socketsOpen: () => (this.migrationConn ? isWsOpen(this.migrationConn) : true),
+      moveTo: async () => {
+        await this.removeMigrationSubscription();
+        await this.subscribeMigrationAccount();
+      },
+    });
   }
 
   async start(): Promise<void> {
@@ -132,6 +150,7 @@ export class HybridPowerPlay {
 
     // Monitor PumpSwap Migration Account
     await this.subscribeMigrationAccount();
+    this.failover.start();
 
     this.cleanupInterval = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
 
@@ -147,6 +166,7 @@ export class HybridPowerPlay {
 
   stop(): void {
     this.active = false;
+    this.failover.stop();
     if (this.cleanupInterval) {
       clearInterval(this.cleanupInterval);
       this.cleanupInterval = null;
@@ -157,7 +177,7 @@ export class HybridPowerPlay {
     this.migrationStageTimers.clear();
     bus.off('pool:created', this.onPoolCreated);
     bus.off('swap:detected', this.onSwapDetected);
-    this.removeMigrationSubscription();
+    void this.removeMigrationSubscription();
   }
 
   getStats() {
@@ -304,7 +324,8 @@ export class HybridPowerPlay {
     try {
       const migrationPubkey = new PublicKey(PUMPSWAP_MIGRATION_ACCOUNT);
 
-      this.migrationSubId = this.connection.onLogs(
+      const conn = this.failover.activeConnection;
+      this.migrationSubId = conn.onLogs(
         migrationPubkey,
         (logs: Logs, _ctx: Context) => {
           if (logs.err) return;
@@ -312,6 +333,7 @@ export class HybridPowerPlay {
         },
         'confirmed',
       );
+      this.migrationConn = conn;
 
       logger.info('HybridPowerPlay: subscribed to PumpSwap Migration Account', {
         account: PUMPSWAP_MIGRATION_ACCOUNT,
@@ -614,19 +636,13 @@ export class HybridPowerPlay {
     }
   }
 
-  private removeMigrationSubscription(): void {
-    if (this.migrationSubId !== null) {
-      const subId = this.migrationSubId;
-      this.migrationSubId = null;
-      try {
-        // @ts-expect-error — _rpcWebSocket is private
-        const ws = this.connection._rpcWebSocket?._ws;
-        if (ws?.readyState === 1) {
-          this.connection.removeOnLogsListener(subId).catch(() => {});
-        }
-      } catch {
-        // Socket not open — skip unsubscribe
-      }
-    }
+  private async removeMigrationSubscription(): Promise<void> {
+    if (this.migrationSubId === null) return;
+    const subId = this.migrationSubId;
+    const conn = this.migrationConn ?? this.connection;
+    this.migrationSubId = null;
+    this.migrationConn = null;
+    // Always detach (bounded): a closed socket must not keep a stale listener
+    await removeLogsListenerBounded(conn, subId);
   }
 }

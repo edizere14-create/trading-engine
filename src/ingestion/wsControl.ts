@@ -165,14 +165,15 @@ export function getWsErrorSuppressionStats(): {
 
 
 /**
- * Detach a logs listener without ever hanging. web3.js drops the local callback
- * synchronously, so this is safe even when the socket is down (no stale listener
- * can fire after the connection reconnects). Only the server-side unsubscribe is
- * network-bound, and that can stall forever on a half-open socket, so it is capped.
+ * Run a listener-removal call without ever hanging. web3.js drops the local
+ * callback synchronously, so this is safe even when the socket is down (no stale
+ * listener can fire after the connection reconnects). Only the server-side
+ * unsubscribe is network-bound, and that can stall forever on a half-open
+ * socket, so the wait is capped. The remover is invoked synchronously; it may
+ * return a promise or nothing.
  */
-export async function removeLogsListenerBounded(
-  conn: Connection,
-  subId: number,
+export async function detachBounded(
+  detach: () => Promise<unknown> | void,
   timeoutMs = 3_000
 ): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -180,12 +181,32 @@ export async function removeLogsListenerBounded(
     timer = setTimeout(resolve, timeoutMs);
   });
   try {
-    await Promise.race([conn.removeOnLogsListener(subId).catch(() => {}), timeout]);
+    await Promise.race([Promise.resolve(detach()).catch(() => {}), timeout]);
   } catch {
-    // listener already gone or socket closing — nothing to clean up
+    // remover threw synchronously (socket closing) — nothing to clean up
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+export function removeLogsListenerBounded(conn: Connection, subId: number, timeoutMs?: number): Promise<void> {
+  return detachBounded(() => conn.removeOnLogsListener(subId), timeoutMs);
+}
+
+export function removeAccountListenerBounded(conn: Connection, subId: number, timeoutMs?: number): Promise<void> {
+  return detachBounded(() => conn.removeAccountChangeListener(subId), timeoutMs);
+}
+
+/**
+ * A fresh Connection to the same endpoint, with its own WebSocket. Streams that
+ * fail over independently need their own socket so a swap can't disturb others.
+ * The socket opens lazily on first subscribe, so an idle clone costs nothing.
+ */
+export function cloneConnection(conn: Connection): Connection {
+  return new Connection(getConnectionEndpoint(conn), {
+    commitment: 'confirmed',
+    confirmTransactionInitialTimeout: 30_000,
+  });
 }
 
 /** Stop a Connection's internal WS from auto-reconnecting (kills retry loop). */

@@ -19,7 +19,7 @@ import { DEFAULT_WEIGHTS } from './signals/signalVector';
 
 import { LPCreationStream } from './ingestion/lpCreationStream';
 import { SmartWalletStream } from './ingestion/smartWalletStream';
-import { getWsErrorSuppressionStats, installWsErrorSuppression } from './ingestion/wsControl';
+import { cloneConnection, getWsErrorSuppressionStats, installWsErrorSuppression } from './ingestion/wsControl';
 
 // Suppress @solana/web3.js WS error spam before any Connection objects are created
 installWsErrorSuppression();
@@ -702,8 +702,10 @@ async function boot(): Promise<void> {
   logger.info('On-chain simulator initialized');
 
   // 5k2. Pool Price Stream — reserve-based position price tracking
-  poolPriceStream = new PoolPriceStream(cfg.connection, simulator);
-  poolVaultStream = new PoolVaultStream(cfg.connection);
+  // Position-bound streams each get their OWN primary/backup sockets so one
+  // stream's failover can't kill another's subscriptions (clones open lazily).
+  poolPriceStream = new PoolPriceStream(cloneConnection(cfg.connection), simulator, cloneConnection(cfg.backupConnection));
+  poolVaultStream = new PoolVaultStream(cloneConnection(cfg.connection), cloneConnection(cfg.backupConnection));
   logger.info('Pool price stream initialized');
 
   // 5k3. Position Price Poller — Jupiter API fallback for tokens without AMM pools
@@ -729,7 +731,7 @@ async function boot(): Promise<void> {
   logger.info('Toxic flow backrunner started');
 
   // 5o. Hybrid Power Play — three-stage PumpFun lifecycle strategy
-  hybridPowerPlay = new HybridPowerPlay(cfg.connection, positionManager!);
+  hybridPowerPlay = new HybridPowerPlay(cloneConnection(cfg.connection), positionManager!, cloneConnection(cfg.backupConnection));
   await hybridPowerPlay.start();
   logger.info('Hybrid Power Play started');
 
