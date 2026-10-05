@@ -571,6 +571,7 @@ async function boot(): Promise<void> {
     paperMode: cfg.isPaperMode,
     liveTradingArmed: cfg.LIVE_TRADING_ARMED,
     autonomousOnly: cfg.isAutonomousOnly,
+    allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
     gateUnlocked: gateStatus.gateUnlocked,
     gateBlockedReasons: gateStatus.blockedReasons,
     rpcReachability: {
@@ -579,6 +580,10 @@ async function boot(): Promise<void> {
       safety: safetyProbe.ok,
     },
   });
+
+  if (cfg.ALLOW_NO_POOL_TRADES === 'true') {
+    logger.warn('[Startup] ALLOW_NO_POOL_TRADES=true — trades may open on tokens with no known pool (no pool address, no liquidity data)');
+  }
 
   // 5. Instantiate engines
   const marketEngine = new MarketStateEngine();
