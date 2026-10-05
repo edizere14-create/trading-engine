@@ -24,6 +24,11 @@ export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
  * Trading modes (per STRATEGY_V2.md): TP_TIER_1..4, TRAILING_STOP, HARD_STOP,
  * MAX_HOLD, RUG_TRIGGER. These represent strategy decisions and are included
  * in validation gate metrics.
+ *
+ * EARLY_STOP is also a trading mode but is NOT in STRATEGY_V2.md: Decision 4
+ * of EXIT_SUBSYSTEM_MIGRATION.md removed it, and commit 7ce2cc4 reintroduced
+ * it as a configurable early-window stop (TIGHT_STOP_WINDOW_MS / TIGHT_STOP_PCT).
+ * See the Decision 4 addendum in that document.
  * 
  * Operational modes: STALE_EXIT (data feed loss), EMERGENCY (system shutdown,
  * black-swan circuit breaker). These represent expected infrastructure events
@@ -50,7 +55,7 @@ export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
  * deviation from STRATEGY_V2.md — document the rationale in 
  * EXIT_SUBSYSTEM_MIGRATION.md Section 4 before shipping.
  */
-export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'TRAILING_STOP' | 'TP_TIER_1' | 'TP_TIER_2' | 'TP_TIER_3' | 'TP_TIER_4' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
+export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'EARLY_STOP' | 'TRAILING_STOP' | 'TP_TIER_1' | 'TP_TIER_2' | 'TP_TIER_3' | 'TP_TIER_4' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
 

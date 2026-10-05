@@ -950,6 +950,21 @@ emission within the phase. This minimizes the window where the interim state
 even exists. The hard constraint is the phase boundary, not the commit order
 within the phase.
 
+**Addendum — EARLY_STOP reintroduced (commit 7ce2cc4)**: a time-windowed early
+stop was added back as configurable behavior: `TIGHT_STOP_WINDOW_MS` (default
+10 s) and `TIGHT_STOP_PCT` (default 0.25) in `src/core/config.ts`, applied in
+`positionManager.updatePrice`. It is a trading mode (a strategy decision), so
+it counts toward validation metrics, and it deviates from this Decision and from
+STRATEGY_V2.md. Rationale, per the commit message: a backtest on the 27 trades
+that historically averaged 0.615 showed a -25% early stop capping their losses
+near 0.75 and lifting the overall average from ~1.12 to ~1.15. The commit did
+not add `EARLY_STOP` to the `ExitMode` union or to `exitModeMap`, so those
+exits were journaled as `UNKNOWN` until the map and union were updated. Because
+the removal described above was a precondition for starting validation data
+collection, exit-mode distributions that span the reintroduction should be
+treated as not comparable, and closes recorded before the map fix remain
+`UNKNOWN` (the reason string is not stored in the trade record).
+
 ### Decision 5: ml/ and replay/ coupling — tolerate, update same-commit, classify as dormant
 
 **Decision**: When the taxonomy rename commits land, string literals in 
