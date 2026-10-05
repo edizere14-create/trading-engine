@@ -26,6 +26,11 @@ const RECONNECT_COOLDOWN_MS = 120_000;
 const EVENT_DEDUP_TTL_MS = 120_000;
 const EVENT_FINGERPRINT_TTL_MS = 10_000;
 const CLEANUP_INTERVAL_MS = 60_000;
+const LIVENESS_INTERVAL_MS = 10_000;       // transport liveness probe cadence (independent of event flow)
+const LIVENESS_TIMEOUT_MS = 4_000;         // a probe slower than this counts as failed
+const LIVENESS_FAILS_BEFORE_FAILOVER = 3;  // consecutive failed probes (~30s) before swapping RPC
+const PRIMARY_PROBES_BEFORE_FAILBACK = 6;  // consecutive healthy primary probes (~60s) before swapping back
+const MIN_BACKUP_DWELL_MS = 90_000;        // stay on backup at least this long before failing back (anti-flap)
 
 // ── CONNECTION POOL ─────────────────────────────────────
 const MAX_SUBS_PER_CONNECTION = 400; // conservative buffer under RPC ~512 ceiling
@@ -122,6 +127,11 @@ export class SmartWalletStream {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private healthInterval: ReturnType<typeof setInterval> | null = null;
   private silenceInterval: ReturnType<typeof setInterval> | null = null;
+  private livenessInterval: ReturnType<typeof setInterval> | null = null;
+  private livenessFails = 0;
+  private primaryProbeOk = 0;
+  private failbackCount = 0;
+  private isSwitching = false;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
@@ -198,6 +208,7 @@ export class SmartWalletStream {
     await this.subscribeAll(wallets.map(w => w.address));
     this.startHealthCheck();
     this.startSilenceDetector();
+    this.startLivenessWatchdog();
 
     // Periodic cleanup for cluster state + dedupe cache
     this.cleanupInterval = setInterval(() => {
@@ -437,7 +448,8 @@ export class SmartWalletStream {
     if (this.silenceInterval) clearInterval(this.silenceInterval);
 
     this.silenceInterval = setInterval(async () => {
-      if (this.isStopped) return;
+      // Don't resubscribe wallets mid-reconnect/swap; the bulk resubscribe covers them
+      if (this.isStopped || this.isReconnecting || this.isSwitching) return;
 
       const now = Date.now();
       let resubCount = 0;
@@ -551,8 +563,168 @@ export class SmartWalletStream {
     }, HEALTH_CHECK_INTERVAL_MS);
   }
 
+  /** getSlot() with a hard timeout. True only if the RPC answered in time. */
+  private async probe(conn: Connection): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), LIVENESS_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([conn.getSlot().then(() => true, () => false), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * True if every socket currently holding wallet subscriptions on the active
+   * endpoint is OPEN (falls back to the active connection when none hold any).
+   */
+  private activeSocketsOpen(): boolean {
+    const endpoint = this.getConnectionEndpoint(this.activeConnection);
+    const holders = this.connectionPool.filter(
+      (c) => this.getConnectionEndpoint(c) === endpoint && (this.connectionSubCounts.get(c) ?? 0) > 0
+    );
+    const targets = holders.length > 0 ? holders : [this.activeConnection];
+    return targets.every((c) => isWsOpen(c));
+  }
+
+  /**
+   * Transport-level watchdog. Wallets trade infrequently, so the 30-min silence
+   * check is far too slow to notice a dead socket. This probes the active line
+   * every 10s: the subscription sockets must be OPEN and getSlot() must answer.
+   * Three consecutive failures swap to the other RPC. While on the backup, the
+   * primary is probed in the background and restored once it has been healthy
+   * for several consecutive probes.
+   */
+  private startLivenessWatchdog(): void {
+    if (this.livenessInterval) clearInterval(this.livenessInterval);
+    this.livenessInterval = setInterval(() => {
+      this.checkLiveness().catch((err) => {
+        logger.warn('[WalletStream] Liveness check error', {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }, LIVENESS_INTERVAL_MS);
+  }
+
+  private async checkLiveness(): Promise<void> {
+    if (this.isStopped || this.isReconnecting || this.isSwitching) return;
+
+    const active = this.activeConnection;
+    const alive = this.activeSocketsOpen() && (await this.probe(active));
+
+    // State may have changed while the probe was in flight
+    if (active !== this.activeConnection || this.isStopped || this.isReconnecting || this.isSwitching) return;
+
+    if (alive) {
+      this.wsHeartbeatOk++;
+      this.livenessFails = 0;
+    } else {
+      this.wsHeartbeatFail++;
+      this.livenessFails++;
+      logger.warn('[WalletStream] Liveness probe failed', {
+        consecutive: this.livenessFails,
+        threshold: LIVENESS_FAILS_BEFORE_FAILOVER,
+        rpcRole: this.rpcRole,
+        endpoint: getConnectionEndpoint(active),
+      });
+      if (this.livenessFails >= LIVENESS_FAILS_BEFORE_FAILOVER) {
+        const other = this.rpcRole === 'primary' ? this.backupConnection : this.primaryConnection;
+        if (other) {
+          await this.switchTo(other, 'liveness');
+        } else {
+          logger.warn('[WalletStream] Liveness failing but no alternate RPC configured');
+        }
+        return;
+      }
+    }
+
+    // Background failback: only while on backup, after a minimum dwell time
+    if (
+      this.rpcRole === 'backup' &&
+      supportsLogsSubscribe(this.primaryConnection) &&
+      Date.now() - (this.lastFailoverAtMs ?? 0) >= MIN_BACKUP_DWELL_MS
+    ) {
+      if (await this.probe(this.primaryConnection)) {
+        this.primaryProbeOk++;
+        if (this.primaryProbeOk >= PRIMARY_PROBES_BEFORE_FAILBACK) {
+          await this.switchTo(this.primaryConnection, 'failback');
+        }
+      } else {
+        this.primaryProbeOk = 0;
+      }
+    }
+  }
+
+  /**
+   * Move every wallet subscription to `target`. Verifies the target answers
+   * first. Resubscribes in batches, so wallet coverage has a short gap.
+   */
+  private async switchTo(target: Connection, reason: 'liveness' | 'failback'): Promise<void> {
+    if (this.isStopped || this.isReconnecting || this.isSwitching || target === this.activeConnection) return;
+    if (!supportsLogsSubscribe(target)) {
+      logger.warn('[WalletStream] Switch skipped — logsSubscribe unsupported', {
+        reason,
+        endpoint: getConnectionEndpoint(target),
+      });
+      return;
+    }
+
+    this.isSwitching = true;
+    try {
+      // Don't abandon the current line for one that is also down
+      if (!(await this.probe(target))) {
+        logger.warn('[WalletStream] Switch aborted — target RPC not responding', {
+          reason,
+          endpoint: getConnectionEndpoint(target),
+        });
+        this.primaryProbeOk = 0;
+        return;
+      }
+
+      const prevRole = this.rpcRole;
+      const toPrimary = target === this.primaryConnection;
+      disableWsReconnect(this.activeConnection);
+      this.activeConnection = target;
+      this.rpcRole = toPrimary ? 'primary' : 'backup';
+      if (toPrimary) {
+        this.failbackCount++;
+        if (this.lastFailoverAtMs) {
+          this.lastRecoveryMs = Date.now() - this.lastFailoverAtMs;
+          this.totalRecoveryMs += this.lastRecoveryMs;
+          this.recoverySamples++;
+        }
+      } else {
+        this.failoverCount++;
+        this.lastFailoverAtMs = Date.now();
+      }
+
+      // Same sequence as reconnect(): drop everything, then resubscribe all
+      // wallets (getAvailableConnection routes them to the new active endpoint).
+      await this.clearSubscriptions();
+      const wallets = this.walletRegistry.getAll();
+      await this.subscribeAll(wallets.map(w => w.address));
+
+      this.lastEventTime = Date.now();
+      this.livenessFails = 0;
+      this.primaryProbeOk = 0;
+      this.reconnectCooldownUntil = Date.now() + RECONNECT_COOLDOWN_MS;
+      resetWsReconnectCount(target);
+      logger.info('[WalletStream] RPC role changed', {
+        from: prevRole,
+        to: this.rpcRole,
+        reason,
+        endpoint: getConnectionEndpoint(target),
+        subscriptions: this.subscriptions.size,
+      });
+    } finally {
+      this.isSwitching = false;
+    }
+  }
+
   private async reconnect(): Promise<void> {
-    if (this.isStopped || this.isReconnecting) return;
+    if (this.isStopped || this.isReconnecting || this.isSwitching) return;
     this.isReconnecting = true;
 
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
@@ -852,6 +1024,7 @@ export class SmartWalletStream {
     reconnectBudget: string;
     rpcRole: 'primary' | 'backup';
     failoverCount: number;
+    failbackCount: number;
     lastRecoveryMs: number | null;
     avgRecoveryMs: number;
     wsHeartbeatOk: number;
@@ -864,6 +1037,7 @@ export class SmartWalletStream {
       reconnectBudget: `${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`,
       rpcRole: this.rpcRole,
       failoverCount: this.failoverCount,
+      failbackCount: this.failbackCount,
       lastRecoveryMs: this.lastRecoveryMs,
       avgRecoveryMs: this.recoverySamples > 0 ? this.totalRecoveryMs / this.recoverySamples : 0,
       wsHeartbeatOk: this.wsHeartbeatOk,
@@ -888,6 +1062,11 @@ export class SmartWalletStream {
     if (this.silenceInterval) {
       clearInterval(this.silenceInterval);
       this.silenceInterval = null;
+    }
+
+    if (this.livenessInterval) {
+      clearInterval(this.livenessInterval);
+      this.livenessInterval = null;
     }
 
     await this.clearSubscriptions();
