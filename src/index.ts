@@ -538,7 +538,7 @@ async function boot(): Promise<void> {
   }
 
   // 3. Load calibration + performance
-  const paperGate = await PaperTradeGate.load(cfg.PAPER_TRADES_FILE);
+  const paperGate = await PaperTradeGate.load(cfg.PAPER_TRADES_FILE, { minAuc: cfg.WP_CALIBRATION_AUC_MIN });
   const perfEngine = await PerformanceEngine.load(cfg.EDGE_STATS_FILE);
   const gateStatus = paperGate.getStatus();
 
@@ -578,7 +578,11 @@ async function boot(): Promise<void> {
   } catch { /* non-fatal */ }
   logger.info('Paper gate status', {
     trades: `${gateStatus.completedTrades}/${gateStatus.requiredTrades}`,
-    wpAccuracy: gateStatus.wpCalibrationAccuracy.toFixed(3),
+    wpCalibrationError: gateStatus.wpCalibrationError === null ? 'n/a' : gateStatus.wpCalibrationError.toFixed(3),
+    wpAuc: gateStatus.wpAuc === null ? 'n/a' : gateStatus.wpAuc.toFixed(3),
+    wpAucStdErr: gateStatus.wpAucStdErr === null ? 'n/a' : gateStatus.wpAucStdErr.toFixed(3),
+    wpAucLower95: gateStatus.wpAucLower95 === null ? 'n/a' : gateStatus.wpAucLower95.toFixed(3),
+    wpLegacyMAE: gateStatus.wpCalibrationAccuracy.toFixed(3),
     actualEV: gateStatus.actualEV.toFixed(3),
     winRate: (gateStatus.actualWinRate * 100).toFixed(1) + '%',
     gateUnlocked: gateStatus.gateUnlocked,

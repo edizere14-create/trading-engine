@@ -3,6 +3,7 @@ import path from 'path';
 import { TradeRecord, PaperGateStatus, EdgeName } from '../core/types';
 import { logger } from '../core/logger';
 import { isProbeTrade } from '../risk/probePolicy';
+import { evaluateWinProbability, MIN_BUCKET_TRADES } from './wpMetrics';
 
 export interface PaperTradeSummary {
   totalTrades: number;
@@ -26,15 +27,22 @@ export interface PaperTradeRuntimeMetrics {
 export class PaperTradeGate {
   readonly MINIMUM_TRADES = 50;
   readonly MAX_WP_CALIBRATION_ERROR = 0.15;
+  readonly MIN_WP_CLASS_SAMPLES = 10;   // wins and losses each needed before the AUC means anything
+  readonly MIN_CALIBRATION_BUCKETS = 3; // probability buckets (of 10) that must have enough trades
+  readonly MIN_WP_AUC_LOWER_BOUND = 0.5; // the AUC's 95% lower bound must be above this: better than random with confidence
   private trades: TradeRecord[] = [];
   private filePath: string;
+  private minWpAuc: number;
 
-  private constructor(trades: TradeRecord[], filePath: string) {
+  private constructor(trades: TradeRecord[], filePath: string, minWpAuc: number) {
     this.trades = trades;
     this.filePath = filePath;
+    this.minWpAuc = minWpAuc;
   }
 
-  static async load(filePath: string): Promise<PaperTradeGate> {
+  /** options.minAuc is the required AUC (WP_CALIBRATION_AUC_MIN); defaults to 0.65. */
+  static async load(filePath: string, options: { minAuc?: number } = {}): Promise<PaperTradeGate> {
+    const minAuc = options.minAuc ?? 0.65;
     const resolved = path.resolve(filePath);
 
     if (!fs.existsSync(resolved)) {
@@ -44,7 +52,7 @@ export class PaperTradeGate {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(resolved, '[]', 'utf-8');
-      return new PaperTradeGate([], resolved);
+      return new PaperTradeGate([], resolved, minAuc);
     }
 
     const raw = fs.readFileSync(resolved, 'utf-8');
@@ -55,7 +63,7 @@ export class PaperTradeGate {
       probesExcludedFromStats: parsed.filter(isProbeTrade).length,
       path: resolved,
     });
-    return new PaperTradeGate(parsed, resolved);
+    return new PaperTradeGate(parsed, resolved, minAuc);
   }
 
   /** Completed trades that count toward the gate: probes are recorded but not counted. */
@@ -92,7 +100,9 @@ export class PaperTradeGate {
         ? completed.reduce((s, t) => s + t.predictedWP, 0) / completed.length
         : 0;
 
-    // Mean absolute error between predicted and actual WP
+    // Legacy mean absolute error between predicted WP and the 0/1 outcome. For binary
+    // outcomes even a perfectly calibrated model scores about 2p(1-p) (0.5 at p = 0.5), so
+    // it can't meet a 15% limit and no longer gates; it is kept for continuity.
     const wpCalibrationAccuracy =
       completed.length > 0
         ? completed.reduce((s, t) => {
@@ -106,6 +116,10 @@ export class PaperTradeGate {
         ? completed.reduce((s, t) => s + (t.realizedMultiple ?? 0), 0) / completed.length - 1
         : -1;
 
+    const wp = evaluateWinProbability(
+      completed.map((t) => ({ predictedWP: t.predictedWP, won: t.outcome === 'WIN' }))
+    );
+
     const blockedReasons: string[] = [];
 
     if (completed.length < this.MINIMUM_TRADES) {
@@ -114,10 +128,33 @@ export class PaperTradeGate {
       );
     }
 
-    if (wpCalibrationAccuracy > this.MAX_WP_CALIBRATION_ERROR) {
+    // Win-probability quality: needs enough of both outcomes, then calibration AND discrimination
+    if (wp.wins < this.MIN_WP_CLASS_SAMPLES || wp.losses < this.MIN_WP_CLASS_SAMPLES) {
       blockedReasons.push(
-        `WP calibration off by ${(wpCalibrationAccuracy * 100).toFixed(1)}% — retrain model (max ${this.MAX_WP_CALIBRATION_ERROR * 100}%)`
+        `WP check needs at least ${this.MIN_WP_CLASS_SAMPLES} wins and ${this.MIN_WP_CLASS_SAMPLES} losses (have ${wp.wins} wins / ${wp.losses} losses)`
       );
+    } else {
+      if (wp.calibrationError === null || wp.calibrationBuckets < this.MIN_CALIBRATION_BUCKETS) {
+        blockedReasons.push(
+          `WP calibration can't be measured yet: only ${wp.calibrationBuckets} of 10 probability buckets have ${MIN_BUCKET_TRADES}+ trades (need ${this.MIN_CALIBRATION_BUCKETS})`
+        );
+      } else if (wp.calibrationError > this.MAX_WP_CALIBRATION_ERROR) {
+        blockedReasons.push(
+          `WP calibration gap ${(wp.calibrationError * 100).toFixed(1)}% exceeds ${this.MAX_WP_CALIBRATION_ERROR * 100}% — predicted probabilities don't match outcomes; retrain model`
+        );
+      }
+      if (wp.auc === null || wp.auc < this.minWpAuc) {
+        blockedReasons.push(
+          `WP discrimination (AUC) ${wp.auc === null ? 'n/a' : wp.auc.toFixed(3)} is below ${this.minWpAuc.toFixed(2)} — predictions don't separate winners from losers`
+        );
+      }
+      // Margin rule: the point estimate alone can be luck on a small sample, so the lower end
+      // of its 95% interval (AUC - 1.96 x standard error) must also clear 0.5.
+      if (wp.aucLower95 === null || wp.aucLower95 <= this.MIN_WP_AUC_LOWER_BOUND) {
+        blockedReasons.push(
+          `WP discrimination isn't reliably better than random: AUC ${wp.auc === null ? 'n/a' : wp.auc.toFixed(3)}, 95% lower bound ${wp.aucLower95 === null ? 'n/a' : wp.aucLower95.toFixed(3)} (must be above ${this.MIN_WP_AUC_LOWER_BOUND.toFixed(2)})`
+        );
+      }
     }
 
     if (actualEV <= 0) {
@@ -130,6 +167,11 @@ export class PaperTradeGate {
       completedTrades: completed.length,
       requiredTrades: this.MINIMUM_TRADES,
       wpCalibrationAccuracy,
+      wpCalibrationError: wp.calibrationError,
+      wpCalibrationBuckets: wp.calibrationBuckets,
+      wpAuc: wp.auc,
+      wpAucStdErr: wp.aucStdErr,
+      wpAucLower95: wp.aucLower95,
       actualEV,
       actualWinRate,
       predictedWinRate,

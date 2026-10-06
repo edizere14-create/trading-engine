@@ -249,7 +249,12 @@ export interface EdgePerformance {
 export interface PaperGateStatus {
   completedTrades: number;
   requiredTrades: number;
-  wpCalibrationAccuracy: number; // |predicted - actual| mean
+  wpCalibrationAccuracy: number; // legacy |predicted - actual| mean: informational only, no longer gates (unreachable by design)
+  wpCalibrationError: number | null; // reliability gap between predicted and observed win rate (gated)
+  wpCalibrationBuckets: number;      // probability buckets with enough trades to measure it
+  wpAuc: number | null;              // does the model rank winners above losers (gated)
+  wpAucStdErr: number | null;        // Hanley-McNeil standard error of wpAuc (informational)
+  wpAucLower95: number | null;       // wpAuc - 1.96 * wpAucStdErr; must stay above 0.5 (better than random with confidence) (gated)
   actualEV: number;
   actualWinRate: number;
   predictedWinRate: number;
