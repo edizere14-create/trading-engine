@@ -39,6 +39,7 @@ import { PositionManager } from './position/positionManager';
 import { usableEntryPrice } from './position/entryPrice';
 import { isValidPoolAddress } from './core/poolAddress';
 import { belowWalletLiquidityFloor, RECOMMENDED_WALLET_LIQUIDITY_FLOOR_SOL } from './risk/poolLiquidityGate';
+import { shouldUseProbeFallback } from './risk/probePolicy';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
@@ -1311,11 +1312,12 @@ async function boot(): Promise<void> {
       );
 
       if (sizing.recommendedSizeUSD < 1) {
-        if (cfg.isPaperMode && PAPER_PROBE_ON_OPT_REJECT) {
+        if (shouldUseProbeFallback(cfg.isPaperMode, PAPER_PROBE_ON_OPT_REJECT, signal.source)) {
           signal.overrideSizeUSD = PAPER_PROBE_MIN_SIZE_USD;
           bumpGateMetric('tradeProbeFallbackUsed');
           logger.warn('Trade PROBE — portfolio optimizer rejected, using paper fallback size', {
             tokenCA: signal.tokenCA,
+            source: signal.source,
             reason: sizing.reason,
             probeSizeUSD: PAPER_PROBE_MIN_SIZE_USD,
             coldStart: mlSamples < 20,
@@ -1325,6 +1327,7 @@ async function boot(): Promise<void> {
           bumpGateBlockReason('tradePortfolio');
           logger.warn('Trade BLOCKED — portfolio optimizer rejected', {
             tokenCA: signal.tokenCA,
+            source: signal.source,
             reason: sizing.reason,
             coldStart: mlSamples < 20,
           });
