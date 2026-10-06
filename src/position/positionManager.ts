@@ -8,6 +8,7 @@ import {
 } from '../core/types';
 import { bus } from '../core/eventBus';
 import { logger } from '../core/logger';
+import { isValidPoolAddress } from '../core/poolAddress';
 
 interface PositionConfig {
   mode: SystemMode;
@@ -20,6 +21,7 @@ interface PositionConfig {
   solPriceUSD: number;       // current SOL price (updated externally)
   tightStopWindowMs: number; // early-hold window where tightStopPct applies
   tightStopPct: number;      // tighter stop used within tightStopWindowMs of entry
+  allowNoPoolTrades?: boolean; // ALLOW_NO_POOL_TRADES: let SINGLE_WALLET trades open without a real pool
 }
 
 export class PositionManager {
@@ -82,6 +84,12 @@ export class PositionManager {
    * Attempt to open a trade from a signal. Returns true if trade was opened.
    */
   openTrade(signal: TradeSignal, survival: SurvivalSnapshot): boolean {
+    // Gate: copy-trades need a real pool (backstop for the trade:signal gate)
+    if (signal.source === 'SINGLE_WALLET' && !this.config.allowNoPoolTrades && !isValidPoolAddress(signal.poolAddress)) {
+      logger.warn('Trade refused: SINGLE_WALLET signal without a real pool address', { tokenCA: signal.tokenCA });
+      return false;
+    }
+
     // Gate: survival halt
     if (survival.state === 'HALT') {
       logger.warn('Trade blocked: SURVIVAL_HALT', { tokenCA: signal.tokenCA });

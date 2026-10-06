@@ -46,6 +46,7 @@ describe('a real sub-1e-6 entry price is kept as the basis', () => {
     return {
       tokenCA: 'token-sub-floor',
       source: 'SINGLE_WALLET',
+      poolAddress: '675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8',
       triggerWallet: 'wallet1',
       walletTier: 'A',
       walletPnL30d: 5,

@@ -37,6 +37,8 @@ import * as fs from 'fs';
 // ── Trade infrastructure ──────────────────────────────────
 import { PositionManager } from './position/positionManager';
 import { usableEntryPrice } from './position/entryPrice';
+import { isValidPoolAddress } from './core/poolAddress';
+import { belowWalletLiquidityFloor, RECOMMENDED_WALLET_LIQUIDITY_FLOOR_SOL } from './risk/poolLiquidityGate';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
@@ -102,7 +104,8 @@ function rememberTokenPool(tokenCA: string, poolAddress: string, initialLiquidit
     tokenPoolMap.delete(tokenCA);
   }
   tokenPoolMap.set(tokenCA, {
-    poolAddress,
+    // Only a real (32-byte) pool address counts; liquidity is still recorded either way
+    poolAddress: isValidPoolAddress(poolAddress) ? poolAddress : (prev?.poolAddress ?? ''),
     initialLiquiditySOL: initialLiquiditySOL ?? prev?.initialLiquiditySOL,
     lastSeenMs: now,
   });
@@ -120,7 +123,15 @@ function getTokenPoolAddress(tokenCA: string): string | undefined {
   }
 
   entry.lastSeenMs = now;
-  return entry.poolAddress;
+  return isValidPoolAddress(entry.poolAddress) ? entry.poolAddress : undefined;
+}
+
+/** Recorded initial pool liquidity (SOL) for a token, or undefined if unknown/expired. */
+function getTokenPoolLiquiditySOL(tokenCA: string): number | undefined {
+  const entry = tokenPoolMap.get(tokenCA);
+  if (!entry) return undefined;
+  if (Date.now() - entry.lastSeenMs > TOKEN_POOL_TTL_MS) return undefined;
+  return entry.initialLiquiditySOL;
 }
 
 function pruneTokenPoolMap(nowMs = Date.now()): void {
@@ -161,6 +172,8 @@ type GateMetricKey =
   | 'tradeSignalsReceived'
   | 'tradeBlockedLowScore'
   | 'tradeBlockedNoPool'
+  | 'tradeBlockedLowLiquidity'
+  | 'walletBelowRecommendedFloor'
   | 'tradeProceedNoPool'
   | 'tradeBlockedSafety'
   | 'tradeBlockedPortfolio'
@@ -171,6 +184,7 @@ type GateBlockReasonKey =
   | 'signalLowScore'
   | 'tradeLowScore'
   | 'tradeNoPool'
+  | 'tradeLowLiquidity'
   | 'tradeSafety'
   | 'tradePortfolio'
   | 'systemHealth'
@@ -190,6 +204,8 @@ const gateMetrics: Record<GateMetricKey, number> = {
   tradeSignalsReceived: 0,
   tradeBlockedLowScore: 0,
   tradeBlockedNoPool: 0,
+  tradeBlockedLowLiquidity: 0,
+  walletBelowRecommendedFloor: 0,
   tradeProceedNoPool: 0,
   tradeBlockedSafety: 0,
   tradeBlockedPortfolio: 0,
@@ -201,6 +217,7 @@ const gateBlockReasons: Record<GateBlockReasonKey, number> = {
   signalLowScore: 0,
   tradeLowScore: 0,
   tradeNoPool: 0,
+  tradeLowLiquidity: 0,
   tradeSafety: 0,
   tradePortfolio: 0,
   systemHealth: 0,
@@ -572,6 +589,7 @@ async function boot(): Promise<void> {
     liveTradingArmed: cfg.LIVE_TRADING_ARMED,
     autonomousOnly: cfg.isAutonomousOnly,
     allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
+    minWalletPoolLiquiditySOL: cfg.MIN_WALLET_POOL_LIQUIDITY_SOL,
     gateUnlocked: gateStatus.gateUnlocked,
     gateBlockedReasons: gateStatus.blockedReasons,
     rpcReachability: {
@@ -637,6 +655,7 @@ async function boot(): Promise<void> {
       solPriceUSD: currentSOLPrice!,
       tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
       tightStopPct: cfg.TIGHT_STOP_PCT,
+      allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
     }
   );
   positionManager.start();
@@ -830,6 +849,9 @@ async function boot(): Promise<void> {
         return;
       }
     }
+
+    // No real pool address (LP-stream events carry none): nothing to simulate or price against
+    if (!isValidPoolAddress(event.poolAddress)) return;
 
     // ── On-Chain Simulation ──
     let simulatedEntryPriceSOL = 0; // 0 = no usable price; the trade is blocked below, never opened on a made-up number
@@ -1209,7 +1231,7 @@ async function boot(): Promise<void> {
       return;
     }
 
-    const poolAddress = signal.poolAddress ?? getTokenPoolAddress(signal.tokenCA) ?? '';
+    const poolAddress = [signal.poolAddress, getTokenPoolAddress(signal.tokenCA)].find(isValidPoolAddress) ?? '';
     if (!poolAddress && cfg.ALLOW_NO_POOL_TRADES !== 'true') {
       bumpGateMetric('tradeBlockedNoPool');
       bumpGateBlockReason('tradeNoPool');
@@ -1219,6 +1241,35 @@ async function boot(): Promise<void> {
       });
       return;
     }
+
+    // Copy-trade liquidity floor: off by default (0). While off, count how many wallet
+    // signals WOULD be blocked at the recommended floor, so the cost can be measured first.
+    const poolLiquiditySOL = getTokenPoolLiquiditySOL(signal.tokenCA);
+    if (belowWalletLiquidityFloor(signal.source, cfg.MIN_WALLET_POOL_LIQUIDITY_SOL, poolLiquiditySOL)) {
+      bumpGateMetric('tradeBlockedLowLiquidity');
+      bumpGateBlockReason('tradeLowLiquidity');
+      logger.info('Trade BLOCKED — pool liquidity below floor', {
+        tokenCA: signal.tokenCA,
+        source: signal.source,
+        poolLiquiditySOL,
+        floorSOL: cfg.MIN_WALLET_POOL_LIQUIDITY_SOL,
+      });
+      return;
+    }
+    if (
+      cfg.MIN_WALLET_POOL_LIQUIDITY_SOL === 0 &&
+      belowWalletLiquidityFloor(signal.source, RECOMMENDED_WALLET_LIQUIDITY_FLOOR_SOL, poolLiquiditySOL)
+    ) {
+      bumpGateMetric('walletBelowRecommendedFloor');
+      logger.info('[Measure] Wallet signal on pool below recommended liquidity floor (not enforced)', {
+        tokenCA: signal.tokenCA,
+        poolLiquiditySOL,
+        recommendedFloorSOL: RECOMMENDED_WALLET_LIQUIDITY_FLOOR_SOL,
+      });
+    }
+
+    // Carry the resolved real pool so PositionManager's own check sees it
+    signal.poolAddress = poolAddress;
 
     // Token safety check (async — uses RPC)
     const safety = await tokenSafety.check(signal.tokenCA);
@@ -2151,7 +2202,7 @@ async function boot(): Promise<void> {
       migrationStream: migrationStream?.getTelemetry() ?? null,
       wsErrorSuppression: getWsErrorSuppressionStats(),
       gateHealth: {
-        blockedSignals: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore + gateMetrics.tradeBlockedNoPool + gateMetrics.tradeBlockedSafety + gateMetrics.tradeBlockedPortfolio,
+        blockedSignals: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore + gateMetrics.tradeBlockedNoPool + gateMetrics.tradeBlockedLowLiquidity + gateMetrics.tradeBlockedSafety + gateMetrics.tradeBlockedPortfolio,
         lowScoreRejects: gateMetrics.signalsBlockedLowScore + gateMetrics.tradeBlockedLowScore,
         executionUnavailableRejects: gateBlockReasons.executionUnavailable,
         blockReasonsWindow: gateBlockReasons,

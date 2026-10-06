@@ -498,7 +498,10 @@ export class LPCreationStream {
     const solChange = Math.abs((postBalance - preBalance) / 1e9);
 
     return {
-      poolAddress: signature, // refined later with account parsing
+      // The pool account is not parsed from the transaction yet. The signature is
+      // NOT a pool address (64 bytes, not a 32-byte public key), so carry none:
+      // a placeholder here satisfied every downstream "pool known" check.
+      poolAddress: '',
       tokenCA,
       baseToken: 'SOL',
       initialLiquiditySOL: solChange,
