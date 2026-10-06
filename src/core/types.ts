@@ -188,6 +188,7 @@ export interface RiskDecision {
 
 export interface TradeRecord {
   id: string;
+  isProbe?: boolean;            // $1 paper probe (records written before this field are detected by size)
   mode: SystemMode;
   tokenCA: string;
   ticker: string;
@@ -291,10 +292,12 @@ export interface TradeSignal {
   overrideSizeUSD?: number;     // optional model/risk-driven size override
   overrideMaxHoldMs?: number;   // optional risk-engine hold override
   poolAddress?: string;         // pool address when known at signal time (e.g. graduation)
+  isProbe?: boolean;            // set when the optimizer rejected it and paper mode opened a $1 probe instead
 }
 
 export interface TradePosition {
   id: string;
+  isProbe?: boolean;            // $1 paper probe: kept out of risk counters, learner, gate stats and edge stats
   tokenCA: string;
   mode: SystemMode;
   entryPriceSOL: number;

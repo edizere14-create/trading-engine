@@ -21,3 +21,23 @@ describe('shouldUseProbeFallback', () => {
     expect(shouldUseProbeFallback(false, true, 'SINGLE_WALLET')).toBe(false);
   });
 });
+
+import { isProbeTrade, PROBE_RECORD_MAX_USD } from '../src/risk/probePolicy';
+
+describe('isProbeTrade', () => {
+  it('trusts the flag', () => {
+    expect(isProbeTrade({ isProbe: true, sizeUSD: 50 })).toBe(true);
+  });
+
+  it('detects legacy probe records by size', () => {
+    expect(isProbeTrade({ sizeUSD: 1 })).toBe(true);
+    expect(isProbeTrade({ sizeUSD: PROBE_RECORD_MAX_USD })).toBe(true);
+  });
+
+  it('does not treat real-sized or unsized trades as probes', () => {
+    expect(isProbeTrade({ sizeUSD: 15 })).toBe(false);
+    expect(isProbeTrade({ sizeUSD: 50 })).toBe(false);
+    expect(isProbeTrade({})).toBe(false);
+    expect(isProbeTrade({ sizeUSD: 0 })).toBe(false);
+  });
+});

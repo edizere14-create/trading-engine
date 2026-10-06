@@ -1315,6 +1315,7 @@ async function boot(): Promise<void> {
       if (sizing.recommendedSizeUSD < 1) {
         if (shouldUseProbeFallback(cfg.isPaperMode, PAPER_PROBE_ON_OPT_REJECT, signal.source)) {
           signal.overrideSizeUSD = PAPER_PROBE_MIN_SIZE_USD;
+          signal.isProbe = true;
           bumpGateMetric('tradeProbeFallbackUsed');
           logger.warn('Trade PROBE — portfolio optimizer rejected, using paper fallback size', {
             tokenCA: signal.tokenCA,
@@ -1738,13 +1739,17 @@ async function boot(): Promise<void> {
       poolVaultStream.unsubscribe(position.tokenCA);
     }
 
-    // Record PnL in survival engine
+    // Record PnL in survival engine. $1 paper probes carry no real capital risk, so they stay
+    // out of the risk counters (loss streak, daily/weekly P&L, black-swan clusters) that scale
+    // and halt real-sized trades.
     const pnlUSD = (position.realizedPnLSOL ?? 0) * (currentSOLPrice ?? 0);
-    survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
+    if (!position.isProbe) {
+      survivalEngine!.recordTrade(pnlUSD, cfg.INITIAL_CAPITAL_USD);
+    }
 
     if (antifragileEngine) {
       antifragileEngine.heartbeat();
-      if (position.outcome === 'LOSS') {
+      if (position.outcome === 'LOSS' && !position.isProbe) {
         const pnlPct = position.sizeUSD > 0
           ? ((position.realizedPnLSOL ?? 0) * (currentSOLPrice ?? 0) / position.sizeUSD) * 100
           : 0;
@@ -1878,6 +1883,7 @@ async function boot(): Promise<void> {
         realizedPnLUSD: pnlUSD,
         predictedWP: ctx?.predictedWP ?? 0,
         predictedEV: ctx?.predictedEV ?? 0,
+        isProbe: position.isProbe,
         sizeR: position.sizeUSD / cfg.INITIAL_CAPITAL_USD,
         sizeUSD: position.sizeUSD,
         stopPriceLamports: BigInt(Math.round(position.entryPriceSOL * (1 - position.stopLossPct) * 1e9)),
@@ -1926,7 +1932,7 @@ async function boot(): Promise<void> {
       paperGate.addTrade(tradeRecord);
 
       // ── ML FEEDBACK LOOP: update model with trade outcome ──
-      if (onlineLearner) {
+      if (onlineLearner && !position.isProbe) {
         const mlMarketSnapshot = marketEngine.getSnapshot();
         const mlSurvival = survivalEngine!.getSnapshot();
         if (mlMarketSnapshot) {
@@ -1942,7 +1948,9 @@ async function boot(): Promise<void> {
         }
       }
 
-      perfEngine.recordTrade(tradeRecord);
+      if (!position.isProbe) {
+        perfEngine.recordTrade(tradeRecord);
+      }
 
       // Log updated paper gate status
       const gateStatus = paperGate.getStatus();

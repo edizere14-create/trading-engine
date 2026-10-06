@@ -16,3 +16,18 @@ export function shouldUseProbeFallback(
 ): boolean {
   return isPaperMode && probeEnabled && source !== 'SINGLE_WALLET';
 }
+
+/** Records at or below this size (USD) are $1 paper probes. Covers records written before TradeRecord.isProbe existed. */
+export const PROBE_RECORD_MAX_USD = 1.01;
+
+/**
+ * True for a $1 paper probe. Probes carry no real capital risk and come from
+ * signals the optimizer rejected, so they are kept out of the risk counters, the
+ * learner, the paper-gate statistics and the edge statistics.
+ */
+export function isProbeTrade(t: { isProbe?: boolean; sizeUSD?: number }): boolean {
+  return (
+    t.isProbe === true ||
+    (typeof t.sizeUSD === 'number' && t.sizeUSD > 0 && t.sizeUSD <= PROBE_RECORD_MAX_USD)
+  );
+}

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { TradeRecord, PaperGateStatus, EdgeName } from '../core/types';
 import { logger } from '../core/logger';
+import { isProbeTrade } from '../risk/probePolicy';
 
 export interface PaperTradeSummary {
   totalTrades: number;
@@ -49,8 +50,17 @@ export class PaperTradeGate {
     const raw = fs.readFileSync(resolved, 'utf-8');
     const json = JSON.parse(raw);
     const parsed: TradeRecord[] = Array.isArray(json) ? json : (json.trades ?? []);
-    logger.info('Paper trades loaded', { count: parsed.length, path: resolved });
+    logger.info('Paper trades loaded', {
+      count: parsed.length,
+      probesExcludedFromStats: parsed.filter(isProbeTrade).length,
+      path: resolved,
+    });
     return new PaperTradeGate(parsed, resolved);
+  }
+
+  /** Completed trades that count toward the gate: probes are recorded but not counted. */
+  private countable(): TradeRecord[] {
+    return this.trades.filter((t) => t.outcome !== undefined && !isProbeTrade(t));
   }
 
   addTrade(trade: TradeRecord): void {
@@ -74,7 +84,7 @@ export class PaperTradeGate {
   }
 
   getStatus(): PaperGateStatus {
-    const completed = this.trades.filter((t) => t.outcome !== undefined);
+    const completed = this.countable();
     const wins = completed.filter((t) => t.outcome === 'WIN').length;
     const actualWinRate = completed.length > 0 ? wins / completed.length : 0;
     const predictedWinRate =
@@ -138,7 +148,7 @@ export class PaperTradeGate {
   }
 
   getSummaryReport(): PaperTradeSummary {
-    const completed = this.trades.filter((t) => t.outcome !== undefined);
+    const completed = this.countable();
 
     if (completed.length === 0) {
       return {
@@ -216,7 +226,7 @@ export class PaperTradeGate {
   }
 
   getRuntimeMetrics(): PaperTradeRuntimeMetrics {
-    const completed = this.trades.filter((t) => t.outcome !== undefined);
+    const completed = this.countable();
     const wins = completed.filter((t) => t.outcome === 'WIN').length;
     const losses = completed.filter((t) => t.outcome === 'LOSS').length;
     const breakeven = completed.filter((t) => t.outcome === 'BREAKEVEN').length;

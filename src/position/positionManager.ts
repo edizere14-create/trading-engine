@@ -159,6 +159,7 @@ export class PositionManager {
       lastPriceSOL: signal.entryPriceSOL,
       lastCheckedAt: new Date(),
       status: 'OPEN',
+      isProbe: signal.isProbe,
       priceBasisInvalid: signal.entryPriceSOL === 0,
       entryPriceBasis: signal.entryPriceSOL > 0 ? 'OPEN_PRICE' : undefined,
     };
