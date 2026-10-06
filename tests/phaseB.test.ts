@@ -237,7 +237,7 @@ describe('runPhaseB', () => {
   describe('parallel execution', () => {
     it('does not run checks sequentially', async () => {
       let tokenSafetyResolveAt = 0;
-      let honeypotResolveAt = 0;
+      let honeypotStartedAt = 0;
 
       const checker = makeChecker(new Promise<TokenSafetyResult>((resolve) => {
         setTimeout(() => {
@@ -246,19 +246,22 @@ describe('runPhaseB', () => {
         }, 30);
       }));
 
-      mockedHoneypot.mockImplementationOnce(() => new Promise((resolve) => {
-        setTimeout(() => {
-          honeypotResolveAt = performance.now();
-          resolve(cleanHoneypotResult());
-        }, 30);
-      }));
+      mockedHoneypot.mockImplementationOnce(() => {
+        honeypotStartedAt = performance.now();
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(cleanHoneypotResult()), 30);
+        });
+      });
 
-      const start = performance.now();
       await runPhaseB(baseEvent, checker, 200);
-      const elapsed = performance.now() - start;
 
-      // If sequential: ~60ms. If parallel: ~30ms. Allow generous margin.
-      expect(elapsed).toBeLessThan(50);
+      // Parallel means the honeypot check STARTED before the token-safety check finished. A
+      // sequential implementation would only start it after tokenSafetyResolveAt. This asserts
+      // the order of events, not elapsed time: a wall-clock bound (e.g. under 50ms for two 30ms
+      // timers) fails whenever the machine is busy, as it did when the suites ran in parallel.
+      expect(tokenSafetyResolveAt).toBeGreaterThan(0);
+      expect(honeypotStartedAt).toBeGreaterThan(0);
+      expect(honeypotStartedAt).toBeLessThan(tokenSafetyResolveAt);
     });
   });
 
