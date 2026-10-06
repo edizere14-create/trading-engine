@@ -298,6 +298,12 @@ export class SmartMoneyTracker {
     const sortedPrices = freshBuys.map(b => b.priceSOL).sort((a, b) => a - b);
     const medianPrice = sortedPrices[Math.floor(sortedPrices.length / 2)];
 
+    if (usableEntryPrice(medianPrice) === 0) {
+      logger.warn('SmartMoney signal dropped — no usable entry price', { tokenCA });
+      this.buyWindows.delete(tokenCA); // clear the window so it can't re-trigger on the same data
+      return;
+    }
+
     bus.emit('trade:signal', {
       tokenCA,
       source: 'AUTONOMOUS' as const,

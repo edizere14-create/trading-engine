@@ -252,6 +252,16 @@ export class ToxicFlowBackrunner {
   // ── OPPORTUNITY EVALUATION ─────────────────────────────
 
   private evaluateOpportunity(sandwich: SandwichEvent): void {
+    // A zero/invalid price makes the profit math Infinity or NaN, and neither fails the
+    // "< 1.0" check below, so reject it here instead of emitting a signal with entry 0.
+    if (usableEntryPrice(sandwich.priceAfterAttack) === 0) {
+      logger.warn('Sandwich backrun dropped — no usable entry price', {
+        tokenCA: sandwich.tokenCA,
+        priceAfterAttack: sandwich.priceAfterAttack,
+      });
+      return;
+    }
+
     // Expected rebalance: price should recover ~70% of the dip
     const recoveryTarget = sandwich.priceAfterAttack +
       (sandwich.naturalPrice - sandwich.priceAfterAttack) * REBALANCE_TARGET_PCT;
