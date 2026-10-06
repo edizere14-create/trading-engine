@@ -590,6 +590,7 @@ async function boot(): Promise<void> {
     liveTradingArmed: cfg.LIVE_TRADING_ARMED,
     autonomousOnly: cfg.isAutonomousOnly,
     allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
+    lpStreamEnabled: cfg.ENABLE_LP_STREAM === 'true',
     minWalletPoolLiquiditySOL: cfg.MIN_WALLET_POOL_LIQUIDITY_SOL,
     gateUnlocked: gateStatus.gateUnlocked,
     gateBlockedReasons: gateStatus.blockedReasons,
@@ -2069,9 +2070,13 @@ async function boot(): Promise<void> {
 
   // 7. Start ingestion streams (with backup connection for failover)
   // Stagger startup to avoid simultaneous WS connections triggering 429s
-  lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
-  await lpStream.start();
-  await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before wallet stream
+  if (cfg.ENABLE_LP_STREAM === 'true') {
+    lpStream = new LPCreationStream(cfg.connection, cfg.backupConnection);
+    await lpStream.start();
+    await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before wallet stream
+  } else {
+    logger.warn('[Startup] LP stream DISABLED (ENABLE_LP_STREAM=false) — no program-wide DEX log subscriptions');
+  }
   walletStream = new SmartWalletStream(cfg.connection, walletRegistry, cfg.backupConnection);
   await walletStream.start();
   await new Promise((r) => setTimeout(r, 2_000)); // 2s gap before migration stream
