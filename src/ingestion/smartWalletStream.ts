@@ -59,6 +59,41 @@ interface SubscriptionRef {
   lastLogAt: number | null;
 }
 
+// ── FETCH ACCOUNTING ────────────────────────────────────
+// Every log from a tracked wallet that mentions a DEX program costs one
+// getParsedTransaction call, whether or not it turns out to be a swap. These
+// counters show where those calls go (see logWindowStats / getTelemetry).
+const STATS_INTERVAL_MS = 60 * 60_000;
+const SIGNAL_MIN_SWAP_SOL = 0.05; // mirrors SMART_WALLET_MIN_SWAP_SOL in index.ts: smaller swaps never become signals
+
+interface FetchStats {
+  logs: number;            // notifications received from tracked wallets
+  logsErr: number;         // failed transactions (skipped, no fetch)
+  notSwap: number;         // no known DEX program in the logs (skipped, no fetch)
+  deduped: number;         // same wallet+signature seen recently (skipped, no fetch)
+  fingerprintDup: number;  // parsed, but an identical event was just emitted
+  fetches: number;         // getParsedTransaction calls (the billable ones)
+  fetchNull: number;       // fetched, but no swap event came out
+  fetchError: number;      // fetch or parse threw
+  events: number;          // swap events emitted
+  buys: number;
+  sells: number;
+  signalCandidates: number; // BUYs of at least SIGNAL_MIN_SWAP_SOL (the only events that can become a signal)
+  nullReasons: Record<string, number>;
+}
+type CounterKey = Exclude<keyof FetchStats, 'nullReasons'>;
+interface WalletFetchStats { fetches: number; nulls: number; events: number; }
+interface ParseOutcome { nullReason?: string; }
+
+function newFetchStats(): FetchStats {
+  return {
+    logs: 0, logsErr: 0, notSwap: 0, deduped: 0, fingerprintDup: 0,
+    fetches: 0, fetchNull: 0, fetchError: 0,
+    events: 0, buys: 0, sells: 0, signalCandidates: 0,
+    nullReasons: {},
+  };
+}
+
 class ClusterDetector {
   private buyMap: Map<string, ClusterEntry[]> = new Map();
   private readonly WINDOW_MS = 600_000; // 600 seconds
@@ -135,6 +170,11 @@ export class SmartWalletStream {
   private isSwitching = false;
   private watchedConn: Connection | null = null;
   private releaseWatch: (() => void) | null = null;
+  private stats: FetchStats = newFetchStats();         // current window
+  private statsTotal: FetchStats = newFetchStats();    // since boot
+  private perWallet: Map<string, WalletFetchStats> = new Map(); // current window
+  private statsWindowStartMs = Date.now();
+  private statsInterval: ReturnType<typeof setInterval> | null = null;
   private lastEventTime: number = Date.now();
   private reconnectAttempts = 0;
   private isReconnecting = false;
@@ -212,6 +252,7 @@ export class SmartWalletStream {
     this.startHealthCheck();
     this.startSilenceDetector();
     this.startLivenessWatchdog();
+    this.startStatsLog();
 
     // Periodic cleanup for cluster state + dedupe cache
     this.cleanupInterval = setInterval(() => {
@@ -838,8 +879,72 @@ export class SmartWalletStream {
     }
   }
 
+  private count(key: CounterKey): void {
+    this.stats[key]++;
+    this.statsTotal[key]++;
+  }
+
+  private countNull(reason: string): void {
+    this.stats.nullReasons[reason] = (this.stats.nullReasons[reason] ?? 0) + 1;
+    this.statsTotal.nullReasons[reason] = (this.statsTotal.nullReasons[reason] ?? 0) + 1;
+  }
+
+  private walletStat(wallet: string): WalletFetchStats {
+    let w = this.perWallet.get(wallet);
+    if (!w) {
+      w = { fetches: 0, nulls: 0, events: 0 };
+      this.perWallet.set(wallet, w);
+    }
+    return w;
+  }
+
+  private recordEvent(event: SwapEvent, wstat: WalletFetchStats): void {
+    this.count('events');
+    wstat.events++;
+    if (event.action === 'BUY') {
+      this.count('buys');
+      if (event.amountSOL >= SIGNAL_MIN_SWAP_SOL) this.count('signalCandidates');
+    } else {
+      this.count('sells');
+    }
+  }
+
+  private startStatsLog(): void {
+    if (this.statsInterval) clearInterval(this.statsInterval);
+    this.statsWindowStartMs = Date.now();
+    this.statsInterval = setInterval(() => this.logWindowStats(), STATS_INTERVAL_MS);
+    this.statsInterval.unref?.();
+  }
+
+  /** Log the current window's fetch accounting, then start a new window. */
+  private logWindowStats(): void {
+    const now = Date.now();
+    const s = this.stats;
+    const topWalletsByFetches = [...this.perWallet.entries()]
+      .sort((a, b) => b[1].fetches - a[1].fetches)
+      .slice(0, 5)
+      .map(([wallet, w]) => ({ wallet, ...w }));
+
+    logger.info('[WalletStream] Hourly fetch stats', {
+      windowMinutes: Math.round((now - this.statsWindowStartMs) / 60_000),
+      ...s,
+      fetchNullPct: s.fetches > 0 ? Math.round((s.fetchNull / s.fetches) * 100) : 0,
+      activeWallets: this.perWallet.size,
+      topWalletsByFetches,
+    });
+
+    this.stats = newFetchStats();
+    this.perWallet.clear();
+    this.statsWindowStartMs = now;
+  }
+
   private async handleLogs(logs: Logs, ctx: Context, walletAddress: string): Promise<void> {
-    if (logs.err) return;
+    this.count('logs');
+    const wstat = this.walletStat(walletAddress);
+    if (logs.err) {
+      this.count('logsErr');
+      return;
+    }
 
     // Check if this is a swap — look for known DEX program invocations
     const isSwap = logs.logs.some((l) => {
@@ -849,25 +954,34 @@ export class SmartWalletStream {
       return false;
     });
 
-    if (!isSwap) return;
+    if (!isSwap) {
+      this.count('notSwap');
+      return;
+    }
 
     const dedupeKey = `${walletAddress}:${logs.signature}`;
     const now = Date.now();
     const seenAt = this.recentSignatures.get(dedupeKey);
     if (seenAt && now - seenAt < EVENT_DEDUP_TTL_MS) {
+      this.count('deduped');
       return;
     }
     if (this.inFlightSignatures.has(dedupeKey)) {
+      this.count('deduped');
       return;
     }
     this.inFlightSignatures.add(dedupeKey);
 
     try {
-      const event = await this.parseSwap(logs.signature, ctx.slot, walletAddress);
+      this.count('fetches');
+      wstat.fetches++;
+      const outcome: ParseOutcome = {};
+      const event = await this.parseSwap(logs.signature, ctx.slot, walletAddress, outcome);
       if (event) {
         const fingerprint = `${walletAddress}:${ctx.slot}:${event.tokenCA}:${event.action}:${event.amountSOL.toFixed(6)}`;
         const seenFingerprintAt = this.recentEventFingerprints.get(fingerprint);
         if (seenFingerprintAt && now - seenFingerprintAt < EVENT_FINGERPRINT_TTL_MS) {
+          this.count('fingerprintDup');
           this.recentSignatures.set(dedupeKey, now);
           return;
         }
@@ -875,6 +989,7 @@ export class SmartWalletStream {
         this.recentSignatures.set(dedupeKey, now);
         this.recentEventFingerprints.set(fingerprint, now);
         bus.emit('swap:detected', event);
+        this.recordEvent(event, wstat);
 
         if (event.action === 'BUY') {
           this.clusterDetector.recordBuy(event.tokenCA, walletAddress, this.walletRegistry);
@@ -888,8 +1003,13 @@ export class SmartWalletStream {
           amountSOL: event.amountSOL,
           slot: ctx.slot,
         });
+      } else {
+        this.count('fetchNull');
+        wstat.nulls++;
+        this.countNull(outcome.nullReason ?? 'unknown');
       }
     } catch (err) {
+      this.count('fetchError');
       logger.warn('Swap parse failed', {
         sig: logs.signature,
         wallet: walletAddress,
@@ -903,21 +1023,28 @@ export class SmartWalletStream {
   private async parseSwap(
     signature: string,
     slot: number,
-    walletAddress: string
+    walletAddress: string,
+    outcome: ParseOutcome
   ): Promise<SwapEvent | null> {
     const tx = await this.activeConnection.getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',
     });
 
-    if (!tx?.meta || !tx.transaction) return null;
+    if (!tx?.meta || !tx.transaction) {
+      outcome.nullReason = 'tx_unavailable';
+      return null;
+    }
 
     // Find the wallet's account index
     const accountKeys = tx.transaction.message.accountKeys;
     const walletIndex = accountKeys.findIndex(
       (k) => k.pubkey.toBase58() === walletAddress
     );
-    if (walletIndex === -1) return null;
+    if (walletIndex === -1) {
+      outcome.nullReason = 'wallet_not_in_tx';
+      return null;
+    }
 
     // SOL balance change for this wallet
     const preSol = tx.meta.preBalances[walletIndex];
@@ -936,11 +1063,17 @@ export class SmartWalletStream {
       (b) => b.owner === walletAddress && b.mint !== WRAPPED_SOL && b.mint !== USDC_MINT
     );
 
-    if (walletPostTokens.length === 0 && walletPreTokens.length === 0) return null;
+    if (walletPostTokens.length === 0 && walletPreTokens.length === 0) {
+      outcome.nullReason = 'no_token_balance';
+      return null;
+    }
 
     // Determine the token CA and amount change
     const tokenMint = walletPostTokens[0]?.mint ?? walletPreTokens[0]?.mint;
-    if (!tokenMint) return null;
+    if (!tokenMint) {
+      outcome.nullReason = 'no_token_mint';
+      return null;
+    }
 
     const preAmount = BigInt(
       walletPreTokens.find((b) => b.mint === tokenMint)?.uiTokenAmount.amount ?? '0'
@@ -956,7 +1089,12 @@ export class SmartWalletStream {
     const amountSOL = Math.abs(solDelta);
     const amountTokens = tokenDelta < 0n ? -tokenDelta : tokenDelta;
 
-    if (amountSOL === 0 || amountTokens === 0n) return null;
+    if (amountSOL === 0 || amountTokens === 0n) {
+      // zero_sol_delta: native SOL unchanged (e.g. a swap paid in wrapped SOL)
+      // zero_token_delta: token balance unchanged (e.g. a round-trip / arbitrage)
+      outcome.nullReason = amountSOL === 0 ? 'zero_sol_delta' : 'zero_token_delta';
+      return null;
+    }
 
     // Price per whole token in SOL (adjusted for decimals).
     // This matches the convention used by poolPriceStream.getSpotPrice() and Jupiter API.
@@ -1032,6 +1170,7 @@ export class SmartWalletStream {
     wsHeartbeatOk: number;
     wsHeartbeatFail: number;
     subscriptionCount: number;
+    fetchStats: FetchStats;
   } {
     return {
       reconnectAttempts: this.reconnectAttempts,
@@ -1045,6 +1184,7 @@ export class SmartWalletStream {
       wsHeartbeatOk: this.wsHeartbeatOk,
       wsHeartbeatFail: this.wsHeartbeatFail,
       subscriptionCount: this.subscriptions.size,
+      fetchStats: { ...this.statsTotal, nullReasons: { ...this.statsTotal.nullReasons } },
     };
   }
 
@@ -1073,6 +1213,10 @@ export class SmartWalletStream {
     this.releaseWatch?.();
     this.releaseWatch = null;
     this.watchedConn = null;
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = null;
+    }
 
     await this.clearSubscriptions();
     for (const conn of this.connectionPool) {
