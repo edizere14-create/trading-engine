@@ -29,7 +29,12 @@ const USAGE = `Usage: wallets:import <file.csv> --mode replace|merge [options]
   --min-trades <n>       skip wallets with fewer trades (default ${DEFAULT_IMPORT_OPTIONS.minTrades})
   --max-trades <n>       skip wallets with more trades, as bot-like (default: no limit)
   --max <n>              keep at most n wallets, best PnL first (default ${DEFAULT_IMPORT_OPTIONS.max})
-  --exclude a,b,c        addresses to leave out (with merge, also removes them from the registry)`;
+  --exclude a,b,c        addresses to leave out (with merge, also removes them from the registry)
+
+Where to write: --out must be the file the engine actually reads (the WALLETS_FILE setting, or
+DATA_DIR/wallets.json when it is not set), and that file must be on a persistent disk. A path
+inside the deployed checkout (for example .../project/src/data) is rebuilt from git on every
+deploy and silently undoes the import. Restart the service after writing: the registry is read at startup.`;
 
 function fail(message: string): never {
   console.error(`error: ${message}\n\n${USAGE}`);
