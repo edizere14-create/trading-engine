@@ -5,24 +5,30 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   ImportMode,
   ImportOptions,
+  FieldMap,
   buildEntries,
+  buildEntriesFromJson,
+  parseFieldMap,
   planImport,
   writeWalletsFile,
 } from '../src/registry/walletImport';
 
 /**
- * Import a CSV of wallets into the registry.
+ * Import a CSV or JSON list of wallets into the registry.
  *
  *   npm run wallets:import -- leaderboard.csv --mode replace            (dry run)
- *   npm run wallets:import -- leaderboard.csv --mode replace --write    (writes data/wallets.json)
+ *   npm run wallets:import -- leaderboard.json --mode replace --write   (writes data/wallets.json)
  *
- * CSV columns (header names are matched loosely): address, pnl30d, trade_count (required);
+ * Fields (names are matched loosely): address, pnl30d, trade_count (required);
  * win_rate, tier, last_active (optional). Nothing is written unless --write is given.
  */
 
-const USAGE = `Usage: wallets:import <file.csv> --mode replace|merge [options]
+const USAGE = `Usage: wallets:import <file.csv|file.json> --mode replace|merge [options]
 
-  --mode replace|merge   required. replace = the CSV becomes the whole registry; merge = add/update, remove nothing
+  --mode replace|merge   required. replace = the file becomes the whole registry; merge = add/update, remove nothing
+  --format csv|json      input format (default: json for a .json file, otherwise csv)
+  --field name=path,...  JSON only: where a field lives when its name isn't recognised, as a dotted path,
+                         e.g. --field pnl30d=summary.realized,win_rate=winPct,trade_count=totalTrades
   --write                actually write the file (default is a dry run that only prints the report)
   --out <path>           registry file (default data/wallets.json)
   --pnl-multiplier <n>   multiply the CSV's PnL to get USD (default 1)
@@ -53,6 +59,8 @@ function parseArgs(argv: string[]) {
   let mode: ImportMode | undefined;
   let write = false;
   let out = 'data/wallets.json';
+  let format: 'csv' | 'json' | undefined;
+  let fieldMap: FieldMap = {};
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -66,6 +74,19 @@ function parseArgs(argv: string[]) {
       }
       case '--write':
         write = true;
+        break;
+      case '--format': {
+        const f = next();
+        if (f !== 'csv' && f !== 'json') fail('--format must be csv or json');
+        format = f;
+        break;
+      }
+      case '--field':
+        try {
+          fieldMap = { ...fieldMap, ...parseFieldMap(next() ?? '') };
+        } catch (err) {
+          fail(err instanceof Error ? err.message : String(err));
+        }
         break;
       case '--out':
         out = next() ?? fail('--out needs a path');
@@ -92,23 +113,26 @@ function parseArgs(argv: string[]) {
       // falls through (exit above)
       default:
         if (arg.startsWith('--')) fail(`unknown option ${arg}`);
-        if (file !== undefined) fail('only one CSV file can be given');
+        if (file !== undefined) fail('only one input file can be given');
         file = arg;
     }
   }
 
-  if (file === undefined) fail('missing the CSV file');
+  if (file === undefined) fail('missing the input file');
   if (mode === undefined) fail('--mode is required (replace or merge): there is no default on purpose');
-  return { file, mode, write, out, options };
+  const resolvedFormat = format ?? (file.toLowerCase().endsWith('.json') ? 'json' : 'csv');
+  if (resolvedFormat === 'csv' && Object.keys(fieldMap).length > 0) fail('--field only applies to JSON input');
+  return { file, mode, write, out, options, format: resolvedFormat, fieldMap };
 }
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 async function main() {
-  const { file, mode, write, out, options } = parseArgs(process.argv.slice(2));
+  const { file, mode, write, out, options, format, fieldMap } = parseArgs(process.argv.slice(2));
 
   if (fs.existsSync(file) === false) fail(`file not found: ${file}`);
-  const result = buildEntries(fs.readFileSync(file, 'utf-8'), options);
+  const text = fs.readFileSync(file, 'utf-8');
+  const result = format === 'json' ? buildEntriesFromJson(text, options, fieldMap) : buildEntries(text, options);
 
   const existing = fs.existsSync(path.resolve(out)) ? (await WalletRegistry.load(out)).getAll() : [];
   const plan = planImport(existing, result.entries, mode, options.exclude);
@@ -127,7 +151,7 @@ async function main() {
   if (result.skipped.length > 0) {
     console.log('\nSkipped:');
     for (const s of result.skipped.slice(0, 30)) {
-      console.log(`  ${s.line > 0 ? `line ${s.line}` : 'cap'}: ${s.address === '' ? '(blank)' : short(s.address)} — ${s.reason}`);
+      console.log(`  ${s.line > 0 ? `${result.unit} ${s.line}` : 'cap'}: ${s.address === '' ? '(blank)' : short(s.address)} — ${s.reason}`);
     }
     if (result.skipped.length > 30) console.log(`  … and ${result.skipped.length - 30} more`);
   }

@@ -37,6 +37,8 @@ export interface ImportResult {
   entries: WalletEntry[];
   skipped: SkippedRow[];
   warnings: string[];
+  /** What `line` in skipped rows and warnings counts: file lines (CSV) or records (JSON). */
+  unit: 'line' | 'record';
 }
 
 export const DEFAULT_IMPORT_OPTIONS: Omit<ImportOptions, 'now'> = {
@@ -172,10 +174,26 @@ export function deriveTier(pnlUSD: number, winRate: number | null): Tier {
   return 'B';
 }
 
-// ── Build entries from a CSV ─────────────────────────────────────────
+// ── Build entries from a table (CSV or JSON) ─────────────────────────
+
+/** What both input formats are turned into. `unit` names what `line` counts in messages. */
+export interface Table {
+  header: string[];
+  rows: { line: number; cells: string[] }[];
+  unit?: 'line' | 'record';
+}
 
 export function buildEntries(csvText: string, options: ImportOptions): ImportResult {
-  const { header, rows } = parseCsv(csvText);
+  return buildEntriesFromTable(parseCsv(csvText), options);
+}
+
+export function buildEntriesFromJson(jsonText: string, options: ImportOptions, fieldMap: FieldMap = {}): ImportResult {
+  return buildEntriesFromTable(jsonToTable(jsonText, fieldMap), options);
+}
+
+export function buildEntriesFromTable(table: Table, options: ImportOptions): ImportResult {
+  const { header, rows } = table;
+  const unit = table.unit ?? 'line';
   const warnings: string[] = [];
   const skipped: SkippedRow[] = [];
   const cols = resolveColumns(header);
@@ -186,9 +204,8 @@ export function buildEntries(csvText: string, options: ImportOptions): ImportRes
       cols.pnl === undefined ? 'pnl' : null,
       cols.trades === undefined ? 'trade_count' : null,
     ].filter((x): x is string => x !== null);
-    throw new Error(
-      `CSV is missing required column(s): ${missing.join(', ')}. Found: ${header.join(', ') || '(no header)'}`
-    );
+    const found = header.slice(0, 40).join(', ') + (header.length > 40 ? ', …' : '');
+    throw new Error(`Input is missing required column(s): ${missing.join(', ')}. Found: ${found || '(no header)'}`);
   }
 
   const best = new Map<string, WalletEntry>();
@@ -259,14 +276,15 @@ export function buildEntries(csvText: string, options: ImportOptions): ImportRes
     if (cols.lastActive !== undefined) {
       const raw = (cells[cols.lastActive] ?? '').trim();
       if (raw !== '') {
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) warnings.push(`line ${line}: unreadable last-active "${raw}", using import time`);
+        // 9-10 digits is epoch seconds, 11-13 is epoch milliseconds (JSON APIs often send these)
+        const d = /^\d{9,13}$/.test(raw) ? new Date(raw.length <= 10 ? Number(raw) * 1000 : Number(raw)) : new Date(raw);
+        if (Number.isNaN(d.getTime())) warnings.push(`${unit} ${line}: unreadable last-active "${raw}", using import time`);
         else lastActive = d;
       }
     }
 
     if (tradeCount > BOT_LIKE_TRADES) {
-      warnings.push(`line ${line}: ${address} has ${tradeCount} trades, which looks bot-like (use --max-trades to drop such wallets)`);
+      warnings.push(`${unit} ${line}: ${address} has ${tradeCount} trades, which looks bot-like (use --max-trades to drop such wallets)`);
     }
 
     const entry: WalletEntry = { address, pnl30d: pnlUSD, tier, tradeCount, lastActive };
@@ -287,7 +305,124 @@ export function buildEntries(csvText: string, options: ImportOptions): ImportRes
     skipped.push({ line: 0, address: dropped.address, reason: `beyond --max ${options.max} (lower PnL)` });
   }
 
-  return { entries: kept, skipped, warnings };
+  return { entries: kept, skipped, warnings, unit };
+}
+
+// ── JSON input ───────────────────────────────────────────────────────
+
+const CANONICAL_FIELDS = ['address', 'pnl30d', 'win_rate', 'trade_count', 'tier', 'last_active'] as const;
+export type CanonicalField = (typeof CANONICAL_FIELDS)[number];
+/** Where to find a field in each JSON record, as a dotted path: { pnl30d: 'summary.realized' }. */
+export type FieldMap = Partial<Record<CanonicalField, string>>;
+
+/** "pnl30d=summary.realized,win_rate=winPct" -> FieldMap */
+export function parseFieldMap(spec: string): FieldMap {
+  const map: FieldMap = {};
+  for (const part of spec.split(',')) {
+    if (part.trim() === '') continue;
+    const [name, ...rest] = part.split('=');
+    const path = rest.join('=').trim();
+    const key = name.trim() as CanonicalField;
+    if (CANONICAL_FIELDS.includes(key) === false || path === '') {
+      throw new Error(`--field expects name=path with name one of ${CANONICAL_FIELDS.join(', ')} (got "${part}")`);
+    }
+    map[key] = path;
+  }
+  return map;
+}
+
+const WRAPPER_KEYS = ['data', 'wallets', 'traders', 'results', 'items', 'leaderboard', 'rows', 'entries'];
+
+/** The list of records: the array itself, or the array inside a common wrapper such as { data: [...] }. */
+function findRecords(node: unknown, depth = 0): unknown[] | null {
+  if (Array.isArray(node)) return node;
+  if (node === null || typeof node !== 'object' || depth >= 3) return null;
+  const obj = node as Record<string, unknown>;
+  for (const key of WRAPPER_KEYS) {
+    if (key in obj) {
+      const found = findRecords(obj[key], depth + 1);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+function scalarToString(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' && Number.isFinite(v)) return /e/i.test(String(v)) ? v.toFixed(6) : String(v);
+  return '';
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && Array.isArray(v) === false;
+
+/** Leaf key -> value for one record, nearest-to-the-top first (two levels of nesting are looked at). */
+function flattenRecord(record: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  const queue: [unknown, number][] = [[record, 0]];
+  while (queue.length > 0) {
+    const [node, depth] = queue.shift()!;
+    if (isObject(node) === false) continue;
+    for (const [key, value] of Object.entries(node)) {
+      if (isObject(value)) {
+        if (depth < 2) queue.push([value, depth + 1]);
+      } else if (Array.isArray(value) === false && out.has(key) === false) {
+        out.set(key, scalarToString(value));
+      }
+    }
+  }
+  return out;
+}
+
+function lookupPath(record: unknown, dotted: string): string {
+  let node: unknown = record;
+  for (const part of dotted.split('.')) {
+    if (isObject(node) === false) return '';
+    node = node[part];
+  }
+  return scalarToString(node);
+}
+
+/**
+ * Turns a JSON export into the same table a CSV gives. Keys are matched with the same loose
+ * names as CSV headers; nested objects are searched two levels down. When the names don't
+ * match, fieldMap says where each field lives, and its columns take priority.
+ */
+export function jsonToTable(jsonText: string, fieldMap: FieldMap = {}): Table {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText.replace(/^﻿/, ''));
+  } catch (err) {
+    throw new Error(`Input is not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  const records = findRecords(parsed);
+  if (records === null) {
+    throw new Error('JSON must be an array of wallet records, or an object wrapping one (data, wallets, traders, results, items, leaderboard, rows or entries)');
+  }
+
+  if (records.length === 0) throw new Error('JSON contains no wallet records');
+
+  const mapped = (Object.keys(fieldMap) as CanonicalField[]).filter((k) => fieldMap[k] !== undefined);
+  const flats = records.map(flattenRecord);
+  const leafNames: string[] = [];
+  const seen = new Set<string>(mapped);
+  for (const flat of flats) {
+    for (const key of flat.keys()) {
+      if (seen.has(key) === false) {
+        seen.add(key);
+        leafNames.push(key);
+      }
+    }
+  }
+
+  const header = [...mapped, ...leafNames];
+  const rows = records.map((record, i) => ({
+    line: i + 1,
+    cells: [
+      ...mapped.map((k) => lookupPath(record, fieldMap[k]!)),
+      ...leafNames.map((k) => flats[i].get(k) ?? ''),
+    ],
+  }));
+  return { header, rows, unit: 'record' };
 }
 
 // ── Plan the change against the existing registry ────────────────────

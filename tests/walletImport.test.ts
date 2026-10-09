@@ -6,9 +6,12 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   ImportOptions,
   buildEntries,
+  buildEntriesFromJson,
   deriveTier,
   isValidAddress,
+  jsonToTable,
   parseCsv,
+  parseFieldMap,
   parseNumber,
   planImport,
   writeWalletsFile,
@@ -250,5 +253,84 @@ describe('writeWalletsFile', () => {
     await expect(writeWalletsFile(bad, out, NOW)).rejects.toThrow();
     expect(fs.readFileSync(out, 'utf-8')).toBe('[]');
     expect(fs.readdirSync(d)).toEqual(['wallets.json']);
+  });
+});
+
+describe('JSON input', () => {
+  const [a, b, c] = [addr(), addr(), addr()];
+  const json = (v: unknown) => JSON.stringify(v);
+
+  it('reads a flat array with loosely named keys', () => {
+    const r = buildEntriesFromJson(json([{ wallet: a, realizedPnl: 600000, winRate: 70, trades: 140 }]), opts());
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toMatchObject({ address: a, pnl30d: 600000, tradeCount: 140, tier: 'S' });
+    expect(r.unit).toBe('record');
+  });
+
+  it.each(['data', 'wallets', 'traders', 'results', 'items', 'leaderboard'])('unwraps { %s: [...] }', (key) => {
+    const r = buildEntriesFromJson(json({ [key]: [{ address: a, pnl: 1000, trade_count: 50 }] }), opts());
+    expect(r.entries.map((e) => e.address)).toEqual([a]);
+  });
+
+  it('unwraps one level deeper, such as { data: { traders: [...] } }', () => {
+    const r = buildEntriesFromJson(json({ data: { traders: [{ address: a, pnl: 1000, trades: 50 }] } }), opts());
+    expect(r.entries).toHaveLength(1);
+  });
+
+  it('finds fields inside nested objects, preferring the shallowest key', () => {
+    const rec = { address: a, summary: { pnl: 1000, trades: 50, winRate: 0.6 }, pnl: null };
+    const r = buildEntriesFromJson(json([rec]), opts());
+    // top-level pnl is null (empty), and it wins over the nested one, so this record is skipped
+    expect(r.entries).toHaveLength(0);
+    const ok = buildEntriesFromJson(json([{ address: a, summary: { pnl: 1000, trades: 50, winRate: 0.6 } }]), opts());
+    expect(ok.entries[0]).toMatchObject({ pnl30d: 1000, tradeCount: 50 });
+  });
+
+  it('uses --field paths, and they win over auto-detected keys', () => {
+    const rec = { id: a, pnl: 1, stats: { realized: 2500, count: 90, win: 0.55 } };
+    const map = parseFieldMap('address=id,pnl30d=stats.realized,trade_count=stats.count,win_rate=stats.win');
+    const r = buildEntriesFromJson(json([rec]), opts(), map);
+    expect(r.entries[0]).toMatchObject({ address: a, pnl30d: 2500, tradeCount: 90 });
+  });
+
+  it('accepts epoch seconds and milliseconds for last active', () => {
+    const rows = [
+      { address: a, pnl: 100, trades: 50, last_active: 1790000000 },
+      { address: b, pnl: 100, trades: 50, last_active: 1790000000000 },
+    ];
+    const r = buildEntriesFromJson(json(rows), opts());
+    const when = new Date(1790000000000);
+    expect(r.entries.map((e) => e.lastActive.getTime())).toEqual([when.getTime(), when.getTime()]);
+  });
+
+  it('turns large numbers without exponent notation and ignores arrays and booleans', () => {
+    const t = jsonToTable(json([{ address: a, pnl: 1e21, trades: 50, tags: ['x'], bot: true }]));
+    expect(t.rows[0].cells[t.header.indexOf('pnl')]).toBe((1e21).toFixed(6));
+    expect(t.header).not.toContain('tags');
+  });
+
+  it('reports the record number in skip reasons', () => {
+    const r = buildEntriesFromJson(json([{ address: a, pnl: 100, trades: 50 }, { address: 'nope', pnl: 100, trades: 50 }]), opts());
+    expect(r.skipped[0]).toMatchObject({ line: 2, reason: 'not a valid Solana address' });
+  });
+
+  it('gives clear errors for bad JSON, an unusable shape, and missing fields (listing what it found)', () => {
+    expect(() => buildEntriesFromJson('{oops', opts())).toThrow(/not valid JSON/);
+    expect(() => buildEntriesFromJson(json({ foo: 1 }), opts())).toThrow(/array of wallet records/);
+    expect(() => buildEntriesFromJson(json([{ address: a, balance: 5 }]), opts())).toThrow(/missing required.*Found: address, balance/);
+  });
+
+  it('says so when the list is empty', () => {
+    expect(() => buildEntriesFromJson('[]', opts())).toThrow(/no wallet records/);
+  });
+});
+
+describe('parseFieldMap', () => {
+  it('parses name=path pairs', () => {
+    expect(parseFieldMap('pnl30d=summary.realized, win_rate=winPct')).toEqual({ pnl30d: 'summary.realized', win_rate: 'winPct' });
+  });
+  it('rejects unknown names and missing paths', () => {
+    expect(() => parseFieldMap('profit=x')).toThrow(/name=path/);
+    expect(() => parseFieldMap('pnl30d=')).toThrow(/name=path/);
   });
 });
