@@ -21,6 +21,11 @@ export interface ImportOptions {
   minTrades: number;
   /** Wallets with more trades than this are skipped as bot-like; null = no limit. */
   maxTrades: number | null;
+  /**
+   * Wallets whose PnL divided by trade count is above this are skipped: a leaderboard that
+   * values one mispriced or fake token at millions shows up as a huge gain per trade. null = no limit.
+   */
+  maxPnlPerTrade: number | null;
   /** Keep at most this many wallets, best PnL first. */
   max: number;
   exclude: Set<string>;
@@ -45,12 +50,16 @@ export const DEFAULT_IMPORT_OPTIONS: Omit<ImportOptions, 'now'> = {
   pnlMultiplier: 1,
   minTrades: 20,
   maxTrades: null,
+  maxPnlPerTrade: 25_000,
   max: 60,
   exclude: new Set<string>(),
 };
 
 /** Trade counts above this get a warning (not a skip): a human rarely does this many. */
 export const BOT_LIKE_TRADES = 1000;
+
+/** PnL per trade above this gets a warning (not a skip); the skip limit is options.maxPnlPerTrade. */
+export const PNL_PER_TRADE_WARN = 10_000;
 
 // ── CSV ──────────────────────────────────────────────────────────────
 
@@ -248,6 +257,13 @@ export function buildEntriesFromTable(table: Table, options: ImportOptions): Imp
       skip(`looks like a bot: ${tradeCount} trades is above the ${options.maxTrades} limit`);
       continue;
     }
+    const pnlPerTrade = pnlUSD / Math.max(tradeCount, 1);
+    if (options.maxPnlPerTrade !== null && pnlPerTrade > options.maxPnlPerTrade) {
+      skip(
+        `PnL looks implausible: $${Math.round(pnlUSD).toLocaleString('en-US')} over ${tradeCount} trades is $${Math.round(pnlPerTrade).toLocaleString('en-US')} a trade (limit $${options.maxPnlPerTrade.toLocaleString('en-US')}); likely a mispriced token in the source data`
+      );
+      continue;
+    }
 
     let winRate: number | null = null;
     if (cols.winRate !== undefined) {
@@ -283,6 +299,9 @@ export function buildEntriesFromTable(table: Table, options: ImportOptions): Imp
       }
     }
 
+    if (pnlPerTrade > PNL_PER_TRADE_WARN) {
+      warnings.push(`${unit} ${line}: ${address} averages $${Math.round(pnlPerTrade).toLocaleString('en-US')} PnL a trade; check that the PnL is real before trusting it`);
+    }
     if (tradeCount > BOT_LIKE_TRADES) {
       warnings.push(`${unit} ${line}: ${address} has ${tradeCount} trades, which looks bot-like (use --max-trades to drop such wallets)`);
     }

@@ -34,6 +34,8 @@ const USAGE = `Usage: wallets:import <file.csv|file.json> --mode replace|merge [
   --pnl-multiplier <n>   multiply the CSV's PnL to get USD (default 1)
   --min-trades <n>       skip wallets with fewer trades (default ${DEFAULT_IMPORT_OPTIONS.minTrades})
   --max-trades <n>       skip wallets with more trades, as bot-like (default: no limit)
+  --max-pnl-per-trade <n>  skip wallets whose PnL / trade count is above n dollars: the sign of a mispriced
+                         token in the source data (default ${DEFAULT_IMPORT_OPTIONS.maxPnlPerTrade}; 0 turns the check off)
   --max <n>              keep at most n wallets, best PnL first (default ${DEFAULT_IMPORT_OPTIONS.max})
   --exclude a,b,c        addresses to leave out (with merge, also removes them from the registry)
 
@@ -103,6 +105,11 @@ function parseArgs(argv: string[]) {
       case '--max':
         options.max = numberFlag(arg, next());
         break;
+      case '--max-pnl-per-trade': {
+        const n = numberFlag(arg, next());
+        options.maxPnlPerTrade = n === 0 ? null : n;
+        break;
+      }
       case '--exclude':
         for (const a of (next() ?? '').split(',')) if (a.trim() !== '') options.exclude.add(a.trim());
         break;

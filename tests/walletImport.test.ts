@@ -144,6 +144,60 @@ describe('buildEntries', () => {
     expect(dropped.skipped[0].reason).toMatch(/looks like a bot/);
   });
 
+  describe('PnL-per-trade guard', () => {
+    // the screenshot case: $9.54M over 72 trades is about $132K a trade
+    const bogus = `address,pnl30d,trade_count
+${a},9540000,72
+${b},60000,60
+`;
+
+    it('skips a wallet whose PnL per trade is implausible, with the reason and the numbers', () => {
+      const r = buildEntries(bogus, opts());
+      expect(r.entries.map((e) => e.address)).toEqual([b]);
+      const s = r.skipped.find((x) => x.address === a)!;
+      expect(s.reason).toMatch(/implausible/);
+      expect(s.reason).toContain('$9,540,000 over 72 trades is $132,500 a trade');
+      expect(s.reason).toContain('limit $25,000');
+    });
+
+    it('lets a plausible wallet through, and warns between the warning level and the limit', () => {
+      const r = buildEntries(`address,pnl30d,trade_count
+${c},1000000,50
+`, opts()); // $20K a trade
+      expect(r.entries).toHaveLength(1);
+      expect(r.warnings.join(' ')).toContain('$20,000 PnL a trade');
+      const quiet = buildEntries(`address,pnl30d,trade_count
+${c},400000,50
+`, opts()); // $8K a trade
+      expect(quiet.warnings).toEqual([]);
+    });
+
+    it('is off when maxPnlPerTrade is null, and the limit is configurable', () => {
+      expect(buildEntries(bogus, opts({ maxPnlPerTrade: null })).entries).toHaveLength(2);
+      expect(buildEntries(bogus, opts({ maxPnlPerTrade: 200_000 })).entries).toHaveLength(2);
+      expect(buildEntries(bogus, opts({ maxPnlPerTrade: 50_000 })).entries).toHaveLength(1);
+    });
+
+    it('does not divide by zero when min-trades allows zero trades', () => {
+      const r = buildEntries(`address,pnl30d,trade_count
+${a},900000,0
+`, opts({ minTrades: 0 }));
+      expect(r.entries).toHaveLength(0);
+      expect(r.skipped[0].reason).toMatch(/implausible/);
+    });
+
+    it('applies after the PnL multiplier', () => {
+      const r = buildEntries(`address,pnl30d,trade_count
+${a},100,50
+`, opts({ pnlMultiplier: 10_000 })); // $1M, $20K a trade
+      expect(r.entries).toHaveLength(1);
+      const big = buildEntries(`address,pnl30d,trade_count
+${a},100,50
+`, opts({ pnlMultiplier: 100_000 })); // $200K a trade
+      expect(big.entries).toHaveLength(0);
+    });
+  });
+
   it('treats a win rate above 1 as a percent and rejects impossible values', () => {
     const csv = `address,pnl30d,win_rate,trade_count\n${a},600000,70,50\n${b},600000,0.7,50\n${c},600000,250,50\n`;
     const r = buildEntries(csv, opts());
