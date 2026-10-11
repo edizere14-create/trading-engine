@@ -22,10 +22,23 @@ interface PositionConfig {
   tightStopWindowMs: number; // early-hold window where tightStopPct applies
   tightStopPct: number;      // tighter stop used within tightStopWindowMs of entry
   allowNoPoolTrades?: boolean; // ALLOW_NO_POOL_TRADES: let SINGLE_WALLET trades open without a real pool
+  onChainPriceFreshMs?: number; // poller prices are ignored while an on-chain tick is this fresh; 0 = never ignore
 }
 
 /** The first ticks of each position are logged, so an early stop can be explained afterwards. */
 const TICK_LOG_LIMIT = 3;
+
+/** Prices from these sources are read from the chain: pool reserves, or the price of a swap. */
+const ONCHAIN_SOURCES = new Set(['pool', 'swap']);
+
+/**
+ * Default for onChainPriceFreshMs. Poller prices (DexScreener / Jupiter) are a third party's view of
+ * the best-liquidity pair, and can disagree wildly with the pool a position was opened on.
+ */
+export const DEFAULT_ONCHAIN_PRICE_FRESH_MS = 15_000;
+
+/** An ignored poller price this far from the on-chain price gets one log line per position. */
+const POLLER_DISAGREEMENT_LOG_PCT = 0.25;
 
 interface Tick {
   price: number;
@@ -43,6 +56,8 @@ export class PositionManager {
   private readonly MAX_CLOSED_POSITIONS = 500;
   private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
   private tickTraces: Map<string, TickTrace> = new Map();   // tokenCA → recent ticks (diagnostics only)
+  private onChainTicks: Map<string, Tick> = new Map();      // tokenCA → latest pool/swap price (drives the poller rule)
+  private pollerIgnored: Map<string, { count: number; logged: boolean }> = new Map();
   private openTokenCAs: Set<string> = new Set();
   private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
@@ -204,6 +219,45 @@ export class PositionManager {
     return true;
   }
 
+  private noteOnChainTick(tokenCA: string, price: number, source: string): void {
+    if (ONCHAIN_SOURCES.has(source) && Number.isFinite(price) && price > 0) {
+      this.onChainTicks.set(tokenCA, { price, at: Date.now(), source });
+    }
+  }
+
+  /**
+   * The price rule: while the position has a fresh on-chain price (pool stream or swap print), a
+   * poller price (DexScreener/Jupiter) is ignored. Once the chain has been quiet for longer than
+   * onChainPriceFreshMs, or if there never was an on-chain price, poller prices count as before.
+   */
+  private shouldIgnorePollerTick(position: TradePosition, price: number, source: string): boolean {
+    const freshMs = this.config.onChainPriceFreshMs ?? DEFAULT_ONCHAIN_PRICE_FRESH_MS;
+    if (freshMs <= 0 || source.startsWith('poller:') === false) return false;
+
+    const onChain = this.onChainTicks.get(position.tokenCA);
+    if (onChain === undefined) return false;
+    const ageMs = Date.now() - onChain.at;
+    if (ageMs > freshMs) return false;
+
+    const state = this.pollerIgnored.get(position.tokenCA) ?? { count: 0, logged: false };
+    state.count++;
+    const deviation = price / onChain.price - 1;
+    if (state.logged === false && Math.abs(deviation) >= POLLER_DISAGREEMENT_LOG_PCT) {
+      state.logged = true;
+      logger.info('Poller price ignored: disagrees with the on-chain price', {
+        tokenCA: position.tokenCA,
+        pollerSource: source,
+        pollerPriceSOL: price,
+        onChainSource: onChain.source,
+        onChainPriceSOL: onChain.price,
+        onChainAgeMs: ageMs,
+        deviationPct: (deviation * 100).toFixed(1),
+      });
+    }
+    this.pollerIgnored.set(position.tokenCA, state);
+    return true;
+  }
+
   /** Keeps the last two ticks per position and logs the first few, with the price source of each. */
   private recordTick(position: TradePosition, price: number, source: string): void {
     const trace = this.tickTraces.get(position.tokenCA) ?? { count: 0 };
@@ -234,6 +288,7 @@ export class PositionManager {
       entryPriceBasis: position.entryPriceBasis,
       peakMultiple: entry > 0 ? (position.peakPriceSOL / entry).toFixed(3) : undefined,
       ticksSeen: trace?.count ?? 0,
+      pollerTicksIgnored: this.pollerIgnored.get(position.tokenCA)?.count ?? 0,
       lastTickSource: trace?.last?.source,
       lastTickMultiple: multipleOf(trace?.last),
       prevTickSource: trace?.prev?.source,
@@ -256,6 +311,8 @@ export class PositionManager {
     const position = this.positions.get(tokenCA);
     if (!position) return;
 
+    this.noteOnChainTick(tokenCA, currentPriceSOL, source);
+    if (this.shouldIgnorePollerTick(position, currentPriceSOL, source)) return;
     this.recordTick(position, currentPriceSOL, source);
 
     // Anchor entry price on first valid tick — do not evaluate exits on the anchoring tick.
@@ -448,6 +505,8 @@ export class PositionManager {
       ...this.tickSummary(position),
     });
     this.tickTraces.delete(tokenCA);
+    this.onChainTicks.delete(tokenCA);
+    this.pollerIgnored.delete(tokenCA);
   }
 
   private monitorPositions(): void {

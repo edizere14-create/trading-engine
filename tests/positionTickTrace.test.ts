@@ -38,6 +38,7 @@ describe('tick trace for early stops', () => {
     stopLossPct: 0.6,
     tightStopWindowMs: 10_000,
     tightStopPct: 0.25,
+    onChainPriceFreshMs: 0, // these tests are about the trace; the price-source rule has its own tests
   };
   const survival: SurvivalSnapshot = {
     state: 'NORMAL',

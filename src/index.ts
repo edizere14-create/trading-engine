@@ -663,6 +663,7 @@ async function boot(): Promise<void> {
       tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
       tightStopPct: cfg.TIGHT_STOP_PCT,
       allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
+      onChainPriceFreshMs: cfg.ONCHAIN_PRICE_FRESH_MS,
     }
   );
   positionManager.start();
@@ -673,6 +674,7 @@ async function boot(): Promise<void> {
     maxHoldMs: cfg.TRADE_MAX_HOLD_MS,
     tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
     tightStopPct: cfg.TIGHT_STOP_PCT,
+    onChainPriceFreshMs: cfg.ONCHAIN_PRICE_FRESH_MS,
   });
 
   // ═══════════════════════════════════════════════════════════

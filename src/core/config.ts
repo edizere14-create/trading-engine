@@ -90,6 +90,9 @@ const envSchema = z.object({
   TRADE_STOP_LOSS_PCT:     z.coerce.number().min(0.05).max(0.90).default(0.60), // -60% (HARD_STOP spec)
   TIGHT_STOP_WINDOW_MS:    z.coerce.number().int().min(0).default(10_000),
   TIGHT_STOP_PCT:          z.coerce.number().min(0.05).max(0.9).default(0.25),
+  // While an on-chain price (pool stream or swap print) is this fresh, DexScreener/Jupiter poller prices are
+  // ignored for that position. 0 turns the rule off (poller prices always count, as before).
+  ONCHAIN_PRICE_FRESH_MS:  z.coerce.number().int().min(0).default(15_000),
   TOKEN_MAX_AGE_MS:        z.coerce.number().int().min(0).default(3_600_000), // skip tokens >1hr old
 
   // Calibration
