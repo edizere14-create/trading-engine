@@ -93,7 +93,7 @@ export class PositionPricePoller {
         const priceData = prices.get(pos.tokenCA);
         if (priceData && priceData > 0) {
           const source = sources.get(pos.tokenCA) ?? 'dex';
-          this.positionManager.updatePrice(pos.tokenCA, priceData);
+          this.positionManager.updatePrice(pos.tokenCA, priceData, `poller:${source}`);
           this.lastKnownPrices.set(pos.tokenCA, {
             priceSOL: priceData,
             updatedAt: now,
@@ -110,7 +110,7 @@ export class PositionPricePoller {
         const cached = this.lastKnownPrices.get(pos.tokenCA);
         if (cached && now - cached.updatedAt <= CACHE_KEEPALIVE_MS) {
           // Keep position watchdog alive during brief provider outages.
-          this.positionManager.updatePrice(pos.tokenCA, cached.priceSOL);
+          this.positionManager.updatePrice(pos.tokenCA, cached.priceSOL, 'poller:cache');
           keepaliveCount++;
           this.metrics.cacheKeepaliveHits++;
         }

@@ -20,6 +20,15 @@ import { checkScammyName } from './scammyName';
 
 const MIN_LIQUIDITY_SOL = 3;
 
+/**
+ * The liquidity floor every graduation trade clears in the safety pipeline. Trade records use
+ * this for safetyChecks.liquidity.passed; the MIN_LIQUIDITY_SOL setting gates the pool-created
+ * path (signalAggregator) and is not applied to graduations.
+ */
+export function passesLiquidityFloor(valueSOL: number | undefined): boolean {
+  return valueSOL !== undefined && Number.isFinite(valueSOL) && valueSOL >= MIN_LIQUIDITY_SOL;
+}
+
 export type PhaseAFailedCheck = 'liquidity' | 'scammyName';
 
 export type PhaseATrace = Pick<SafetyCheckTrace, 'liquidity' | 'scammyName'>;

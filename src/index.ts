@@ -42,6 +42,7 @@ import { belowWalletLiquidityFloor, RECOMMENDED_WALLET_LIQUIDITY_FLOOR_SOL } fro
 import { shouldUseProbeFallback } from './risk/probePolicy';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
+import { passesLiquidityFloor } from './safety/phaseA';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -1088,7 +1089,7 @@ async function boot(): Promise<void> {
     // Pool price stream provides reserve-based pricing; swap prints supplement
     // with trade-execution prices. Both sources prevent STALE_EXIT.
     if (positionManager!.hasPosition(event.tokenCA)) {
-      positionManager!.updatePrice(event.tokenCA, event.priceSOL);
+      positionManager!.updatePrice(event.tokenCA, event.priceSOL, 'swap');
     }
 
     // If position is open but pool price stream not yet tracking, try to subscribe
@@ -1188,7 +1189,7 @@ async function boot(): Promise<void> {
   // ── POOL PRICE STREAM → POSITION PRICE UPDATE ──
   bus.on('pool:price', (event: { tokenCA: string; poolAddress: string; priceSOL: number; reserveSOL: number }) => {
     if (positionManager!.hasPosition(event.tokenCA)) {
-      positionManager!.updatePrice(event.tokenCA, event.priceSOL);
+      positionManager!.updatePrice(event.tokenCA, event.priceSOL, 'pool');
     }
   });
 
@@ -1912,7 +1913,7 @@ async function boot(): Promise<void> {
         executionMode: (ctx?.executionMode as any) ?? 'SAFE',
         safetyChecks: ctx?.safetyResult && !ctx.safetyResult.safetyUnavailable ? {
           liquidity: {
-            passed: ctx.initialLiquiditySOL !== undefined && ctx.initialLiquiditySOL >= cfg.MIN_LIQUIDITY_SOL,
+            passed: passesLiquidityFloor(ctx.initialLiquiditySOL), // the safety pipeline's floor; MIN_LIQUIDITY_SOL does not gate graduations
             valueSOL: ctx.initialLiquiditySOL ?? 0,
             unavailable: ctx.initialLiquiditySOL === undefined,
           },

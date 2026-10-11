@@ -24,9 +24,25 @@ interface PositionConfig {
   allowNoPoolTrades?: boolean; // ALLOW_NO_POOL_TRADES: let SINGLE_WALLET trades open without a real pool
 }
 
+/** The first ticks of each position are logged, so an early stop can be explained afterwards. */
+const TICK_LOG_LIMIT = 3;
+
+interface Tick {
+  price: number;
+  at: number;
+  source: string;
+}
+
+interface TickTrace {
+  count: number;
+  last?: Tick;
+  prev?: Tick;
+}
+
 export class PositionManager {
   private readonly MAX_CLOSED_POSITIONS = 500;
   private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
+  private tickTraces: Map<string, TickTrace> = new Map();   // tokenCA → recent ticks (diagnostics only)
   private openTokenCAs: Set<string> = new Set();
   private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
@@ -188,6 +204,45 @@ export class PositionManager {
     return true;
   }
 
+  /** Keeps the last two ticks per position and logs the first few, with the price source of each. */
+  private recordTick(position: TradePosition, price: number, source: string): void {
+    const trace = this.tickTraces.get(position.tokenCA) ?? { count: 0 };
+    trace.prev = trace.last;
+    trace.last = { price, at: Date.now(), source };
+    trace.count++;
+    this.tickTraces.set(position.tokenCA, trace);
+
+    if (trace.count <= TICK_LOG_LIMIT) {
+      logger.info('Position tick', {
+        tokenCA: position.tokenCA,
+        n: trace.count,
+        source,
+        priceSOL: price,
+        anchoring: position.entryPriceSOL === 0,
+        multiple: position.entryPriceSOL > 0 ? (price / position.entryPriceSOL).toFixed(3) : undefined,
+        sinceOpenMs: trace.last.at - position.entryTimestamp.getTime(),
+      });
+    }
+  }
+
+  /** Summary of the last two ticks for the close log: was it a gap between ticks, and from which source. */
+  private tickSummary(position: TradePosition): Record<string, unknown> {
+    const trace = this.tickTraces.get(position.tokenCA);
+    const entry = position.entryPriceSOL;
+    const multipleOf = (t?: Tick) => (t !== undefined && entry > 0 ? (t.price / entry).toFixed(3) : undefined);
+    return {
+      entryPriceBasis: position.entryPriceBasis,
+      peakMultiple: entry > 0 ? (position.peakPriceSOL / entry).toFixed(3) : undefined,
+      ticksSeen: trace?.count ?? 0,
+      lastTickSource: trace?.last?.source,
+      lastTickMultiple: multipleOf(trace?.last),
+      prevTickSource: trace?.prev?.source,
+      prevTickMultiple: multipleOf(trace?.prev),
+      msBetweenLastTicks: trace?.last && trace.prev ? trace.last.at - trace.prev.at : undefined,
+      msSinceLastTick: trace?.last ? Date.now() - trace.last.at : undefined,
+    };
+  }
+
   private effectiveStopPct(position: TradePosition): number {
     const ageMs = Date.now() - position.entryTimestamp.getTime();
     if (ageMs < this.config.tightStopWindowMs) return this.config.tightStopPct;
@@ -197,9 +252,11 @@ export class PositionManager {
   /**
    * Update price for a token and check exit conditions.
    */
-  updatePrice(tokenCA: string, currentPriceSOL: number): void {
+  updatePrice(tokenCA: string, currentPriceSOL: number, source: string = 'unknown'): void {
     const position = this.positions.get(tokenCA);
     if (!position) return;
+
+    this.recordTick(position, currentPriceSOL, source);
 
     // Anchor entry price on first valid tick — do not evaluate exits on the anchoring tick.
     if (position.entryPriceSOL === 0 && currentPriceSOL > 0) {
@@ -388,7 +445,9 @@ export class PositionManager {
       outcome: position.outcome,
       holdMs: Date.now() - position.entryTimestamp.getTime(),
       reBuyCount: position.reBuyCount,
+      ...this.tickSummary(position),
     });
+    this.tickTraces.delete(tokenCA);
   }
 
   private monitorPositions(): void {
