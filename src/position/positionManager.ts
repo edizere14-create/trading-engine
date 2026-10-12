@@ -22,7 +22,7 @@ interface PositionConfig {
   tightStopWindowMs: number; // early-hold window where tightStopPct applies
   tightStopPct: number;      // tighter stop used within tightStopWindowMs of entry
   allowNoPoolTrades?: boolean; // ALLOW_NO_POOL_TRADES: let SINGLE_WALLET trades open without a real pool
-  onChainPriceFreshMs?: number; // poller prices are ignored while an on-chain tick is this fresh; 0 = never ignore
+  onChainPriceFreshMs?: number; // poller prices are ignored while an on-chain tick is this fresh; 0 (default) = never ignore
 }
 
 /** The first ticks of each position are logged, so an early stop can be explained afterwards. */
@@ -32,13 +32,19 @@ const TICK_LOG_LIMIT = 3;
 const ONCHAIN_SOURCES = new Set(['pool', 'swap']);
 
 /**
- * Default for onChainPriceFreshMs. Poller prices (DexScreener / Jupiter) are a third party's view of
- * the best-liquidity pair, and can disagree wildly with the pool a position was opened on.
+ * Default for onChainPriceFreshMs: off. Poller prices (DexScreener / Jupiter) can disagree wildly
+ * with the pool a position was opened on, but the pool stream was itself serving cached reserves for
+ * up to 2s after a swap, and the poller turned out to be right in at least one of those cases.
+ * With the stream fixed the rule can be switched on once the disagreement logs show which side is
+ * right; until then a disagreement is only logged.
  */
-export const DEFAULT_ONCHAIN_PRICE_FRESH_MS = 15_000;
+export const DEFAULT_ONCHAIN_PRICE_FRESH_MS = 0;
 
-/** An ignored poller price this far from the on-chain price gets one log line per position. */
+/** A poller price this far from the on-chain price gets one log line per position. */
 const POLLER_DISAGREEMENT_LOG_PCT = 0.25;
+
+/** With the rule off, disagreements are still logged against an on-chain tick this fresh. */
+const DISAGREEMENT_LOG_WINDOW_MS = 15_000;
 
 interface Tick {
   price: number;
@@ -219,43 +225,54 @@ export class PositionManager {
     return true;
   }
 
-  private noteOnChainTick(tokenCA: string, price: number, source: string): void {
+  /** `observedAt` is when the price was actually read from the chain, if the source knows (else now). */
+  private noteOnChainTick(tokenCA: string, price: number, source: string, observedAt?: number): void {
     if (ONCHAIN_SOURCES.has(source) && Number.isFinite(price) && price > 0) {
-      this.onChainTicks.set(tokenCA, { price, at: Date.now(), source });
+      const now = Date.now();
+      const at = observedAt !== undefined && Number.isFinite(observedAt) ? Math.min(observedAt, now) : now;
+      this.onChainTicks.set(tokenCA, { price, at, source });
     }
   }
 
   /**
-   * The price rule: while the position has a fresh on-chain price (pool stream or swap print), a
-   * poller price (DexScreener/Jupiter) is ignored. Once the chain has been quiet for longer than
-   * onChainPriceFreshMs, or if there never was an on-chain price, poller prices count as before.
+   * The price rule. With onChainPriceFreshMs > 0, a poller price (DexScreener/Jupiter) is ignored
+   * while the position has an on-chain price (pool stream or swap print) read within that window;
+   * after it, or when there never was one, poller prices count. With it 0 (the default) nothing is
+   * ignored, but a poller price that disagrees with a recent on-chain price is still logged once
+   * per position, so the data to decide whether to switch the rule on accumulates.
    */
   private shouldIgnorePollerTick(position: TradePosition, price: number, source: string): boolean {
+    if (source.startsWith('poller:') === false) return false;
     const freshMs = this.config.onChainPriceFreshMs ?? DEFAULT_ONCHAIN_PRICE_FRESH_MS;
-    if (freshMs <= 0 || source.startsWith('poller:') === false) return false;
+    const ruleOn = freshMs > 0;
 
     const onChain = this.onChainTicks.get(position.tokenCA);
     if (onChain === undefined) return false;
     const ageMs = Date.now() - onChain.at;
-    if (ageMs > freshMs) return false;
+    if (ageMs > (ruleOn ? freshMs : DISAGREEMENT_LOG_WINDOW_MS)) return false;
 
     const state = this.pollerIgnored.get(position.tokenCA) ?? { count: 0, logged: false };
-    state.count++;
+    if (ruleOn) state.count++;
     const deviation = price / onChain.price - 1;
     if (state.logged === false && Math.abs(deviation) >= POLLER_DISAGREEMENT_LOG_PCT) {
       state.logged = true;
-      logger.info('Poller price ignored: disagrees with the on-chain price', {
-        tokenCA: position.tokenCA,
-        pollerSource: source,
-        pollerPriceSOL: price,
-        onChainSource: onChain.source,
-        onChainPriceSOL: onChain.price,
-        onChainAgeMs: ageMs,
-        deviationPct: (deviation * 100).toFixed(1),
-      });
+      logger.info(
+        ruleOn
+          ? 'Poller price ignored: disagrees with the on-chain price'
+          : 'Poller price disagrees with the on-chain price (applied: rule off)',
+        {
+          tokenCA: position.tokenCA,
+          pollerSource: source,
+          pollerPriceSOL: price,
+          onChainSource: onChain.source,
+          onChainPriceSOL: onChain.price,
+          onChainAgeMs: ageMs,
+          deviationPct: (deviation * 100).toFixed(1),
+        }
+      );
     }
     this.pollerIgnored.set(position.tokenCA, state);
-    return true;
+    return ruleOn;
   }
 
   /** Keeps the last two ticks per position and logs the first few, with the price source of each. */
@@ -307,11 +324,11 @@ export class PositionManager {
   /**
    * Update price for a token and check exit conditions.
    */
-  updatePrice(tokenCA: string, currentPriceSOL: number, source: string = 'unknown'): void {
+  updatePrice(tokenCA: string, currentPriceSOL: number, source: string = 'unknown', observedAt?: number): void {
     const position = this.positions.get(tokenCA);
     if (!position) return;
 
-    this.noteOnChainTick(tokenCA, currentPriceSOL, source);
+    this.noteOnChainTick(tokenCA, currentPriceSOL, source, observedAt);
     if (this.shouldIgnorePollerTick(position, currentPriceSOL, source)) return;
     this.recordTick(position, currentPriceSOL, source);
 

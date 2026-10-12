@@ -35,6 +35,7 @@ interface PoolSubscription {
   subId: number;
   lastFetchAt: number;
   connection: Connection; // the connection currently carrying this subscription
+  trailing?: ReturnType<typeof setTimeout>; // one follow-up fetch for swaps that arrived inside the cooldown
 }
 
 export class PoolPriceStream {
@@ -160,6 +161,7 @@ export class PoolPriceStream {
 
     // Always detach (bounded): a closed socket must not keep a stale listener
     void removeLogsListenerBounded(sub.connection, sub.subId);
+    if (sub.trailing !== undefined) clearTimeout(sub.trailing);
 
     this.subscriptions.delete(tokenCA);
     this.poolToToken.delete(sub.poolAddress);
@@ -176,12 +178,32 @@ export class PoolPriceStream {
     const sub = this.subscriptions.get(tokenCA);
     if (!sub) return;
 
-    // Cooldown: don't hammer RPC on rapid successive swaps
+    // Cooldown: don't hammer RPC on rapid successive swaps. A swap inside the cooldown is not
+    // dropped: one follow-up fetch runs when it ends, so the last swap of a burst (often the
+    // dump) is always priced.
     const now = Date.now();
-    if (now - sub.lastFetchAt < RESERVE_FETCH_COOLDOWN_MS) return;
+    const sinceLastFetch = now - sub.lastFetchAt;
+    if (sinceLastFetch < RESERVE_FETCH_COOLDOWN_MS) {
+      if (sub.trailing === undefined) {
+        sub.trailing = setTimeout(() => {
+          sub.trailing = undefined;
+          if (this.isStopped || this.subscriptions.get(tokenCA) !== sub) return;
+          this.onSwapDetected(poolAddress, tokenCA).catch(err => {
+            logger.warn('[PoolPriceStream] Reserve fetch error', {
+              tokenCA,
+              poolAddress,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
+        }, RESERVE_FETCH_COOLDOWN_MS - sinceLastFetch + 1);
+      }
+      return;
+    }
     sub.lastFetchAt = now;
 
-    const reserves = await this.simulator.getReserves(poolAddress);
+    // Always read fresh: the simulator's 2s reserve cache would hand back the reserves from
+    // before the swap that just fired this, re-emitting an old price as a new tick.
+    const reserves = await this.simulator.getReserves(poolAddress, { maxAgeMs: 0 });
     const priceSOL = this.simulator.getSpotPrice(reserves);
 
     if (priceSOL <= 0) {
@@ -203,6 +225,7 @@ export class PoolPriceStream {
       reserveSOL,
       ammType: reserves.ammType,
       timestamp: new Date(),
+      observedAt: reserves.fetchedAt, // when the reserves were actually read (not when this was emitted)
     });
   }
 

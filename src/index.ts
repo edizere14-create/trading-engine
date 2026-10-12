@@ -43,6 +43,7 @@ import { shouldUseProbeFallback } from './risk/probePolicy';
 import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
 import { passesLiquidityFloor } from './safety/phaseA';
+import { estimateDrainExitPrice } from './position/drainExit';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -1189,9 +1190,9 @@ async function boot(): Promise<void> {
   });
 
   // ── POOL PRICE STREAM → POSITION PRICE UPDATE ──
-  bus.on('pool:price', (event: { tokenCA: string; poolAddress: string; priceSOL: number; reserveSOL: number }) => {
+  bus.on('pool:price', (event: { tokenCA: string; poolAddress: string; priceSOL: number; reserveSOL: number; observedAt?: number }) => {
     if (positionManager!.hasPosition(event.tokenCA)) {
-      positionManager!.updatePrice(event.tokenCA, event.priceSOL, 'pool');
+      positionManager!.updatePrice(event.tokenCA, event.priceSOL, 'pool', event.observedAt);
     }
   });
 
@@ -1730,10 +1731,26 @@ async function boot(): Promise<void> {
   });
 
   bus.on('vault:drained', (e) => {
+    // The vault stream has no price, and closing at the last price books a drained pool as
+    // breakeven. Estimate the post-drain price from the size of the drain instead.
+    let exitPriceSOL = e.exitPriceSOL;
+    if (exitPriceSOL === undefined) {
+      const open = positionManager!.getOpenPositions().find((p) => p.tokenCA === e.tokenCA);
+      exitPriceSOL = open ? estimateDrainExitPrice(open.lastPriceSOL, e.dropPct) : undefined;
+      if (open && exitPriceSOL !== undefined) {
+        logger.warn('Vault drain: exit priced from the drain size', {
+          tokenCA: e.tokenCA,
+          dropPct: e.dropPct.toFixed(1),
+          lastPriceSOL: open.lastPriceSOL,
+          exitPriceSOL,
+          estimatedMultiple: open.entryPriceSOL > 0 ? (exitPriceSOL / open.entryPriceSOL).toFixed(3) : undefined,
+        });
+      }
+    }
     positionManager!.forceClose(
       e.tokenCA,
       `RUG_TRIGGER: vault drain ${e.dropPct.toFixed(1)}%`,
-      e.exitPriceSOL,
+      exitPriceSOL,
     );
   });
 

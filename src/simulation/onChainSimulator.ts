@@ -117,10 +117,14 @@ export class OnChainSimulator {
   /**
    * Fetch reserves with retry, caching, and AMM auto-detection.
    * Fails closed: throws if reserves can't be fetched (caller handles).
+   *
+   * `maxAgeMs` is how old a cached copy may be (default 2s). Pass 0 to force a fresh read: a price
+   * stream that has just seen a swap must not be handed the reserves from before it.
    */
-  async getReserves(poolAddress: string): Promise<PoolReserves> {
+  async getReserves(poolAddress: string, options: { maxAgeMs?: number } = {}): Promise<PoolReserves> {
+    const maxAgeMs = options.maxAgeMs ?? RESERVE_CACHE_TTL_MS;
     const cached = this.reserveCache.get(poolAddress);
-    if (cached && Date.now() - cached.fetchedAt < RESERVE_CACHE_TTL_MS) {
+    if (cached && Date.now() - cached.fetchedAt < maxAgeMs) {
       return cached;
     }
 
