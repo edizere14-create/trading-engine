@@ -15,6 +15,7 @@
     "journal:query": "ts-node src/journal/journalQuery.ts",
     "factors:report": "ts-node src/factors/factorReport.ts",
     "wallets:import": "ts-node scripts/importWallets.ts",
+    "trades:restate": "ts-node scripts/restateTrades.ts",
     "replay:run": "ts-node src/replay/replaySimulator.ts",
     "build:engine": "tsc -p tsconfig.json",
     "dev:dashboard": "next dev dashboard --port 3000",
