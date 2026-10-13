@@ -2,11 +2,15 @@ import path from 'path';
 import {
   GateView,
   ModeSummary,
+  PeriodSummary,
+  enteredSince,
+  entryDateRange,
   gateView,
-  isAutonomousOnly,
   overallSummary,
+  parseSince,
   restateTrades,
   summarizeByExitMode,
+  summarizeByMonth,
   writeRestated,
 } from '../src/calibration/restate';
 
@@ -26,6 +30,8 @@ const USAGE = `Usage: trades:restate [options]
   --trades <path>    paper trades file (default data/paperTrades.json)
   --journal <path>   trade journal database (default data/journal.db)
   --out <path>       restated copy to write (default: paperTrades.restated.json next to the trades file)
+  --since <date>     also report the trades entered on or after this date (YYYY-MM-DD, UTC), e.g. the
+                     graduation era; the trade edge can't tell eras apart, the entry date can
   --write            write the restated copy (default is a report only)
   --details          list every restated trade`;
 
@@ -40,13 +46,20 @@ function parseArgs(argv: string[]) {
   let out: string | undefined;
   let write = false;
   let details = false;
+  let since: Date | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => argv[++i] ?? fail(`${arg} needs a value`);
     if (arg === '--trades') trades = next();
     else if (arg === '--journal') journal = next();
     else if (arg === '--out') out = next();
-    else if (arg === '--write') write = true;
+    else if (arg === '--since') {
+      try {
+        since = parseSince(next());
+      } catch (err) {
+        fail(err instanceof Error ? err.message : String(err));
+      }
+    } else if (arg === '--write') write = true;
     else if (arg === '--details') details = true;
     else if (arg === '--help' || arg === '-h') {
       console.log(USAGE);
@@ -54,7 +67,7 @@ function parseArgs(argv: string[]) {
     } else fail(`unknown option ${arg}`);
   }
   out ??= path.join(path.dirname(path.resolve(trades)), 'paperTrades.restated.json');
-  return { trades, journal, out, write, details };
+  return { trades, journal, out, write, details, since };
 }
 
 const usd = (n: number) => `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`;
@@ -85,12 +98,28 @@ function printGate(label: string, before: GateView, after: GateView): void {
   console.log(`  gate unlocked      ${before.gateUnlocked} -> ${after.gateUnlocked}`);
 }
 
+function printMonths(before: PeriodSummary[], after: PeriodSummary[]): void {
+  const afterBy = new Map(after.map((m) => [m.period, m]));
+  console.log('\nBy entry month, UTC (before -> after)');
+  console.log('month      trades   win rate           total PnL');
+  for (const b of before) {
+    const a = afterBy.get(b.period) ?? b;
+    const changed = Math.abs(a.totalPnLUSD - b.totalPnLUSD) > 0.005;
+    console.log(
+      `${b.period.padEnd(10)} ${String(b.trades).padStart(6)}   ` +
+        `${b.winRatePct.toFixed(1)}% -> ${a.winRatePct.toFixed(1)}%`.padEnd(19) +
+        (changed ? `${usd(b.totalPnLUSD)} -> ${usd(a.totalPnLUSD)}` : usd(b.totalPnLUSD))
+    );
+  }
+}
+
 async function main() {
-  const { trades, journal, out, write, details } = parseArgs(process.argv.slice(2));
+  const { trades, journal, out, write, details, since } = parseArgs(process.argv.slice(2));
   const run = await restateTrades(trades, journal);
 
   console.log(`\nTrades: ${trades}   Journal: ${journal}`);
-  console.log(`Records: ${run.original.length}`);
+  const range = entryDateRange(run.original);
+  console.log(`Records: ${run.original.length}${range ? `   entered ${range.first} to ${range.last}` : ''}`);
   console.log('RUG_TRIGGER trades:');
   const rug = run.counts.restated + run.counts['already-restated'] + run.counts['no-journal-row'] + run.counts['no-drain-pct'] + run.counts['no-prices'];
   console.log(`  total                    ${rug}`);
@@ -106,15 +135,24 @@ async function main() {
   printModes(summarizeByExitMode(run.original), summarizeByExitMode(run.restated));
   console.log('\nAll records (before -> after)');
   console.log(`  win rate      ${overallBefore.winRatePct.toFixed(1)}% -> ${overallAfter.winRatePct.toFixed(1)}%`);
-  console.log(`  avg multiple  ${overallBefore.avgMultiple.toFixed(3)} -> ${overallAfter.avgMultiple.toFixed(3)}`);
+  console.log(`  avg multiple  ${overallBefore.avgMultiple.toFixed(3)} -> ${overallAfter.avgMultiple.toFixed(3)}  (counts every record, $1 probes included)`);
   console.log(`  total PnL     ${usd(overallBefore.totalPnLUSD)} -> ${usd(overallAfter.totalPnLUSD)}`);
 
+  printMonths(summarizeByMonth(run.original), summarizeByMonth(run.restated));
   printGate('all trades', await gateView(run.original), await gateView(run.restated));
-  printGate(
-    'autonomous (graduation) only',
-    await gateView(run.original.filter(isAutonomousOnly)),
-    await gateView(run.restated.filter(isAutonomousOnly))
-  );
+
+  if (since) {
+    const before = enteredSince(run.original, since);
+    const after = enteredSince(run.restated, since);
+    const day = since.toISOString().slice(0, 10);
+    const cohortBefore = overallSummary(before);
+    const cohortAfter = overallSummary(after);
+    console.log(`\nTrades entered on or after ${day}: ${before.length} records`);
+    console.log(`  win rate      ${cohortBefore.winRatePct.toFixed(1)}% -> ${cohortAfter.winRatePct.toFixed(1)}%`);
+    console.log(`  total PnL     ${usd(cohortBefore.totalPnLUSD)} -> ${usd(cohortAfter.totalPnLUSD)}`);
+    printModes(summarizeByExitMode(before), summarizeByExitMode(after));
+    printGate(`since ${day}`, await gateView(before), await gateView(after));
+  }
 
   if (details) {
     console.log('\nRestated trades');

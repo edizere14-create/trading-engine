@@ -6,14 +6,17 @@ import path from 'path';
 import initSqlJs from 'sql.js';
 import {
   JournalData,
+  enteredSince,
+  entryDateRange,
   gateView,
-  isAutonomousOnly,
   overallSummary,
+  parseSince,
   parseDrainPct,
   readJournal,
   restateRecord,
   restateTrades,
   summarizeByExitMode,
+  summarizeByMonth,
   writeRestated,
 } from '../src/calibration/restate';
 
@@ -188,11 +191,82 @@ describe('summaries', () => {
     expect(overallSummary([])).toMatchObject({ trades: 0, winRatePct: 0, avgMultiple: 0, totalPnLUSD: 0 });
   });
 
-  it('isAutonomousOnly is true only for a single AUTONOMOUS edge', () => {
-    expect(isAutonomousOnly({ edgesFired: ['AUTONOMOUS'] })).toBe(true);
-    expect(isAutonomousOnly({ edgesFired: ['AUTONOMOUS', 'SINGLE_WALLET'] })).toBe(false);
-    expect(isAutonomousOnly({ edgesFired: ['SINGLE_WALLET'] })).toBe(false);
-    expect(isAutonomousOnly({})).toBe(false);
+});
+
+// ── cohorts by date ───────────────────────────────────────────────────
+
+describe('cohorts by date', () => {
+  const at = (id: string, entry: string | undefined, pnl = 1, outcome = 'WIN') =>
+    rec({ id, entryTimestamp: entry, realizedPnLUSD: pnl, outcome, exitMode: 'TRAILING_STOP' });
+  const records = [
+    at('jul', '2026-07-03T00:16:29.000Z', 10),
+    at('aug', '2026-08-11T09:40:03.000Z', -4, 'LOSS'),
+    at('oct-1', '2026-10-06T07:02:50.000Z', 2),
+    at('oct-2', '2026-10-09T16:23:18.879Z', -9, 'LOSS'),
+    at('none', undefined, 100),
+    at('junk', 'not a date', 100),
+  ];
+
+  describe('parseSince', () => {
+    it('reads a plain date as midnight UTC', () => {
+      expect(parseSince('2026-10-01').toISOString()).toBe('2026-10-01T00:00:00.000Z');
+    });
+    it('reads a full ISO timestamp', () => {
+      expect(parseSince('2026-10-06T07:00:00Z').toISOString()).toBe('2026-10-06T07:00:00.000Z');
+    });
+    it.each(['', 'yesterday', '2026-13-45', '10/01/2026x'])('rejects %p with a message that says what to use', (raw) => {
+      expect(() => parseSince(raw)).toThrow(/YYYY-MM-DD/);
+    });
+  });
+
+  describe('enteredSince', () => {
+    it('keeps records entered at or after the date, and leaves out ones with no readable entry time', () => {
+      const ids = enteredSince(records, parseSince('2026-10-01')).map((r) => r.id);
+      expect(ids).toEqual(['oct-1', 'oct-2']);
+    });
+    it('includes a record entered exactly at the boundary', () => {
+      expect(enteredSince(records, new Date('2026-10-06T07:02:50.000Z')).map((r) => r.id)).toEqual(['oct-1', 'oct-2']);
+      expect(enteredSince(records, new Date('2026-10-06T07:02:50.001Z')).map((r) => r.id)).toEqual(['oct-2']);
+    });
+    it('returns nothing when the date is after every record', () => {
+      expect(enteredSince(records, parseSince('2027-01-01'))).toEqual([]);
+    });
+    it('does not modify the input', () => {
+      const copy = JSON.stringify(records);
+      enteredSince(records, parseSince('2026-10-01'));
+      expect(JSON.stringify(records)).toBe(copy);
+    });
+  });
+
+  describe('summarizeByMonth', () => {
+    it('groups by UTC entry month in order, with a bucket for records that have no readable time', () => {
+      const s = summarizeByMonth(records);
+      expect(s.map((m) => m.period)).toEqual(['2026-07', '2026-08', '2026-10', 'unknown']);
+      expect(s.find((m) => m.period === '2026-10')).toMatchObject({ trades: 2, totalPnLUSD: -7, winRatePct: 50 });
+      expect(s.find((m) => m.period === 'unknown')).toMatchObject({ trades: 2, totalPnLUSD: 200 });
+    });
+    it('uses UTC, so a late-evening UTC entry stays in its month', () => {
+      expect(summarizeByMonth([at('x', '2026-09-30T23:59:59.000Z')])[0].period).toBe('2026-09');
+    });
+  });
+
+  describe('entryDateRange', () => {
+    it('gives the first and last entry date, ignoring unreadable ones', () => {
+      expect(entryDateRange(records)).toEqual({ first: '2026-07-03', last: '2026-10-09' });
+    });
+    it('is null when nothing has a readable entry time', () => {
+      expect(entryDateRange([at('a', undefined), at('b', 'nope')])).toBeNull();
+      expect(entryDateRange([])).toBeNull();
+    });
+  });
+
+  it('a since-cohort gate view counts only that cohort (the old "autonomous only" cut counted everything)', async () => {
+    const mixed = [
+      ...Array.from({ length: 5 }, (_, i) => at('old' + i, '2026-07-10T00:00:00.000Z')),
+      ...Array.from({ length: 3 }, (_, i) => at('new' + i, '2026-10-10T00:00:00.000Z')),
+    ];
+    expect((await gateView(mixed)).completedTrades).toBe(8);
+    expect((await gateView(enteredSince(mixed, parseSince('2026-10-01')))).completedTrades).toBe(3);
   });
 });
 

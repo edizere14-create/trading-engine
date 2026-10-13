@@ -328,6 +328,54 @@ export async function gateView(records: any[]): Promise<GateView> {
   }
 }
 
-/** Trades whose only edge is the autonomous (graduation) path. */
-export const isAutonomousOnly = (r: any): boolean =>
-  Array.isArray(r.edgesFired) && r.edgesFired.length === 1 && r.edgesFired[0] === 'AUTONOMOUS';
+// ── Cohorts by date ──────────────────────────────────────────────────
+//
+// The edge on a trade record does not separate eras: graduation trades and the older pool-created
+// trades are both AUTONOMOUS. The date a position was entered does, so cohorts are cut by date.
+
+/** "2026-10-01" or a full ISO timestamp (UTC). Throws on anything unreadable. */
+export function parseSince(raw: string): Date {
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00Z` : raw);
+  if (Number.isNaN(d.getTime())) throw new Error(`Cannot read "${raw}" as a date; use YYYY-MM-DD or an ISO timestamp`);
+  return d;
+}
+
+/** Records entered at or after `since`. Records with no readable entry time are left out. */
+export function enteredSince(records: any[], since: Date): any[] {
+  return records.filter((r) => {
+    const t = Date.parse(String(r.entryTimestamp));
+    return Number.isFinite(t) && t >= since.getTime();
+  });
+}
+
+export interface PeriodSummary {
+  period: string; // YYYY-MM (UTC) of entry, or "unknown"
+  trades: number;
+  winRatePct: number;
+  totalPnLUSD: number;
+}
+
+export function summarizeByMonth(records: any[]): PeriodSummary[] {
+  const by = new Map<string, any[]>();
+  for (const r of records) {
+    const t = Date.parse(String(r.entryTimestamp));
+    const key = Number.isFinite(t) ? new Date(t).toISOString().slice(0, 7) : 'unknown';
+    by.set(key, [...(by.get(key) ?? []), r]);
+  }
+  return [...by.entries()]
+    .map(([period, rs]) => {
+      const o = overallSummary(rs);
+      return { period, trades: o.trades, winRatePct: o.winRatePct, totalPnLUSD: o.totalPnLUSD };
+    })
+    .sort((a, b) => a.period.localeCompare(b.period));
+}
+
+/** First and last entry time among the records, as YYYY-MM-DD, or null if none is readable. */
+export function entryDateRange(records: any[]): { first: string; last: string } | null {
+  const times = records.map((r) => Date.parse(String(r.entryTimestamp))).filter(Number.isFinite);
+  if (times.length === 0) return null;
+  return {
+    first: new Date(Math.min(...times)).toISOString().slice(0, 10),
+    last: new Date(Math.max(...times)).toISOString().slice(0, 10),
+  };
+}
