@@ -29,7 +29,12 @@ export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
  * of EXIT_SUBSYSTEM_MIGRATION.md removed it, and commit 7ce2cc4 reintroduced
  * it as a configurable early-window stop (TIGHT_STOP_WINDOW_MS / TIGHT_STOP_PCT).
  * See the Decision 4 addendum in that document.
- * 
+ *
+ * CURVE_SAFETY_EXIT is likewise a trading mode outside STRATEGY_V2.md: the
+ * mandatory exit HybridPowerPlay makes at 85% bonding-curve completion, before
+ * migration. It is a scheduled strategy decision, so it counts toward validation
+ * metrics. See the second addendum under Decision 4 in EXIT_SUBSYSTEM_MIGRATION.md.
+ *
  * Operational modes: STALE_EXIT (data feed loss), EMERGENCY (system shutdown,
  * black-swan circuit breaker). These represent expected infrastructure events
  * by design — they fire on predictable conditions.
@@ -55,7 +60,7 @@ export type ExecutionMode = 'SAFE' | 'FAST' | 'WAR';
  * deviation from STRATEGY_V2.md — document the rationale in 
  * EXIT_SUBSYSTEM_MIGRATION.md Section 4 before shipping.
  */
-export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'EARLY_STOP' | 'TRAILING_STOP' | 'TP_TIER_1' | 'TP_TIER_2' | 'TP_TIER_3' | 'TP_TIER_4' | 'EMERGENCY' | 'RUG_TRIGGER' | 'UNKNOWN';
+export type ExitMode      = 'HARVEST' | 'PANIC' | 'DRIP' | 'MAX_HOLD' | 'STALE_EXIT' | 'HARD_STOP' | 'EARLY_STOP' | 'TRAILING_STOP' | 'TP_TIER_1' | 'TP_TIER_2' | 'TP_TIER_3' | 'TP_TIER_4' | 'EMERGENCY' | 'RUG_TRIGGER' | 'CURVE_SAFETY_EXIT' | 'UNKNOWN';
 export type SystemMode    = 'PAPER' | 'LIVE';
 export type SurvivalState = 'NORMAL' | 'CAUTION' | 'DEFENSIVE' | 'HALT';
 

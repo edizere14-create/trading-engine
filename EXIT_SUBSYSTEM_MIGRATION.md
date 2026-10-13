@@ -965,6 +965,23 @@ collection, exit-mode distributions that span the reintroduction should be
 treated as not comparable, and closes recorded before the map fix remain
 `UNKNOWN` (the reason string is not stored in the trade record).
 
+**Second addendum — CURVE_SAFETY_EXIT**: `HybridPowerPlay` closes a position
+through `forceClose` at 85% bonding-curve completion, before migration, with a
+reason beginning `CURVE_SAFETY_EXIT`. That prefix was never in `exitModeMap`
+(nor, now, in the `ExitMode` union), so any such close would be journaled as
+`UNKNOWN` — the same miss as EARLY_STOP above, and `UNKNOWN` is excluded from
+validation metrics. No such close is in the journal yet: the gap was found by
+reading the code. (The five `UNKNOWN` closes found in the journal, all on
+2026-10-05, were `EARLY_STOP` closes of $1 probes, recorded before that prefix
+was mapped.) It is classified as a **trading mode**: a scheduled strategy
+exit whose outcome belongs in win rate and expectancy, and a deviation from
+STRATEGY_V2.md like EARLY_STOP. The mapping now lives in
+`src/position/exitMode.ts`, and `tests/exitMode.test.ts` drives the
+PositionManager close paths so a reason with no prefix fails a test instead of
+turning up later as `UNKNOWN`. Closes recorded as `UNKNOWN` before this change
+stay so in `paperTrades.json`; the journal keeps the reason string, so they can
+be identified there.
+
 ### Decision 5: ml/ and replay/ coupling — tolerate, update same-commit, classify as dormant
 
 **Decision**: When the taxonomy rename commits land, string literals in 

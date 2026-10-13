@@ -44,6 +44,7 @@ import { TokenSafetyChecker } from './safety/tokenSafetyChecker';
 import { GraduationHandler } from './safety/graduationHandler';
 import { passesLiquidityFloor } from './safety/phaseA';
 import { estimateDrainExitPrice } from './position/drainExit';
+import { resolveExitMode } from './position/exitMode';
 import { createTokenMetadataResolver } from './safety/tokenMetadataResolver';
 
 // ── ADVANCED ENGINE IMPORTS ───────────────────────────────
@@ -1817,20 +1818,16 @@ async function boot(): Promise<void> {
       ? position.lastPriceSOL
       : position.entryPriceSOL * (position.realizedMultiple ?? 1);
 
-    // Map positionManager exitReason → ExitMode
+    // Map positionManager exitReason → ExitMode (see src/position/exitMode.ts)
     const exitReason = position.exitReason ?? 'UNKNOWN';
-    const exitModeMap: Record<string, ExitMode> = {
-      'HARD_STOP': 'HARD_STOP',
-      'EARLY_STOP': 'EARLY_STOP',
-      'TRAILING_STOP': 'TRAILING_STOP',
-      'TP_TIER_4': 'TP_TIER_4',
-      'MAX_HOLD': 'MAX_HOLD',
-      'STALE_EXIT': 'STALE_EXIT',
-      'EMERGENCY': 'EMERGENCY',
-      'RUG_TRIGGER': 'RUG_TRIGGER',
-    };
-    const exitModeKey = Object.keys(exitModeMap).find(k => exitReason.startsWith(k));
-    const resolvedExitMode: ExitMode = exitModeKey ? exitModeMap[exitModeKey] : 'UNKNOWN';
+    const resolvedExitMode: ExitMode = resolveExitMode(position.exitReason);
+    if (resolvedExitMode === 'UNKNOWN') {
+      // UNKNOWN is excluded from the validation metrics: say so, so a new close path can't go unnoticed
+      logger.warn('Position closed with an exit reason that maps to no exit mode', {
+        tokenCA: position.tokenCA,
+        exitReason,
+      });
+    }
 
     const journalEntry: JournalEntry = {
       id: position.id,
