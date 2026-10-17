@@ -58,12 +58,25 @@ interface TickTrace {
   prev?: Tick;
 }
 
+/**
+ * Per position: every poller price that arrived while a recent on-chain price existed, compared with
+ * that on-chain price. A summary goes in the Trade CLOSED log, so the typical gap (not just the
+ * outliers that get their own line) can be read off a day's closes.
+ */
+interface PollerStats {
+  ignored: number;   // poller prices dropped by the price rule (always 0 while the rule is off)
+  logged: boolean;   // the one-per-position disagreement line has been written
+  compared: number;  // poller prices compared with a recent on-chain price
+  devSum: number;    // sum of (poller / on-chain - 1), for the mean
+  devExtreme: number; // the signed deviation with the largest magnitude
+}
+
 export class PositionManager {
   private readonly MAX_CLOSED_POSITIONS = 500;
   private positions: Map<string, TradePosition> = new Map(); // tokenCA → position
   private tickTraces: Map<string, TickTrace> = new Map();   // tokenCA → recent ticks (diagnostics only)
   private onChainTicks: Map<string, Tick> = new Map();      // tokenCA → latest pool/swap price (drives the poller rule)
-  private pollerIgnored: Map<string, { count: number; logged: boolean }> = new Map();
+  private pollerStats: Map<string, PollerStats> = new Map();  // tokenCA → how the poller compared with the chain
   private openTokenCAs: Set<string> = new Set();
   private closedPositions: TradePosition[] = [];
   private tradesToday: number = 0;
@@ -239,7 +252,8 @@ export class PositionManager {
    * while the position has an on-chain price (pool stream or swap print) read within that window;
    * after it, or when there never was one, poller prices count. With it 0 (the default) nothing is
    * ignored, but a poller price that disagrees with a recent on-chain price is still logged once
-   * per position, so the data to decide whether to switch the rule on accumulates.
+   * per position, so the data to decide whether to switch the rule on accumulates. Either way,
+   * every poller price compared with a recent on-chain price is tallied (see PollerStats).
    */
   private shouldIgnorePollerTick(position: TradePosition, price: number, source: string): boolean {
     if (source.startsWith('poller:') === false) return false;
@@ -251,9 +265,20 @@ export class PositionManager {
     const ageMs = Date.now() - onChain.at;
     if (ageMs > (ruleOn ? freshMs : DISAGREEMENT_LOG_WINDOW_MS)) return false;
 
-    const state = this.pollerIgnored.get(position.tokenCA) ?? { count: 0, logged: false };
-    if (ruleOn) state.count++;
+    const state: PollerStats = this.pollerStats.get(position.tokenCA) ?? {
+      ignored: 0,
+      logged: false,
+      compared: 0,
+      devSum: 0,
+      devExtreme: 0,
+    };
+    if (ruleOn) state.ignored++;
     const deviation = price / onChain.price - 1;
+    if (Number.isFinite(deviation)) {
+      state.compared++;
+      state.devSum += deviation;
+      if (Math.abs(deviation) > Math.abs(state.devExtreme)) state.devExtreme = deviation;
+    }
     if (state.logged === false && Math.abs(deviation) >= POLLER_DISAGREEMENT_LOG_PCT) {
       state.logged = true;
       logger.info(
@@ -271,7 +296,7 @@ export class PositionManager {
         }
       );
     }
-    this.pollerIgnored.set(position.tokenCA, state);
+    this.pollerStats.set(position.tokenCA, state);
     return ruleOn;
   }
 
@@ -301,11 +326,18 @@ export class PositionManager {
     const trace = this.tickTraces.get(position.tokenCA);
     const entry = position.entryPriceSOL;
     const multipleOf = (t?: Tick) => (t !== undefined && entry > 0 ? (t.price / entry).toFixed(3) : undefined);
+    const poller = this.pollerStats.get(position.tokenCA);
+    const compared = poller?.compared ?? 0;
     return {
       entryPriceBasis: position.entryPriceBasis,
       peakMultiple: entry > 0 ? (position.peakPriceSOL / entry).toFixed(3) : undefined,
       ticksSeen: trace?.count ?? 0,
-      pollerTicksIgnored: this.pollerIgnored.get(position.tokenCA)?.count ?? 0,
+      pollerTicksIgnored: poller?.ignored ?? 0,
+      pollerCompared: compared,
+      // poller price vs the on-chain price it was compared with, in percent: the mean, and the
+      // single largest gap (signed); undefined when no poller price met a recent on-chain price
+      pollerDevMeanPct: poller && compared > 0 ? ((poller.devSum / compared) * 100).toFixed(1) : undefined,
+      pollerDevExtremePct: poller && compared > 0 ? (poller.devExtreme * 100).toFixed(1) : undefined,
       lastTickSource: trace?.last?.source,
       lastTickMultiple: multipleOf(trace?.last),
       prevTickSource: trace?.prev?.source,
@@ -523,7 +555,7 @@ export class PositionManager {
     });
     this.tickTraces.delete(tokenCA);
     this.onChainTicks.delete(tokenCA);
-    this.pollerIgnored.delete(tokenCA);
+    this.pollerStats.delete(tokenCA);
   }
 
   private monitorPositions(): void {
