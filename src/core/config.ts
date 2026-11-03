@@ -94,6 +94,9 @@ const envSchema = z.object({
   // prices are ignored for that position. 0 (default) = off: poller prices always count; disagreements with
   // the on-chain price are still logged.
   ONCHAIN_PRICE_FRESH_MS:  z.coerce.number().int().min(0).default(0),
+  // A poller price this many percent away from the position's on-chain price is never applied; the pool is
+  // asked to re-read and its answer is used. 0 turns the guard off.
+  POLLER_GUARD_PCT:        z.coerce.number().min(0).max(100).default(25),
   TOKEN_MAX_AGE_MS:        z.coerce.number().int().min(0).default(3_600_000), // skip tokens >1hr old
 
   // Calibration

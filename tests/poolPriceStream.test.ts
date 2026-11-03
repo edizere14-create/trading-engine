@@ -149,3 +149,78 @@ describe('PoolPriceStream: prices after a swap are read fresh and never dropped'
     await stream.stop();
   });
 });
+
+describe('PoolPriceStream.refresh: an immediate read for a position whose price another source disputes', () => {
+  let emitSpy: jest.SpyInstance;
+  const emitted = () => emitSpy.mock.calls.filter((c) => c[0] === 'pool:price').map((c) => c[1]);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-02T19:24:30.000Z'));
+    emitSpy = jest.spyOn(bus, 'emit').mockImplementation(() => false as any);
+  });
+  afterEach(() => {
+    emitSpy.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it('reads fresh reserves straight away, without waiting out the fetch cooldown', async () => {
+    const { stream, simulator, chain } = setup();
+    stream.subscribe(POOL, TOKEN);
+    await jest.advanceTimersByTime(0);
+    await jest.advanceTimersByTimeAsync(100); // 100 ms after the last read: inside the 500 ms cooldown
+
+    chain.price = 2e-8; // what the pool says now
+    expect(stream.refresh(TOKEN)).toBe(true);
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(simulator.getReserves).toHaveBeenCalledTimes(2);
+    expect(simulator.getReserves).toHaveBeenLastCalledWith(POOL, { maxAgeMs: 0 });
+    expect(emitted().map((e) => e.priceSOL)).toEqual([1e-7, 2e-8]); // the position is priced on the pool's answer
+    await stream.stop();
+  });
+
+  it('does not queue a follow-up fetch (it is not a swap that arrived inside the cooldown)', async () => {
+    const { stream, simulator } = setup();
+    stream.subscribe(POOL, TOKEN);
+    await jest.advanceTimersByTimeAsync(0);
+    await jest.advanceTimersByTimeAsync(100);
+
+    stream.refresh(TOKEN);
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(simulator.getReserves).toHaveBeenCalledTimes(2); // the initial read and the refresh, nothing more
+    await stream.stop();
+  });
+
+  it('returns false and reads nothing for a token it is not tracking', async () => {
+    const { stream, simulator } = setup();
+    expect(stream.refresh('not-tracked')).toBe(false);
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(simulator.getReserves).not.toHaveBeenCalled();
+    await stream.stop();
+  });
+
+  it('returns false once the position is unsubscribed', async () => {
+    const { stream, simulator } = setup();
+    stream.subscribe(POOL, TOKEN);
+    await jest.advanceTimersByTimeAsync(0);
+    stream.unsubscribe(TOKEN);
+
+    expect(stream.refresh(TOKEN)).toBe(false);
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(simulator.getReserves).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed read is logged and does not throw into the caller', async () => {
+    const { stream, simulator } = setup();
+    stream.subscribe(POOL, TOKEN);
+    await jest.advanceTimersByTimeAsync(0);
+    await jest.advanceTimersByTimeAsync(100);
+
+    simulator.getReserves.mockRejectedValueOnce(new Error('rpc down'));
+    expect(() => stream.refresh(TOKEN)).not.toThrow();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(emitted()).toHaveLength(1); // only the initial price
+    await stream.stop();
+  });
+});

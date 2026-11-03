@@ -23,6 +23,7 @@ interface PositionConfig {
   tightStopPct: number;      // tighter stop used within tightStopWindowMs of entry
   allowNoPoolTrades?: boolean; // ALLOW_NO_POOL_TRADES: let SINGLE_WALLET trades open without a real pool
   onChainPriceFreshMs?: number; // poller prices are ignored while an on-chain tick is this fresh; 0 (default) = never ignore
+  pollerGuardPct?: number;      // a poller price this many percent from the on-chain price is never applied; 0 (default) = off
 }
 
 /** The first ticks of each position are logged, so an early stop can be explained afterwards. */
@@ -46,6 +47,24 @@ const POLLER_DISAGREEMENT_LOG_PCT = 0.25;
 /** With the rule off, disagreements are still logged against an on-chain tick this fresh. */
 const DISAGREEMENT_LOG_WINDOW_MS = 15_000;
 
+/**
+ * Default for pollerGuardPct: off here, so a PositionManager built without it behaves as before; the
+ * engine passes POLLER_GUARD_PCT (default 25) from the config.
+ *
+ * The guard exists because the age of the last pool tick says nothing about whether a pool is
+ * stale: a pool with no swaps is quiet, its price cannot have moved, and a poller price far from it
+ * (two real exits were closed at -88% and -90% against a pool that had been quiet for 2.2 s) is the
+ * poller being wrong. Such a price is not applied; the pool is asked to re-read instead, and what it
+ * says is applied.
+ */
+export const DEFAULT_POLLER_GUARD_PCT = 0;
+
+/** The guard only protects against an on-chain price younger than this; older means the stream is likely dead. */
+const POLLER_GUARD_MAX_AGE_MS = 60_000;
+
+/** At most one fresh-read request per position per this long, however many poller prices arrive. */
+const PRICE_CHECK_MIN_INTERVAL_MS = 1_000;
+
 interface Tick {
   price: number;
   at: number;
@@ -65,10 +84,12 @@ interface TickTrace {
  */
 interface PollerStats {
   ignored: number;   // poller prices dropped by the price rule (always 0 while the rule is off)
+  deferred: number;  // poller prices dropped by the guard because they were far from the on-chain price
   logged: boolean;   // the one-per-position disagreement line has been written
   compared: number;  // poller prices compared with a recent on-chain price
   devSum: number;    // sum of (poller / on-chain - 1), for the mean
   devExtreme: number; // the signed deviation with the largest magnitude
+  lastCheckAt: number; // when a fresh pool read was last requested for this position
 }
 
 export class PositionManager {
@@ -248,55 +269,89 @@ export class PositionManager {
   }
 
   /**
-   * The price rule. With onChainPriceFreshMs > 0, a poller price (DexScreener/Jupiter) is ignored
-   * while the position has an on-chain price (pool stream or swap print) read within that window;
-   * after it, or when there never was one, poller prices count. With it 0 (the default) nothing is
-   * ignored, but a poller price that disagrees with a recent on-chain price is still logged once
-   * per position, so the data to decide whether to switch the rule on accumulates. Either way,
-   * every poller price compared with a recent on-chain price is tallied (see PollerStats).
+   * What to do with a poller price (DexScreener/Jupiter): true means drop it.
+   *
+   * 1. The guard (pollerGuardPct > 0). While the position has an on-chain price (pool stream or
+   *    swap print) younger than POLLER_GUARD_MAX_AGE_MS, a poller price that many percent away from
+   *    it is never applied. A fresh read of the pool is requested instead (position:priceCheck, at
+   *    most once a second), and the price the pool then reports is applied. The age of the last pool
+   *    tick is deliberately not the test: a pool with no swaps is quiet, not stale.
+   * 2. The price rule. With onChainPriceFreshMs > 0, a poller price is ignored while the position
+   *    has an on-chain price read within that window; after it, or when there never was one, poller
+   *    prices count. With it 0 (the default) nothing is ignored, but a poller price that disagrees
+   *    with a recent on-chain price is still logged once per position.
+   *
+   * Either way, every poller price compared with a recent on-chain price is tallied (PollerStats).
    */
   private shouldIgnorePollerTick(position: TradePosition, price: number, source: string): boolean {
     if (source.startsWith('poller:') === false) return false;
     const freshMs = this.config.onChainPriceFreshMs ?? DEFAULT_ONCHAIN_PRICE_FRESH_MS;
     const ruleOn = freshMs > 0;
+    const guardPct = this.config.pollerGuardPct ?? DEFAULT_POLLER_GUARD_PCT;
 
     const onChain = this.onChainTicks.get(position.tokenCA);
     if (onChain === undefined) return false;
-    const ageMs = Date.now() - onChain.at;
-    if (ageMs > (ruleOn ? freshMs : DISAGREEMENT_LOG_WINDOW_MS)) return false;
+    const now = Date.now();
+    const ageMs = now - onChain.at;
+    const ruleWindowMs = ruleOn ? freshMs : DISAGREEMENT_LOG_WINDOW_MS;
+    if (ageMs > Math.max(guardPct > 0 ? POLLER_GUARD_MAX_AGE_MS : 0, ruleWindowMs)) return false;
 
     const state: PollerStats = this.pollerStats.get(position.tokenCA) ?? {
       ignored: 0,
+      deferred: 0,
       logged: false,
       compared: 0,
       devSum: 0,
       devExtreme: 0,
+      lastCheckAt: 0,
     };
-    if (ruleOn) state.ignored++;
+    this.pollerStats.set(position.tokenCA, state);
+
     const deviation = price / onChain.price - 1;
     if (Number.isFinite(deviation)) {
       state.compared++;
       state.devSum += deviation;
       if (Math.abs(deviation) > Math.abs(state.devExtreme)) state.devExtreme = deviation;
     }
+    const logFields = {
+      tokenCA: position.tokenCA,
+      pollerSource: source,
+      pollerPriceSOL: price,
+      onChainSource: onChain.source,
+      onChainPriceSOL: onChain.price,
+      onChainAgeMs: ageMs,
+      deviationPct: (deviation * 100).toFixed(1),
+    };
+
+    // 1. The guard
+    if (guardPct > 0 && Number.isFinite(deviation) && Math.abs(deviation) >= guardPct / 100) {
+      state.deferred++;
+      if (state.logged === false) {
+        state.logged = true;
+        logger.info('Poller price deferred: far from the on-chain price, asking the pool to re-read', {
+          ...logFields,
+          guardPct,
+        });
+      }
+      if (now - state.lastCheckAt >= PRICE_CHECK_MIN_INTERVAL_MS) {
+        state.lastCheckAt = now;
+        bus.emit('position:priceCheck', { tokenCA: position.tokenCA });
+      }
+      return true;
+    }
+
+    // 2. The price rule
+    if (ageMs > ruleWindowMs) return false;
+    if (ruleOn) state.ignored++;
     if (state.logged === false && Math.abs(deviation) >= POLLER_DISAGREEMENT_LOG_PCT) {
       state.logged = true;
       logger.info(
         ruleOn
           ? 'Poller price ignored: disagrees with the on-chain price'
           : 'Poller price disagrees with the on-chain price (applied: rule off)',
-        {
-          tokenCA: position.tokenCA,
-          pollerSource: source,
-          pollerPriceSOL: price,
-          onChainSource: onChain.source,
-          onChainPriceSOL: onChain.price,
-          onChainAgeMs: ageMs,
-          deviationPct: (deviation * 100).toFixed(1),
-        }
+        logFields
       );
     }
-    this.pollerStats.set(position.tokenCA, state);
     return ruleOn;
   }
 
@@ -333,6 +388,7 @@ export class PositionManager {
       peakMultiple: entry > 0 ? (position.peakPriceSOL / entry).toFixed(3) : undefined,
       ticksSeen: trace?.count ?? 0,
       pollerTicksIgnored: poller?.ignored ?? 0,
+      pollerDeferred: poller?.deferred ?? 0,
       pollerCompared: compared,
       // poller price vs the on-chain price it was compared with, in percent: the mean, and the
       // single largest gap (signed); undefined when no poller price met a recent on-chain price

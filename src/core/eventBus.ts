@@ -44,6 +44,7 @@ export interface EngineEvents {
   'position:closed':       TradePosition;
   'position:tierClosed':   PartialClose;
   'vault:drained':         { tokenCA: string; dropPct: number; exitPriceSOL?: number };
+  'position:priceCheck':   { tokenCA: string };
   'safety:checked':        TokenSafetyResult;
   'safety:blocked':        { tokenCA: string; reasons: string[] };
   // ── ADVANCED ENGINE EVENTS ──────────────────────────────

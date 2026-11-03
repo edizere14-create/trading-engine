@@ -172,9 +172,28 @@ export class PoolPriceStream {
   }
 
   /**
-   * Handle a swap on the pool — fetch reserves and compute price.
+   * Read the pool's reserves now and emit the price, without waiting out the cooldown. Used when
+   * another price source (the DexScreener poller) disagrees sharply with the last pool price: the
+   * pool is asked directly and what it says is what the position is priced on. Returns whether the
+   * token is tracked here; the callers rate-limit, so this does not.
    */
-  private async onSwapDetected(poolAddress: string, tokenCA: string): Promise<void> {
+  refresh(tokenCA: string): boolean {
+    const sub = this.subscriptions.get(tokenCA);
+    if (!sub) return false;
+    this.onSwapDetected(sub.poolAddress, tokenCA, true).catch((err) => {
+      logger.warn('[PoolPriceStream] Reserve refresh error', {
+        tokenCA,
+        poolAddress: sub.poolAddress,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+    return true;
+  }
+
+  /**
+   * Handle a swap on the pool — fetch reserves and compute price. `force` skips the cooldown.
+   */
+  private async onSwapDetected(poolAddress: string, tokenCA: string, force = false): Promise<void> {
     const sub = this.subscriptions.get(tokenCA);
     if (!sub) return;
 
@@ -183,7 +202,7 @@ export class PoolPriceStream {
     // dump) is always priced.
     const now = Date.now();
     const sinceLastFetch = now - sub.lastFetchAt;
-    if (sinceLastFetch < RESERVE_FETCH_COOLDOWN_MS) {
+    if (force === false && sinceLastFetch < RESERVE_FETCH_COOLDOWN_MS) {
       if (sub.trailing === undefined) {
         sub.trailing = setTimeout(() => {
           sub.trailing = undefined;

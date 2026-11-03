@@ -666,6 +666,7 @@ async function boot(): Promise<void> {
       tightStopPct: cfg.TIGHT_STOP_PCT,
       allowNoPoolTrades: cfg.ALLOW_NO_POOL_TRADES === 'true',
       onChainPriceFreshMs: cfg.ONCHAIN_PRICE_FRESH_MS,
+      pollerGuardPct: cfg.POLLER_GUARD_PCT,
     }
   );
   positionManager.start();
@@ -677,6 +678,7 @@ async function boot(): Promise<void> {
     tightStopWindowMs: cfg.TIGHT_STOP_WINDOW_MS,
     tightStopPct: cfg.TIGHT_STOP_PCT,
     onChainPriceFreshMs: cfg.ONCHAIN_PRICE_FRESH_MS,
+    pollerGuardPct: cfg.POLLER_GUARD_PCT,
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -1729,6 +1731,12 @@ async function boot(): Promise<void> {
 
   bus.on('position:tierClosed', (pc) => {
     journal?.recordPartialClose(pc);
+  });
+
+  // A poller price far from the on-chain price was not applied: ask the pool for its own reading,
+  // which arrives as a normal pool:price tick and is what the position is priced on.
+  bus.on('position:priceCheck', (e) => {
+    poolPriceStream?.refresh(e.tokenCA);
   });
 
   bus.on('vault:drained', (e) => {
