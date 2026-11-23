@@ -30,7 +30,7 @@ import { AntifragileEngine } from '../antifragile/antifragileEngine';
 import { runPhaseA, PhaseAResult } from './phaseA';
 import { runPhaseB, PhaseBResult } from './phaseB';
 
-const PHASE_B_BUDGET_MS = 500;
+const PHASE_B_BUDGET_MS = 2500;
 
 export interface SafetyPipelineResult {
   passed: boolean;
